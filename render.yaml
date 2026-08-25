@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: hub-messaggi-worker
+    runtime: node
+    plan: starter          # NON usare il free: va in sleep e perde i webhook
+    region: frankfurt      # dati in Unione Europea
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SHOPIFY_SHOP
+        sync: false
+      - key: SHOPIFY_ADMIN_TOKEN
+        sync: false
+      - key: SHOPIFY_WEBHOOK_SECRET
+        sync: false
+      - key: MS_TENANT_ID
+        sync: false
+      - key: MS_CLIENT_ID
+        sync: false
+      - key: MS_CLIENT_SECRET
+        sync: false
+      - key: MS_MAILBOX
+        sync: false
+      - key: MS_WEBHOOK_CLIENT_STATE
+        sync: false
