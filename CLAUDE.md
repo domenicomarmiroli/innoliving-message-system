@@ -119,4 +119,12 @@ migrazione iniziale con schema/RLS/seed, e il **connettore Shopify completo**
   dopo: Shopify ritenta i webhook che tardano più di 5 secondi.
 22 test verdi, di cui 13 sul riconoscimento del canale.
 
+### Autenticazione Shopify
+Le app create dall'admin del negozio (token statico `shpat_`) non sono più
+creabili. Le app del Dev Dashboard non espongono nessun token da copiare: si
+usa il **client credentials grant**, cioè il worker scambia client id e secret
+per un token valido 24 ore, in `src/connectors/shopify/token.ts`.
+Il token statico resta supportato e ha la precedenza, per le installazioni che
+ce l'hanno già.
+
 Prossimo passo (05 del runbook): ingestion della casella via Microsoft Graph.

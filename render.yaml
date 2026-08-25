@@ -4,13 +4,17 @@ services:
     runtime: node
     plan: starter          # NON usare il free: va in sleep e perde i webhook
     region: frankfurt      # dati in Unione Europea
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: node dist/index.js
     healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
+      # Con NODE_ENV=production npm salta le devDependencies, dove stanno
+      # typescript e @types/node: senza questa, il build fallisce su tsc.
+      - key: NPM_CONFIG_INCLUDE
+        value: dev
       - key: SUPABASE_DB_URL
         sync: false
       - key: SHOPIFY_SHOP

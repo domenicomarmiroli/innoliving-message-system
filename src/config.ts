@@ -9,7 +9,15 @@ const schema = z.object({
   SUPABASE_DB_URL: z.string().min(1, 'stringa di connessione al database'),
 
   SHOPIFY_SHOP: z.string().min(1).optional(),
+  // Due modi di autenticarsi, in ordine di precedenza:
+  //  1. SHOPIFY_ADMIN_TOKEN — token statico delle vecchie app create
+  //     dall'admin del negozio (shpat_...). Non più creabili da agosto 2026.
+  //  2. SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET — app del Dev Dashboard:
+  //     il worker si procura da solo un token valido 24 ore.
   SHOPIFY_ADMIN_TOKEN: z.string().min(1).optional(),
+  SHOPIFY_CLIENT_ID: z.string().min(1).optional(),
+  SHOPIFY_CLIENT_SECRET: z.string().min(1).optional(),
+  // Firma dei webhook. Con un'app del Dev Dashboard è il client secret.
   SHOPIFY_WEBHOOK_SECRET: z.string().min(1).optional(),
 
   MS_TENANT_ID: z.string().min(1).optional(),

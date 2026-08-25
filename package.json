@@ -12,7 +12,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "backfill:shopify": "tsx src/commands/backfill-shopify.ts"
+    "backfill:shopify": "tsx src/commands/backfill-shopify.ts",
+    "verify": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "fastify": "^5.2.1",

@@ -2,6 +2,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { daGraphQL } from './normalize.js'
+import { creaFornitoreToken } from './token.js'
 import { upsertOrdine } from './upsert.js'
 
 const API_VERSION = '2025-07'
@@ -36,9 +37,10 @@ export async function backfillShopify(
   config: Config,
   opts: { since?: string; pageSize?: number } = {},
 ): Promise<{ pagine: number; ordini: number; anomalie: number }> {
-  if (!config.SHOPIFY_SHOP || !config.SHOPIFY_ADMIN_TOKEN) {
-    throw new Error('SHOPIFY_SHOP e SHOPIFY_ADMIN_TOKEN sono obbligatori per il backfill')
+  if (!config.SHOPIFY_SHOP) {
+    throw new Error('SHOPIFY_SHOP è obbligatorio per il backfill')
   }
+  const dammiToken = creaFornitoreToken(config, log)
 
   const [account] = await db<{ id: string }[]>`
     select id from channel_account where kind = 'shopify' and active limit 1
@@ -63,7 +65,7 @@ export async function backfillShopify(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': config.SHOPIFY_ADMIN_TOKEN,
+        'X-Shopify-Access-Token': await dammiToken(),
       },
       body: JSON.stringify({
         query: QUERY,
