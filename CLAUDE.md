@@ -103,8 +103,20 @@ codice.
 
 ## Stato attuale
 Fatto: scheletro, configurazione validata, connessione al database, `/health`,
-test di configurazione e di replicabilità, Dockerfile e render.yaml,
-migrazione iniziale `db/migrations/0001_init.sql` con schema, RLS e seed.
-Prossimo passo (04 del runbook): connettore Shopify — webhook con verifica
-HMAC, backfill paginato, normalizzazione dei quattro canali, upsert
-idempotente con gestione del duplicato Amazon noto.
+migrazione iniziale con schema/RLS/seed, e il **connettore Shopify completo**
+(passo 04 del runbook):
+- `src/connectors/shopify/normalize.ts` — due adattatori (webhook REST e
+  GraphQL) verso un solo normalizzatore. Il riconoscimento del canale è
+  scritto una volta sola ed è testato su payload reali dello store.
+- `src/connectors/shopify/hmac.ts` — verifica della firma sul corpo grezzo,
+  confronto a tempo costante.
+- `src/connectors/shopify/upsert.ts` — scrittura idempotente con gestione del
+  duplicato Amazon noto: non sovrascrive in silenzio, tiene il più recente e
+  registra lo scarto in `ingest_anomaly`.
+- `src/connectors/shopify/backfill.ts` — paginazione con cursore salvato in
+  `sync_state`, gestione del 429.
+- `src/routes/webhooks-shopify.ts` — risposta 200 immediata, elaborazione
+  dopo: Shopify ritenta i webhook che tardano più di 5 secondi.
+22 test verdi, di cui 13 sul riconoscimento del canale.
+
+Prossimo passo (05 del runbook): ingestion della casella via Microsoft Graph.

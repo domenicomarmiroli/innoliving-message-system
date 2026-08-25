@@ -10,4 +10,15 @@ export const logger = pino({
   },
 })
 
-export type Logger = typeof logger
+/**
+ * Interfaccia minima del logger.
+ * I moduli di dominio dipendono da questa, non dal tipo concreto di pino:
+ * così accettano sia il logger dell'applicazione sia quello per richiesta di
+ * Fastify, che sono compatibili nell'uso ma non nel tipo.
+ */
+export interface Logger {
+  info(obj: unknown, msg?: string): void
+  warn(obj: unknown, msg?: string): void
+  error(obj: unknown, msg?: string): void
+  debug(obj: unknown, msg?: string): void
+}

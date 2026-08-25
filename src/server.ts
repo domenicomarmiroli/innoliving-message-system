@@ -4,6 +4,7 @@ import type { Config } from './config.js'
 import { logger } from './logger.js'
 import { createDb } from './db/index.js'
 import { healthRoutes } from './routes/health.js'
+import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
 
 export async function buildServer(config: Config) {
   const app = Fastify({
@@ -15,6 +16,7 @@ export async function buildServer(config: Config) {
 
   const db = createDb(config)
   await app.register(healthRoutes, { db })
+  await app.register(shopifyWebhookRoutes, { db, config })
 
   app.addHook('onClose', async () => {
     await db.end({ timeout: 5 })

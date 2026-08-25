@@ -1,0 +1,111 @@
+{
+  "amazon": {
+    "id": "gid://shopify/Order/17600000000001",
+    "name": "AMZ304-0904527-7250707",
+    "sourceName": "380652355585",
+    "sourceIdentifier": null,
+    "tags": ["#ZOHOIN", "amazon", "amazon-import", "business"],
+    "createdAt": "2026-07-27T16:02:44Z",
+    "displayFinancialStatus": "PAID",
+    "displayFulfillmentStatus": "UNFULFILLED",
+    "currentTotalPriceSet": { "shopMoney": { "amount": "34.90", "currencyCode": "EUR" } },
+    "customAttributes": [],
+    "lineItems": { "nodes": [
+      { "title": "Innoliving Ferro da stiro a vapore INN-679", "quantity": 1, "sku": "INN-679IS",
+        "originalUnitPriceSet": { "shopMoney": { "amount": "34.90" } }, "image": null }
+    ]},
+    "fulfillments": []
+  },
+  "mirakl_mms": {
+    "id": "gid://shopify/Order/17732393861469",
+    "name": "INSH6406",
+    "sourceName": "MediaMarktSaturn",
+    "sourceIdentifier": "02116_325104572-A",
+    "tags": ["#ZOHOIN", "02116_325104572-A", "MediaMarktSaturn", "Mirakl", "MMIT", "Ship by 2026-08-25"],
+    "createdAt": "2026-08-24T15:09:19Z",
+    "displayFinancialStatus": "PAID",
+    "displayFulfillmentStatus": "UNFULFILLED",
+    "currentTotalPriceSet": { "shopMoney": { "amount": "24.90", "currencyCode": "EUR" } },
+    "customAttributes": [
+      { "key": "Order placed from", "value": "MediaMarktSaturn" },
+      { "key": "Tenant_id", "value": "MediaMarktSaturn" },
+      { "key": "Order_id", "value": "02116_325104572-A" },
+      { "key": "Customer email", "value": "rk0idlx32ez.fznm52pke@notification.mirakl.net" },
+      { "key": "Sub_Channel_name", "value": "MMIT" }
+    ],
+    "lineItems": { "nodes": [
+      { "title": "Innoliving Ventilatore Box Rotante 360 INN-505", "quantity": 1, "sku": "INN-505NEWIS",
+        "originalUnitPriceSet": { "shopMoney": { "amount": "24.90" } },
+        "image": { "url": "https://cdn.shopify.com/x/INN-505.jpg" } }
+    ]},
+    "fulfillments": []
+  },
+  "mirakl_lmfr": {
+    "id": "gid://shopify/Order/17600000000002",
+    "name": "INSH6208",
+    "sourceName": "Leroy Merlin France",
+    "sourceIdentifier": "005-26192L8770-A",
+    "tags": ["#ZOHOIN", "005-26192L8770-A", "Leroy Merlin France", "Mirakl", "Ship by 2026-07-14"],
+    "createdAt": "2026-07-12T20:03:14Z",
+    "displayFinancialStatus": "PAID",
+    "displayFulfillmentStatus": "FULFILLED",
+    "currentTotalPriceSet": { "shopMoney": { "amount": "39.90", "currencyCode": "EUR" } },
+    "customAttributes": [{ "key": "Order_id", "value": "005-26192L8770-A" }],
+    "lineItems": { "nodes": [] },
+    "fulfillments": [{ "trackingInfo": [{ "number": "066061400001", "url": "https://services.brt.it/it/tracking?OP=N&CD=066061400001", "company": "BRT" }] }]
+  },
+  "tiktok": {
+    "id": "gid://shopify/Order/17716325482845",
+    "name": "TTOK576940907258812630",
+    "sourceName": "tiktok",
+    "sourceIdentifier": "b3d4af22a7d1485f94c69a87c1f6941d",
+    "tags": ["#ZOHOIN", "576940907258812630", "TikTok Shop"],
+    "createdAt": "2026-08-23T15:54:29Z",
+    "displayFinancialStatus": "PAID",
+    "displayFulfillmentStatus": "FULFILLED",
+    "currentTotalPriceSet": { "shopMoney": { "amount": "14.32", "currencyCode": "EUR" } },
+    "customAttributes": [
+      { "key": "Sales Channel", "value": "TikTok Shop - InShopping.it" },
+      { "key": "TikTok Order Number", "value": "576940907258812630" }
+    ],
+    "lineItems": { "nodes": [
+      { "title": "Innoliving Specchio Ingranditore Luminoso INN-804", "quantity": 1, "sku": "INN-804IS",
+        "originalUnitPriceSet": { "shopMoney": { "amount": "14.32" } }, "image": { "url": "https://cdn.shopify.com/x/INN-804.png" } }
+    ]},
+    "fulfillments": [{ "trackingInfo": [{ "number": "066061406379", "url": "https://services.brt.it/it/tracking?OP=N&CD=066061406379", "company": "BRT" }] }]
+  },
+  "sito": {
+    "id": "gid://shopify/Order/17716349927773",
+    "name": "INSH6403",
+    "sourceName": "channel:35258717",
+    "sourceIdentifier": null,
+    "tags": ["#ZOHOIN"],
+    "createdAt": "2026-08-23T16:04:18Z",
+    "displayFinancialStatus": "PAID",
+    "displayFulfillmentStatus": "FULFILLED",
+    "currentTotalPriceSet": { "shopMoney": { "amount": "11.80", "currencyCode": "EUR" } },
+    "customAttributes": [],
+    "lineItems": { "nodes": [
+      { "title": "Innoliving Filtro Hepa per Aspirapolvere INN-651", "quantity": 1, "sku": "INN-65101SR",
+        "originalUnitPriceSet": { "shopMoney": { "amount": "8.90" } }, "image": { "url": "https://cdn.shopify.com/x/filtro.png" } }
+    ]},
+    "fulfillments": [{ "trackingInfo": [{ "number": "066011402540", "url": "https://services.brt.it/it/tracking?OP=N&CD=066011402540", "company": "BRT" }] }]
+  },
+  "ricambio": {
+    "id": "gid://shopify/Order/17800000000001",
+    "name": "INSH9001",
+    "sourceName": "channel:35258717",
+    "sourceIdentifier": null,
+    "tags": ["RICAMBIO", "GARANZIA"],
+    "createdAt": "2026-08-25T09:00:00Z",
+    "displayFinancialStatus": "PAID",
+    "displayFulfillmentStatus": "UNFULFILLED",
+    "currentTotalPriceSet": { "shopMoney": { "amount": "0.00", "currencyCode": "EUR" } },
+    "customAttributes": [{ "key": "Pratica", "value": "GAR-2026-0142" }],
+    "lineItems": { "nodes": [
+      { "title": "Innoliving Filtro per Purificatore Ercole INN-554", "quantity": 1, "sku": "INN-55401IS",
+        "originalUnitPriceSet": { "shopMoney": { "amount": "0.00" } }, "image": null }
+    ]},
+    "fulfillments": []
+  }
+}
