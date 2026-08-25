@@ -15,10 +15,14 @@ validazione, pino per il logging, vitest per i test.
 
 ## Regole assolute
 
-1. **Lo schema del database NON appartiene a questo repo.** È di proprietà del
-   progetto Lovable. Il file `db/schema.sql` è una copia in sola lettura,
-   rigenerata a mano dopo ogni modifica fatta in Lovable. Non scrivere mai
-   migrazioni, non fare mai `ALTER TABLE`, non fare `CREATE TABLE`.
+1. **Lo schema del database appartiene a QUESTO repo.**
+   Il database è un progetto Supabase esterno, non Lovable Cloud: Lovable ci
+   si collega come client e non gestisce le migrazioni. Quindi la verità sta
+   in `db/migrations/`, numerate progressivamente, e si applicano a mano
+   nell'editor SQL di Supabase. `db/schema.sql` è lo snapshot corrente,
+   rigenerato dopo ogni migrazione.
+   Le modifiche allo schema si concordano prima: l'interfaccia Lovable legge
+   le stesse tabelle, e cambiarle senza avvisarla la rompe.
 
 2. **Ogni scrittura verso il database deve essere idempotente.** Il worker può
    riprocessare lo stesso batch dieci volte senza duplicare nulla: usa sempre
@@ -87,9 +91,20 @@ Niente `any`. Funzioni pure dove possibile, effetti collaterali confinati in
 `src/db` e `src/connectors`. Commenti solo dove il perché non è ovvio dal
 codice.
 
+## Chiavi Supabase: chi tiene cosa
+- **Worker (questo repo)**: `SUPABASE_DB_URL`, la connection string del
+  *session pooler*. Bypassa RLS. Vive solo nelle variabili d'ambiente di
+  Render.
+- **Interfaccia Lovable**: solo `SUPABASE_URL` e la chiave *publishable*
+  (anon). Passa da RLS, come deve.
+- La **service_role key non va mai data a Lovable** né a qualunque cosa che
+  finisca in un bundle servito al browser: bypassa RLS e aprirebbe in lettura
+  e scrittura tutti i messaggi dei clienti.
+
 ## Stato attuale
 Fatto: scheletro, configurazione validata, connessione al database, `/health`,
-test di configurazione e di replicabilità, Dockerfile e render.yaml.
+test di configurazione e di replicabilità, Dockerfile e render.yaml,
+migrazione iniziale `db/migrations/0001_init.sql` con schema, RLS e seed.
 Prossimo passo (04 del runbook): connettore Shopify — webhook con verifica
 HMAC, backfill paginato, normalizzazione dei quattro canali, upsert
 idempotente con gestione del duplicato Amazon noto.
