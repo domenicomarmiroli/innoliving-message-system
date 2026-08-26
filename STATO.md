@@ -124,16 +124,45 @@ assegnazione. Gestione utenti implementata da Domenico nel frattempo.
   `/threads/reply` risponde 422 esplicito su un allegato Mirakl, non tenta
   alla cieca.
 
-**Resta da fare, lato Lovable — non ancora inviato nessun prompt:**
-- Cablare il pulsante "Invia" già presente in `reply-editor.tsx" alla nuova
-  rotta, con sessione Supabase invece di un token nel browser, e mostrare le
-  violazioni 422 in modo specifico.
-- Gestione tag e assegnazione (`agent` query mancante in `hub-data.ts`) —
-  attenzione: `threadIntent()` usa già il primo tag diverso da `"demo"` come
-  intento classificato, i tag non sono generici.
-- Upload allegati in uscita direttamente su Storage (serve una policy RLS su
-  `storage.objects` per gli utenti autenticati — di competenza Lovable, non
-  di questo repo) e galleria/anteprima in entrata.
+**Fatto anche lato Lovable, tre prompt inviati ed eseguiti:**
+5. Invio risposta collegato a `/threads/reply` con sessione Supabase,
+   violazioni 422 mostrate in modo specifico, ⌘/Ctrl+Invio funzionante.
+6. Tag (con il tag "intento" segnalato), assegnazione ("Assegna a me"
+   incluso) e cambio stato — scrittura diretta su Supabase, non tramite
+   il worker: sono dati puramente interni.
+7. Allegati in uscita: pulsante "Allega" collegato, upload diretto su
+   Storage sotto `interfaccia/{agent_id}/...`, incluso nel corpo
+   dell'invio. Policy RLS fornite da Lovable, da eseguire a mano:
+   ```sql
+   create policy "Agenti caricano in interfaccia"
+   on storage.objects for insert to authenticated
+   with check (bucket_id = 'allegati' and (storage.foldername(name))[1] = 'interfaccia');
+   create policy "Agenti leggono allegati"
+   on storage.objects for select to authenticated
+   using (bucket_id = 'allegati');
+   ```
+
+**Bug trovato e corretto nello stesso giro: CORS mancante.** Il worker non
+aveva mai `@fastify/cors` registrato — il browser di Lovable bloccava la
+richiesta prima ancora che arrivasse al server, con un errore di rete
+generico invece di un 401. Aggiunta `INTERFACCIA_ORIGINS` (elenco esplicito,
+mai un jolly) e impostata su Render.
+
+**✅ VERIFICATO END-TO-END SU UN CLIENTE VERO (26/08, 17:17).** Risposta
+inviata da Lovable su un thread Amazon reale (Biagio, ordine
+407-6403985-4699551): log del worker (`risposta inviata`) → email in
+Gmail Inviati, destinatario il relay corretto → **comparsa nel thread
+giusto su Amazon Seller Central**, in ordine cronologico, sotto lo stesso
+scambio — conferma che anche il threading (In-Reply-To/References) regge.
+Prima verifica reale, non solo test automatici, dell'intera catena di
+invio ricostruita oggi.
+
+**Resta da fare, lato Lovable:**
+- Galleria/anteprima degli allegati in entrata (tab "Allegati" nel
+  pannello contesto, oggi vuoto).
+- Verificare un invio con allegato vero (serve prima la policy RLS sopra).
+- Verificare un invio su un thread Mirakl (testo — gli allegati lì
+  restano non supportati, per scelta).
 
 ---
 
