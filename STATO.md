@@ -194,6 +194,50 @@ thread Amazon reale, confermata su Gmail Inviati ("One attachment").
 
 ---
 
+## Bozze AI e knowledge base — sessione del 26/08 sera
+
+Deciso con Domenico: niente Lovable Cloud (vietato per architettura — il
+database è un Supabase esterno, l'interfaccia non deve mai chiamare API
+esterne dal browser). Le bozze si generano nel worker, provider Claude
+dietro un'interfaccia intercambiabile.
+
+**Costruito e deployato**: `POST /threads/draft` (redazione IBAN/carte/
+codici fiscali prima del prompt, note interne mai incluse, il testo
+proposto passa dallo stesso policy guard di un invio vero), `POST
+/knowledge` (documento PDF/TXT, solo ruolo admin, estrazione testo con
+pdf-parse), migrazione 0010 (tabella `knowledge`, recupero per
+sovrapposizione di tag col thread — non ricerca semantica, debito
+dichiarato). 116 test verdi.
+
+**Lato Lovable**: scheda "Bozza AI" nel pannello contesto collegata
+(genera, mostra fonti ed eventuali violazioni di policy, "Usa questa
+bozza" versa il testo nell'editor senza inviarlo mai da sola).
+
+**Due bug trovati nel primo giro di test, entrambi corretti:**
+1. CORS: Lovable ha DUE origini diverse da autorizzare, non una —
+   `*.lovable.app` (pubblicato/anteprima) e `*.lovableproject.com`
+   (l'iframe di anteprima dentro l'editor stesso, dominio del tutto
+   diverso). Mancava la seconda: `INTERFACCIA_ORIGINS` aggiornata su
+   Render.
+2. **Non un bug**: un vecchio pulsante decorativo "Bozza AI" (icona
+   Sparkles) nella barra dell'editor di risposta, mai collegato a
+   nulla fin da L0, causava confusione — l'utente lo cliccava pensando
+   fosse la funzione vera. Rimosso.
+
+**✅ VERIFICATO: prima bozza AI generata su un thread reale (26/08
+sera)**, Claude Sonnet 5, testo coerente col contesto (reso/garanzia)
+del thread. Nessuna fonte knowledge base (base ancora vuota, nessun
+documento caricato) — atteso.
+
+**Resta da fare, lato Lovable:**
+- Pannello admin per la knowledge base (caricamento PDF/TXT, elenco,
+  tag, disattivazione) — `POST /knowledge` pronto sul worker.
+- Un modo per segnalare una risposta inviata come "buon esempio":
+  scrittura diretta su Supabase (`knowledge`, `fonte =
+  'esempio_operatore'`), stessa categoria di tag/note interne.
+
+---
+
 ## Debiti dichiarati
 
 **Mirakl è scritto sulla documentazione, non su risposte vere.** Quando è
