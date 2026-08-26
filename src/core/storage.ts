@@ -50,6 +50,11 @@ export async function caricaAllegato(
   const risposta = await fetch(url, {
     method: 'POST',
     headers: {
+      // Serve sempre anche apikey, non solo Authorization: è così che il
+      // gateway di Supabase identifica il progetto prima ancora di
+      // guardare il token. Senza, risponde con un errore che non dice
+      // "manca l'apikey" — dice solo che la richiesta non va bene.
+      apikey: config.SUPABASE_SERVICE_ROLE_KEY!,
       Authorization: `Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}`,
       'Content-Type': mime && mime.trim() ? mime : 'application/octet-stream',
       'x-upsert': 'true',
@@ -78,7 +83,10 @@ export async function scaricaAllegato(config: Config, percorso: string): Promise
   const senzaPrefisso = percorso.startsWith(`${BUCKET}/`) ? percorso.slice(BUCKET.length + 1) : percorso
   const url = `${config.SUPABASE_URL}/storage/v1/object/${BUCKET}/${codificaPercorso(senzaPrefisso)}`
   const risposta = await fetch(url, {
-    headers: { Authorization: `Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}` },
+    headers: {
+      apikey: config.SUPABASE_SERVICE_ROLE_KEY!,
+      Authorization: `Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
   })
   if (!risposta.ok) {
     throw new Error(`Download da Storage fallito (${risposta.status}): ${percorso}`)

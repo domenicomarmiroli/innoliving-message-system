@@ -44,6 +44,26 @@ describe('storage — percorsi con caratteri speciali', () => {
     expect(chiamate[0]).not.toContain(' ')
   })
 
+  it('manda sempre apikey oltre ad Authorization, sia in carica che in scarica', async () => {
+    const chiamate: { url: string; init?: RequestInit }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        chiamate.push({ url, init })
+        return new Response(new Uint8Array([1]), { status: 200 })
+      }),
+    )
+
+    await caricaAllegato(config, 'account/file.png', Buffer.from('x'), 'image/png')
+    await scaricaAllegato(config, 'account/file.png')
+
+    for (const { init } of chiamate) {
+      const headers = init?.headers as Record<string, string>
+      expect(headers.apikey).toBe('chiave')
+      expect(headers.Authorization).toBe('Bearer chiave')
+    }
+  })
+
   it('non tocca le barre che separano le cartelle', async () => {
     const chiamate: string[] = []
     vi.stubGlobal(
