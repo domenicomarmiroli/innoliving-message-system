@@ -2,6 +2,8 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { credenzialiMancanti, leggiCasella, messaggioErrore } from './imap.js'
+import { riaggancia } from './riaggancia.js'
+import { sincronizzaMirakl } from '../mirakl/sync.js'
 
 /**
  * Il ciclo che tiene la casella sotto controllo.
@@ -45,11 +47,31 @@ export function avviaPolling(db: Db, log: Logger, config: Config): Ciclo | null 
     if (fermato) return
     try {
       const esito = await leggiCasella(db, log, config)
+      // Le conversazioni senza ordine si riprovano a ogni giro: un
+      // messaggio può arrivare prima del suo ordine, e quando l'ordine
+      // compare devono agganciarsi da sole senza che nessuno lanci nulla.
+      const ri = await riaggancia(db, log)
+
+      // Mirakl ha una API vera: si chiede cosa è cambiato invece di
+      // aspettare che arrivi una email. Gira sullo stesso ritmo della
+      // casella perché la reattività richiesta è la stessa, e un
+      // errore qui non deve fermare la lettura della posta.
+      let mirakl = 0
+      try {
+        const esiti = await sincronizzaMirakl(db, log)
+        mirakl = esiti.reduce((n, e) => n + e.messaggi_inseriti, 0)
+      } catch (errore) {
+        log.error({ err: messaggioErrore(errore) }, 'sincronizzazione Mirakl fallita')
+      }
+
       fallimenti = 0
       // Silenzio quando non c'è niente: un log al minuto che dice "zero"
       // rende illeggibile quello che conta.
-      if (esito.lette > 0) {
-        log.info(esito, 'casella letta')
+      if (esito.lette > 0 || ri.agganciate > 0 || mirakl > 0) {
+        log.info(
+          { ...esito, agganciate: ri.agganciate, mirakl_messaggi: mirakl },
+          'giro completato',
+        )
       }
     } catch (errore) {
       fallimenti += 1

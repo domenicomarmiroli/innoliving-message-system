@@ -11,6 +11,7 @@ import { loadConfig } from '../config.js'
 import { createDb } from '../db/index.js'
 import { logger } from '../logger.js'
 import { credenzialiMancanti, leggiCasella, messaggioErrore } from '../connectors/mail/imap.js'
+import { riaggancia } from '../connectors/mail/riaggancia.js'
 
 const config = loadConfig()
 const mancanti = credenzialiMancanti(config)
@@ -24,12 +25,19 @@ const db = createDb(config)
 
 try {
   const esito = await leggiCasella(db, logger, config)
+  const ri = await riaggancia(db, logger)
+
   console.log('')
-  console.log('  lette:        ', esito.lette)
-  console.log('  inserite:     ', esito.inserite)
-  console.log('  già presenti: ', esito.gia_presenti)
-  console.log('  errori:       ', esito.errori)
-  console.log('  ultimo UID:   ', esito.ultimo_uid ?? '(nessuno)')
+  console.log('  lette:          ', esito.lette)
+  console.log('  inserite:       ', esito.inserite)
+  console.log('  già presenti:   ', esito.gia_presenti)
+  console.log('  ignorate:       ', esito.ignorate, '(mittente escluso)')
+  console.log('  avvisi:         ', esito.avvisi, '(garanzia A-Z, rimborsi)')
+  console.log('  mancate consegne:', esito.notifiche)
+  console.log('  errori:         ', esito.errori)
+  console.log('  ultimo UID:     ', esito.ultimo_uid ?? '(nessuno)')
+  console.log('')
+  console.log('  riaggancio: ', ri.agganciate, 'agganciate su', ri.esaminate, 'senza ordine')
   console.log('')
   if (esito.lette === 0) {
     console.log('  Nessun messaggio nuovo. Se te ne aspettavi, controlla che')

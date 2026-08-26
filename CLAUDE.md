@@ -185,6 +185,15 @@ A-to-Z non gestita pesa sulla salute dell'account e **per quelle non esiste
 API**: l'email è l'unico modo di saperlo. Entrano con SLA corta (240 minuti) e
 aprono la conversazione dell'ordine se non c'è.
 
+`riaggancia.ts` — **l'aggancio si riprova a ogni giro.** Un messaggio può
+arrivare prima del suo ordine: gli ordini Amazon non passano dallo Shopify (a
+un controllo su dati veri, 1406 messaggi su 1438 citavano un numero d'ordine e
+**zero** di quegli ordini erano in archivio), e anche a sincronizzazione
+accesa una email può precedere il webhook. Un aggancio fatto una volta sola,
+al momento dell'ingestione, sbaglierebbe per sempre. Così invece il giorno in
+cui gli ordini arrivano, le conversazioni in attesa si sistemano da sole entro
+un minuto.
+
 **Precedenza — la parte delicata.** L'ordine è: escluso → canale riconosciuto →
 avviso → notifica → messaggio. Il passaggio "canale riconosciuto" viene PRIMA
 delle liste per genere perché il dominio del relay dei clienti è un
@@ -201,5 +210,40 @@ che nascondevano i pochi a cui rispondere oggi.
 gli altri file in `test/fixtures/mail/` sono sintetici — vedi il LEGGIMI lì
 dentro. Per questo il codice non interpreta la semantica del corpo: si aggancia
 all'alias e, come ripiego, al numero d'ordine, che ha una forma fissa.
+
+### Connettore Mirakl (passo 06)
+API vera, al contrario di Amazon: **M11** `GET /api/inbox/threads` per leggere
+(`updated_since` + paginazione a cursore), **M12**
+`POST /api/inbox/threads/{id}/message` per rispondere.
+
+**Autenticazione**: `Authorization: <chiave>`, senza `Bearer`. Verificato con
+una chiamata reale (200), non dedotto: la documentazione pubblica lo chiama
+"Shop-API-Key" e non mostra il formato.
+
+**Configurazione**: l'URL sta in `channel_account.config.endpoint`, il NOME
+della variabile con la chiave in `channel_account.secret_ref`, la chiave
+nell'ambiente. Un operatore in più = una riga di SQL più una variabile; nel
+codice non c'è nessun URL di nessun cliente.
+
+**L'aggancio all'ordine qui è esatto**: l'entità `MMP_ORDER` del thread porta
+l'identificativo, che è lo stesso `external_order_id` importato da Shopify.
+Nessun testo da interpretare — al contrario di Amazon, dove il numero va
+cercato nell'oggetto o nel corpo.
+
+**DEBITO IMPORTANTE — scritto sulla documentazione, non su risposte vere.**
+Quando è stato costruito nessun cliente Mirakl aveva ancora scritto e l'API
+restituiva `{"data":[]}`. Per questo il normalizzatore è tollerante e
+*loquace*: ogni scostamento dallo schema atteso finisce in `ingest_anomaly`
+con tipo `mirakl_*` invece di rompersi o, peggio, di essere ignorato. Il punto
+più incerto è `from.type`, da cui dipende il verso del messaggio: i valori
+considerati "nostri" stanno in `MITTENTI_NOSTRI_PREDEFINITI` e i tipi
+sconosciuti vengono registrati.
+
+Al primo messaggio vero, il collaudo è un comando:
+```
+npm run mirakl:check -- --forma
+```
+Non scrive nulla: stampa i nomi dei campi che l'API restituisce davvero, li
+confronta con quelli attesi e non mostra il contenuto dei messaggi.
 
 Prossimo passo: classificazione dell'intento e bozze AI.

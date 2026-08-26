@@ -1,0 +1,51 @@
+{
+  "data": [
+    {
+      "id": "thread-0001",
+      "topic": { "value": "Domanda sulla consegna" },
+      "date_created": "2026-08-24T09:12:44Z",
+      "date_updated": "2026-08-24T10:01:00Z",
+      "entities": [
+        { "type": "MMP_ORDER", "id": "02116_325104572-A", "label": "Ordine" }
+      ],
+      "messages": [
+        {
+          "id": "msg-0001",
+          "body": "Buongiorno, quando arriva il pacco?",
+          "date_created": "2026-08-24T09:12:44Z",
+          "from": { "display_name": "Cliente", "type": "CUSTOMER" },
+          "to": [{ "display_name": "Negozio", "id": "shop-1", "type": "SHOP" }],
+          "attachments": []
+        },
+        {
+          "id": "msg-0002",
+          "body": "Buongiorno, parte oggi.",
+          "date_created": "2026-08-24T10:01:00Z",
+          "from": { "display_name": "Assistenza", "type": "SHOP" },
+          "to": [{ "display_name": "Cliente", "id": "cust-1", "type": "CUSTOMER" }],
+          "attachments": [
+            { "id": "att-1", "name": "bolla.pdf", "size": 12345 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "thread-0002",
+      "topic": "Richiesta generica",
+      "date_created": "2026-08-20T08:00:00Z",
+      "date_updated": "2026-08-20T08:00:00Z",
+      "entities": [{ "type": "SELLER_OPERATOR", "id": "op-1", "label": "Operatore" }],
+      "messages": [
+        {
+          "id": "msg-0003",
+          "body": "Comunicazione di servizio.",
+          "date_created": "2026-08-20T08:00:00Z",
+          "from": { "display_name": "Operatore", "type": "OPERATOR" },
+          "to": [],
+          "attachments": []
+        }
+      ]
+    }
+  ],
+  "next_page_token": null
+}

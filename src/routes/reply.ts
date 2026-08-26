@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { inviaRisposta } from '../connectors/mail/invia.js'
+import { inviaMessaggioMirakl } from '../connectors/mirakl/invia.js'
 import { messaggioErrore } from '../connectors/mail/imap.js'
 
 /**
@@ -60,11 +61,29 @@ export async function replyRoutes(
     }
 
     try {
-      const esito = await inviaRisposta(db, req.log, config, {
-        thread_id: analizzato.data.thread_id,
-        agent_id: analizzato.data.agent_id ?? null,
-        testo: analizzato.data.testo,
-      })
+      // Da quale canale si risponde lo decide la conversazione, non chi
+      // chiama: l'interfaccia non deve sapere che Mirakl ha una API e
+      // Amazon no. Mandare per SMTP una risposta Mirakl la farebbe
+      // sparire senza errore.
+      const [canale] = await db<{ kind: string }[]>`
+        select ca.kind
+        from thread t join channel_account ca on ca.id = t.account_id
+        where t.id = ${analizzato.data.thread_id}
+      `
+      if (!canale) return reply.code(404).send({ errore: 'conversazione inesistente' })
+
+      const esito =
+        canale.kind === 'mirakl'
+          ? await inviaMessaggioMirakl(db, req.log, {
+              thread_id: analizzato.data.thread_id,
+              agent_id: analizzato.data.agent_id ?? null,
+              testo: analizzato.data.testo,
+            }).then((e) => ({ message_id: e.message_id, rfc822_id: null }))
+          : await inviaRisposta(db, req.log, config, {
+              thread_id: analizzato.data.thread_id,
+              agent_id: analizzato.data.agent_id ?? null,
+              testo: analizzato.data.testo,
+            })
       // Il destinatario è un alias del relay: non lo rimandiamo indietro,
       // non serve all'interfaccia e non ha motivo di girare.
       return reply.code(200).send({
