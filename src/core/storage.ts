@@ -18,6 +18,18 @@ export function storageConfigurato(config: Config): boolean {
 }
 
 /**
+ * Codifica ogni segmento del percorso separatamente, preservando le "/".
+ * Senza questo, un nome file con uno spazio o un carattere speciale (gli
+ * screenshot di Windows/macOS ne sono pieni: "Screenshot 2026-08-26
+ * 173654.png") produce un URL non valido e Storage risponde 400 — non
+ * un errore raro, il caso comune di ogni file scaricato da un telefono
+ * o da uno strumento di cattura schermo.
+ */
+function codificaPercorso(percorso: string): string {
+  return percorso.split('/').map(encodeURIComponent).join('/')
+}
+
+/**
  * Carica un file e restituisce il percorso nel bucket. `x-upsert: true`
  * rende l'operazione idempotente sullo stesso percorso: rielaborare la
  * stessa email non fallisce sull'allegato già presente.
@@ -34,7 +46,7 @@ export async function caricaAllegato(
     )
   }
 
-  const url = `${config.SUPABASE_URL}/storage/v1/object/${BUCKET}/${percorso}`
+  const url = `${config.SUPABASE_URL}/storage/v1/object/${BUCKET}/${codificaPercorso(percorso)}`
   const risposta = await fetch(url, {
     method: 'POST',
     headers: {
@@ -64,7 +76,7 @@ export async function scaricaAllegato(config: Config, percorso: string): Promise
   }
 
   const senzaPrefisso = percorso.startsWith(`${BUCKET}/`) ? percorso.slice(BUCKET.length + 1) : percorso
-  const url = `${config.SUPABASE_URL}/storage/v1/object/${BUCKET}/${senzaPrefisso}`
+  const url = `${config.SUPABASE_URL}/storage/v1/object/${BUCKET}/${codificaPercorso(senzaPrefisso)}`
   const risposta = await fetch(url, {
     headers: { Authorization: `Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}` },
   })
