@@ -32,6 +32,7 @@ export interface FonteKB {
   id: string
   titolo: string
   fonte: string
+  url: string | null
 }
 
 export interface EsitoBozza {
@@ -95,8 +96,10 @@ export async function generaBozza(
   // Priorità prima di tutto: una procedura ("se il danno è segnalato,
   // chiedi sempre le foto") deve prevalere su una nota generica con lo
   // stesso tag, non essere scartata perché più vecchia.
-  const fonti = await db<{ id: string; titolo: string; contenuto: string; fonte: string }[]>`
-    select id, titolo, contenuto, fonte
+  const fonti = await db<
+    { id: string; titolo: string; contenuto: string; fonte: string; url: string | null }[]
+  >`
+    select id, titolo, contenuto, fonte, url
     from knowledge
     where attivo = true and tag && ${thread.tags}
     order by priorita desc, created_at desc
@@ -114,7 +117,12 @@ export async function generaBozza(
     : 'Nessun ordine collegato a questa conversazione.'
 
   const testoKB = fonti.length
-    ? fonti.map((f) => `[${f.titolo}]\n${f.contenuto}`).join('\n\n---\n\n')
+    ? fonti
+        .map((f) => {
+          const riferimento = f.url ? `\nRiferimento (solo per il tuo contesto, non incollarlo nella risposta): ${f.url}` : ''
+          return `[${f.titolo}]\n${f.contenuto}${riferimento}`
+        })
+        .join('\n\n---\n\n')
     : 'Nessuna voce della knowledge base è rilevante per questa conversazione.'
 
   const sistema = [
@@ -124,6 +132,7 @@ export async function generaBozza(
     'Usa SOLO le informazioni fornite qui sotto (ordine, cronologia, knowledge base). Se manca un dato per rispondere con certezza, dillo esplicitamente invece di inventarlo.',
     'Non includere mai IBAN, numeri di carta o dati di pagamento nella risposta, anche se il cliente li ha scritti.',
     'Non promettere rimborsi, sostituzioni o azioni specifiche a meno che la knowledge base o il contesto ordine non le confermino esplicitamente.',
+    'Alcune fonti della knowledge base includono un link di riferimento alle linee guida ufficiali di un marketplace: è per il tuo contesto, non copiarlo mai nella risposta a meno che non sia specificamente richiesto e utile al cliente.',
   ].join(' ')
 
   const utente = [
@@ -161,6 +170,6 @@ export async function generaBozza(
     testo: completamento.testo,
     modello: completamento.modello,
     policy,
-    fonti: fonti.map((f) => ({ id: f.id, titolo: f.titolo, fonte: f.fonte })),
+    fonti: fonti.map((f) => ({ id: f.id, titolo: f.titolo, fonte: f.fonte, url: f.url })),
   }
 }

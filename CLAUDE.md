@@ -417,6 +417,14 @@ giusti:
 Mai una `delete` su una voce: si disattiva (`attivo = false`) — potrebbe
 essere già stata usata in una bozza passata.
 
+**Link di riferimento** (`knowledge.url`, migrazione 0012): una voce può
+puntare alla pagina di linee guida ufficiale di un marketplace (es. la
+policy resi di Amazon). Il worker non la scarica mai — nessun fetch a
+tempo di bozza — conta solo il testo scritto a mano in `contenuto`; il
+link è incluso nel prompt come riferimento per il modello, con
+un'istruzione esplicita a non incollarlo nella risposta a meno che non
+serva davvero al cliente.
+
 Prossimo passo: interfaccia Lovable per bozze, pannello knowledge base, e
 verifica su casi reali (`ai_draft.outcome` confrontato con cosa l'agente
 manda davvero).
