@@ -72,6 +72,16 @@ export class ClientMirakl {
   }
 
   /**
+   * POST multipart/form-data — M12 con allegati. Niente Content-Type
+   * manuale: con un corpo FormData, fetch calcola da solo il boundary
+   * corretto, e impostarlo a mano lo romperebbe.
+   */
+  async postMultipart<T>(percorso: string, form: FormData): Promise<T> {
+    const url = `${normalizzaEndpoint(this.operatore.endpoint)}/api${percorso}`
+    return this.richiedi<T>(url, { method: 'POST', body: form })
+  }
+
+  /**
    * Scarica un allegato — M13, `GET /inbox/threads/{attachment_id}/download`.
    * Byte grezzi, non JSON: passa dallo stesso ritentativo di `richiedi`,
    * ma legge il corpo come binario e riporta il Content-Type dichiarato.

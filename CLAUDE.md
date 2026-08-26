@@ -253,12 +253,18 @@ ricaricato su Storage e registrato in `attachment` con `direzione='out'`, per
 mostrare in cronologia cosa il cliente ha ricevuto, non cosa l'agente aveva
 scelto.
 
-**Ancora da fare**: allegati in uscita su Mirakl (il meccanismo — multipart su
-M12 o documenti d'ordine via OR74 — non è deciso: `/threads/reply` rifiuta con
-422 esplicito piuttosto che tentare alla cieca), e la policy RLS su
-`storage.objects` che permette a Lovable di caricare i file in uscita
-direttamente (di competenza di Lovable, non di questo repo — vedi migrazione
-0008).
+**In uscita (Mirakl)**: M12 accetta `multipart/form-data` con `message_input.body`
+e `files[]` — letto dalla documentazione pubblica di Mirakl, non dal runbook
+originale che indicava OR74 ("carica documenti per un ordine"): OR74 è a
+livello di ordine, non di thread di messaggistica, e non è questo. `invia.ts`
+sceglie da solo multipart quando ci sono allegati, JSON altrimenti — stesso
+DEBITO del resto del connettore Mirakl: verificato sulla documentazione, non
+ancora su un invio reale con file (nessun cliente Mirakl ha ancora scritto).
+
+**Ancora da fare**: la policy RLS su `storage.objects` che permette a Lovable
+di caricare i file in uscita direttamente (di competenza di Lovable, non di
+questo repo — vedi migrazione 0008; già fornita, verificare che sia stata
+eseguita).
 
 **Cosa entra in coda** (`app_config.mail_ingest`, migrazioni 0003 e 0004):
 `domini_esclusi` è una lista di **esclusi, non di ammessi** — scelta

@@ -129,15 +129,6 @@ export async function replyRoutes(
 
       const richiestaAllegati = analizzato.data.allegati ?? []
 
-      // Il meccanismo di invio allegati su Mirakl non è ancora deciso
-      // (vedi CLAUDE.md): meglio un 422 esplicito che un allegato
-      // silenziosamente ignorato o un errore oscuro dall'API.
-      if (richiestaAllegati.length > 0 && canale.kind === 'mirakl') {
-        return reply.code(422).send({
-          errore: 'gli allegati non sono ancora supportati sui canali Mirakl',
-        })
-      }
-
       // Ogni allegato passa dalla normalizzazione per canale — su Amazon
       // converte JPG/HEIC e ricomprime, non solo valida — PRIMA di essere
       // spedito. Un allegato rifiutato blocca l'intero invio: l'agente
@@ -160,10 +151,11 @@ export async function replyRoutes(
 
       const esito =
         canale.kind === 'mirakl'
-          ? await inviaMessaggioMirakl(db, req.log, {
+          ? await inviaMessaggioMirakl(db, req.log, config, {
               thread_id: analizzato.data.thread_id,
               agent_id: analizzato.data.agent_id ?? null,
               testo: analizzato.data.testo,
+              allegati: allegatiPronti,
             }).then((e) => ({ message_id: e.message_id, rfc822_id: null }))
           : await inviaRisposta(db, req.log, config, {
               thread_id: analizzato.data.thread_id,
