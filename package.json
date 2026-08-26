@@ -13,16 +13,22 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "backfill:shopify": "tsx src/commands/backfill-shopify.ts",
-    "verify": "npm run typecheck && npm test && npm run build"
+    "verify": "npm run typecheck && npm test && npm run build",
+    "mail:check": "tsx src/commands/mail-check.ts"
   },
   "dependencies": {
     "fastify": "^5.2.1",
+    "imapflow": "^1.7.6",
+    "mailparser": "^3.9.16",
+    "nodemailer": "^9.0.5",
     "pino": "^9.6.0",
     "postgres": "^3.4.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^22.10.5",
+    "@types/nodemailer": "^8.0.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"

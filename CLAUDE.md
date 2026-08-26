@@ -127,4 +127,40 @@ per un token valido 24 ore, in `src/connectors/shopify/token.ts`.
 Il token statico resta supportato e ha la precedenza, per le installazioni che
 ce l'hanno già.
 
-Prossimo passo (05 del runbook): ingestion della casella via Microsoft Graph.
+### Connettore casella (passo 05)
+La casella è su Gmail, letta via **IMAP** e scritta via **SMTP** con una
+*password per app*. Microsoft Graph resta la destinazione finale — le variabili
+`MS_*` sono già previste — ma richiede permessi che oggi non abbiamo: quando
+arriveranno si sostituisce `src/connectors/mail/imap.ts` e `invia.ts`, il resto
+non se ne accorge.
+
+Perché non le API Gmail: con la schermata di consenso in stato *Testing* il
+refresh token scade ogni 7 giorni e l'integrazione si spegne da sola. La
+password per app non ha scadenza.
+
+- `riconosci.ts` — canale dal **dominio** del mittente (Reply-To prima del From).
+  I domini stanno in `channel_account.config.sender_domains`, non nel codice.
+  Il confronto è per suffisso di etichetta: `includes` accetterebbe
+  `relay.esempio.it.truffa.com`.
+- `aggancia.ts` — tre strade in ordine di affidabilità: catena
+  In-Reply-To/References → `order.buyer_alias` → numero d'ordine nel testo.
+  Nessun aggancio ⇒ thread `unmatched`, che non è un errore.
+- `upsert.ts` — idempotente sul vincolo `message_rfc822_key`. Rileggere tutta
+  la casella non duplica niente.
+- `imap.ts` — riprende dall'UID in `sync_state`; se cambia UIDVALIDITY riparte
+  da capo e lascia decidere al vincolo sul Message-ID.
+- `poll.ts` — un giro ogni `MAIL_POLL_SECONDS`, con attesa crescente fino a
+  10 minuti sui fallimenti consecutivi.
+- `invia.ts` — risponde **sempre da `MAIL_USER`**: la casella che riceve deve
+  essere la stessa identità che risponde, altrimenti il relay del marketplace
+  rifiuta e il thread si perde. Non è configurabile apposta.
+- `routes/reply.ts` — protetta da `WORKER_API_TOKEN`. **Senza quel segreto la
+  rotta non viene registrata**: un endpoint aperto che spedisce dall'identità
+  venditore è troppo pericoloso per essere il default.
+
+**Debito noto:** le fixture in `test/fixtures/mail/` sono sintetiche, non email
+reali — vedi il LEGGIMI lì dentro. Per questo il codice non interpreta il corpo
+delle email: si aggancia all'alias e, come ripiego, al numero d'ordine, che ha
+una forma fissa. Vanno sostituite con esemplari veri appena la casella riceve.
+
+Prossimo passo: classificazione dell'intento e bozze AI.

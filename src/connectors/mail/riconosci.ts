@@ -1,0 +1,124 @@
+import type { EmailGrezza, RegolaCanale, Riconoscimento } from './tipi.js'
+
+/**
+ * Da quale canale arriva questa email, e per quale ordine.
+ *
+ * Funzione pura: le regole arrivano dal database (channel_account.config),
+ * non dal codice. Aggiungere un marketplace è una riga di SQL.
+ *
+ * Il riconoscimento guarda il DOMINIO del mittente, non l'indirizzo:
+ * gli alias dei relay sono generati per ogni acquirente e non si possono
+ * elencare. Il dominio invece è stabile.
+ */
+
+/** Estrae la parte dopo la @, in minuscolo. Null se non è un indirizzo. */
+export function dominioDi(indirizzo: string | null | undefined): string | null {
+  if (!indirizzo) return null
+  // Tollera la forma "Nome Cognome <tizio@esempio.it>".
+  const dentroParentesi = indirizzo.match(/<([^>]+)>/)
+  const pulito = (dentroParentesi?.[1] ?? indirizzo).trim().toLowerCase()
+  const chiocciola = pulito.lastIndexOf('@')
+  if (chiocciola < 1 || chiocciola === pulito.length - 1) return null
+  return pulito.slice(chiocciola + 1)
+}
+
+/** Normalizza un indirizzo alla sola parte "tizio@esempio.it", in minuscolo. */
+export function indirizzoDi(indirizzo: string | null | undefined): string | null {
+  if (!indirizzo) return null
+  const dentroParentesi = indirizzo.match(/<([^>]+)>/)
+  const pulito = (dentroParentesi?.[1] ?? indirizzo).trim().toLowerCase()
+  return pulito.includes('@') ? pulito : null
+}
+
+/**
+ * Il dominio combacia con la regola?
+ *
+ * Confronto per suffisso di etichetta, non `includes`. Data la regola
+ * "relay.esempio.it": accetta "a.relay.esempio.it" (sottodominio vero) e
+ * rifiuta "relay.esempio.it.truffa.com", che con `includes` passerebbe.
+ * È esattamente così che si fa accettare posta falsa a un sistema che
+ * decide in base al mittente.
+ */
+export function dominioCombacia(dominio: string, regola: string): boolean {
+  const d = dominio.toLowerCase()
+  const r = regola.toLowerCase()
+  return d === r || d.endsWith('.' + r)
+}
+
+export function riconosci(
+  email: EmailGrezza,
+  regole: RegolaCanale[],
+  casella: RegolaCanale,
+): Riconoscimento {
+  // Il mittente vero di un relay a volte sta nel Reply-To e non nel From:
+  // guardiamo entrambi, nell'ordine in cui è più probabile trovarlo.
+  const candidati = [email.reply_to, email.from]
+    .map(indirizzoDi)
+    .filter((x): x is string => x !== null)
+
+  for (const indirizzo of candidati) {
+    const dominio = dominioDi(indirizzo)
+    if (!dominio) continue
+
+    const regola = regole.find((r) =>
+      r.sender_domains.some((dom) => dominioCombacia(dominio, dom)),
+    )
+    if (!regola) continue
+
+    return {
+      account_id: regola.account_id,
+      account_code: regola.code,
+      kind: regola.kind,
+      alias: indirizzo,
+      numero_ordine: estraiNumeroOrdine(email, regola.order_id_pattern),
+      // L'alias c'è, ma se corrisponda davvero a un ordine lo dirà
+      // l'aggancio: qui registriamo solo che l'abbiamo trovato.
+      strategia: 'alias',
+    }
+  }
+
+  // Nessun relay riconosciuto: è posta diretta di un cliente, oppure un
+  // mittente nuovo. Va sulla casella, non si inventa un canale.
+  return {
+    account_id: casella.account_id,
+    account_code: casella.code,
+    kind: casella.kind,
+    alias: candidati[0] ?? null,
+    numero_ordine: estraiNumeroOrdine(email, null),
+    strategia: 'nessuna',
+  }
+}
+
+/**
+ * Numero d'ordine nel testo.
+ *
+ * Solo formati con una forma fissa e inequivocabile. Non tentiamo di
+ * interpretare il layout delle email: quello cambia senza preavviso e
+ * senza esemplari reali sarebbe indovinare. Il pattern arriva dalla
+ * configurazione; senza pattern proviamo comunque quello Amazon, che è
+ * abbastanza caratteristico da non produrre falsi positivi.
+ */
+export function estraiNumeroOrdine(
+  email: EmailGrezza,
+  pattern: string | null,
+): string | null {
+  const AMAZON = /\d{3}-\d{7}-\d{7}/
+  let regex: RegExp
+  try {
+    regex = pattern ? new RegExp(pattern) : AMAZON
+  } catch {
+    // Un pattern scritto male in configurazione non deve fermare
+    // l'ingestione: si ripiega su quello noto.
+    regex = AMAZON
+  }
+
+  // L'oggetto prima del corpo: se il numero c'è nell'oggetto è quello
+  // dell'ordine di cui si parla, mentre il corpo può citarne altri
+  // (firme, storici, messaggi inoltrati).
+  for (const testo of [email.subject, email.body_text]) {
+    if (!testo) continue
+    const trovato = testo.match(regex)
+    if (trovato) return trovato[0]
+  }
+  return null
+}
