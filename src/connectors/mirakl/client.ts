@@ -71,7 +71,27 @@ export class ClientMirakl {
     })
   }
 
+  /**
+   * Scarica un allegato — M13, `GET /inbox/threads/{attachment_id}/download`.
+   * Byte grezzi, non JSON: passa dallo stesso ritentativo di `richiedi`,
+   * ma legge il corpo come binario e riporta il Content-Type dichiarato.
+   */
+  async download(percorso: string): Promise<{ contenuto: Buffer; mime: string | null }> {
+    const url = `${normalizzaEndpoint(this.operatore.endpoint)}/api${percorso}`
+    const risposta = await this.richiediGrezzo(url, { method: 'GET' })
+    const buffer = Buffer.from(await risposta.arrayBuffer())
+    return { contenuto: buffer, mime: risposta.headers.get('content-type') }
+  }
+
   private async richiedi<T>(url: string, init: RequestInit): Promise<T> {
+    const risposta = await this.richiediGrezzo(url, init)
+    const testo = await risposta.text()
+    if (testo.trim() === '') return {} as T
+    return JSON.parse(testo) as T
+  }
+
+  /** Ritentativo ed errori chiari, condivisi fra risposte JSON e binarie. */
+  private async richiediGrezzo(url: string, init: RequestInit): Promise<Response> {
     let ultimoErrore: unknown = null
 
     for (let tentativo = 1; tentativo <= TENTATIVI; tentativo += 1) {
@@ -93,11 +113,7 @@ export class ClientMirakl {
         continue
       }
 
-      if (risposta.ok) {
-        const testo = await risposta.text()
-        if (testo.trim() === '') return {} as T
-        return JSON.parse(testo) as T
-      }
+      if (risposta.ok) return risposta
 
       const corpo = await risposta.text()
 

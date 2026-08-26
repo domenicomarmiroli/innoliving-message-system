@@ -1,7 +1,83 @@
+import { createHash } from 'node:crypto'
+
+import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
-import type { OperatoreMirakl } from './client.js'
-import type { ThreadMirakl } from './normalize.js'
+import { dimensioniImmagine } from '../../core/immagine.js'
+import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
+import { ClientMirakl, type OperatoreMirakl } from './client.js'
+import type { AllegatoMirakl, ThreadMirakl } from './normalize.js'
+
+interface AllegatoMiraklPronto extends AllegatoMirakl {
+  checksum: string
+  mime: string | null
+  storage_path: string | null
+  larghezza: number | null
+  altezza: number | null
+}
+
+/**
+ * Scarica ogni allegato via M13 e lo carica su Storage, PRIMA di aprire
+ * la transazione database — stesso motivo della casella email: è I/O di
+ * rete, non deve tenere lock aperti.
+ *
+ * DEBITO — come il resto di questo connettore: il percorso M13
+ * (`/inbox/threads/{attachment_id}/download`) è scritto sulla
+ * documentazione pubblica, non verificato su una risposta reale. Se il
+ * download fallisce, l'allegato entra comunque come solo metadato — un
+ * file mancante pesa meno di un messaggio perso — e l'errore finisce nei
+ * log, non silenziosamente ignorato.
+ */
+async function preparaAllegatiMirakl(
+  config: Config,
+  log: Logger,
+  client: ClientMirakl,
+  allegati: AllegatoMirakl[],
+): Promise<AllegatoMiraklPronto[]> {
+  if (allegati.length === 0) return []
+
+  return Promise.all(
+    allegati.map(async (a) => {
+      const vuoto: AllegatoMiraklPronto = {
+        ...a,
+        checksum: a.external_id ?? '',
+        mime: null,
+        storage_path: null,
+        larghezza: null,
+        altezza: null,
+      }
+      if (!a.external_id || !storageConfigurato(config)) return vuoto
+
+      try {
+        const { contenuto, mime } = await client.download(
+          `/inbox/threads/${encodeURIComponent(a.external_id)}/download`,
+        )
+        const checksum = createHash('sha256').update(contenuto).digest('hex')
+        const dimensioni = await dimensioniImmagine(contenuto)
+        const percorso = `mirakl/${client.code}/${checksum}-${a.nome_file ?? 'allegato'}`
+        const storage_path = await caricaAllegato(config, percorso, contenuto, mime)
+        return {
+          ...a,
+          checksum,
+          mime,
+          storage_path,
+          larghezza: dimensioni?.larghezza ?? null,
+          altezza: dimensioni?.altezza ?? null,
+        }
+      } catch (errore) {
+        log.error(
+          {
+            operatore: client.code,
+            allegato: a.external_id,
+            err: errore instanceof Error ? errore.message : String(errore),
+          },
+          'download allegato Mirakl fallito: registrato solo il metadato',
+        )
+        return vuoto
+      }
+    }),
+  )
+}
 
 /**
  * Scrittura idempotente di un thread Mirakl.
@@ -27,10 +103,24 @@ export interface RisultatoThread {
 export async function upsertThread(
   db: Db,
   log: Logger,
+  config: Config,
   operatore: OperatoreMirakl,
   t: ThreadMirakl,
   giorniCoda: number,
 ): Promise<RisultatoThread> {
+  const client = new ClientMirakl(operatore, log)
+  // Chiave: external_id del messaggio (unico nel thread); un messaggio
+  // senza external_id viene comunque saltato più sotto, prima di arrivare
+  // qui non serve prepararne gli allegati.
+  const allegatiPerMessaggio = new Map<string, AllegatoMiraklPronto[]>()
+  for (const m of t.messaggi) {
+    if (!m.external_id || m.allegati.length === 0) continue
+    allegatiPerMessaggio.set(
+      m.external_id,
+      await preparaAllegatiMirakl(config, log, client, m.allegati),
+    )
+  }
+
   return db.begin(async (tx) => {
     const aggiornato = t.aggiornato_il ? new Date(t.aggiornato_il) : new Date()
     const creato = t.creato_il ? new Date(t.creato_il) : aggiornato
@@ -109,13 +199,16 @@ export async function upsertThread(
       if (!scritto) continue
       inseriti += 1
 
-      for (const a of m.allegati) {
+      const allegatiPronti = m.external_id ? allegatiPerMessaggio.get(m.external_id) ?? [] : []
+      for (const a of allegatiPronti) {
         await tx`
           insert into attachment (
-            message_id, direzione, nome_file, dimensione_byte, checksum
+            message_id, direzione, nome_file, mime, dimensione_byte, checksum,
+            storage_path, larghezza, altezza
           ) values (
-            ${scritto.id}, ${m.direzione}, ${a.nome_file},
-            ${a.dimensione_byte}, ${a.external_id ?? ''}
+            ${scritto.id}, ${m.direzione}, ${a.nome_file}, ${a.mime},
+            ${a.dimensione_byte}, ${a.checksum},
+            ${a.storage_path}, ${a.larghezza}, ${a.altezza}
           )
         `
       }

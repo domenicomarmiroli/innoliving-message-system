@@ -108,7 +108,7 @@ try {
     }
     console.log('')
   } else {
-    const esiti = await sincronizzaMirakl(db, logger)
+    const esiti = await sincronizzaMirakl(db, logger, config)
     if (esiti.length === 0) {
       console.log('\nNessun operatore Mirakl configurato.\n')
     }

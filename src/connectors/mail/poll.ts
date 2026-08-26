@@ -58,7 +58,7 @@ export function avviaPolling(db: Db, log: Logger, config: Config): Ciclo | null 
       // errore qui non deve fermare la lettura della posta.
       let mirakl = 0
       try {
-        const esiti = await sincronizzaMirakl(db, log)
+        const esiti = await sincronizzaMirakl(db, log, config)
         mirakl = esiti.reduce((n, e) => n + e.messaggi_inseriti, 0)
       } catch (errore) {
         log.error({ err: messaggioErrore(errore) }, 'sincronizzazione Mirakl fallita')

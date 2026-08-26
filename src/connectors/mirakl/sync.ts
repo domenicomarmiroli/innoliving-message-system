@@ -1,3 +1,4 @@
+import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { ClientMirakl, costruisciOperatori, type OperatoreMirakl } from './client.js'
@@ -40,6 +41,7 @@ interface RispostaM11 {
 export async function sincronizzaMirakl(
   db: Db,
   log: Logger,
+  config: Config,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<EsitoSyncOperatore[]> {
   const righe = await db<
@@ -70,7 +72,7 @@ export async function sincronizzaMirakl(
   // i suoi limiti di frequenza. Il parallelismo qui comprerebbe secondi
   // e venderebbe 429.
   for (const op of operatori) {
-    esiti.push(await sincronizzaOperatore(db, log, op, giorniCoda))
+    esiti.push(await sincronizzaOperatore(db, log, config, op, giorniCoda))
   }
 
   return esiti
@@ -79,6 +81,7 @@ export async function sincronizzaMirakl(
 async function sincronizzaOperatore(
   db: Db,
   log: Logger,
+  config: Config,
   operatore: OperatoreMirakl,
   giorniCoda: number,
 ): Promise<EsitoSyncOperatore> {
@@ -114,7 +117,7 @@ async function sincronizzaOperatore(
       esito.stranezze += norm.stranezze.length
 
       for (const t of norm.threads) {
-        const r = await upsertThread(db, log, operatore, t, giorniCoda)
+        const r = await upsertThread(db, log, config, operatore, t, giorniCoda)
         esito.thread_visti += 1
         if (r.nuovo) esito.thread_nuovi += 1
         if (r.agganciato) esito.agganciati += 1

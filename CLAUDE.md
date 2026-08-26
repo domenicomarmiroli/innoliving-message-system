@@ -224,10 +224,18 @@ originali arrivano su Storage) ma senza dimensioni, e senza la conversione a
 JPEG per la visualizzazione prevista dal runbook: resta da costruire, con una
 libreria verificata per quel formato specifico, non assunta.
 
-**Ancora da fare**: download dai messaggi Mirakl (M13), normalizzazione in
-uscita per canale (`core/attachments/normalize.ts` — su Amazon solo pdf, png,
-txt, doc, docx, tiff, bmp, max 6 MB; JPG e HEIC convertiti automaticamente in
-PNG, mai rifiutati; oltre soglia si ricomprime, non si fallisce e basta), e
+**In entrata (Mirakl)**: `client.ts` ha ora `download()` per M13
+(`GET /inbox/threads/{attachment_id}/download`) — stesso DEBITO del resto del
+connettore: percorso scritto sulla documentazione, non verificato su una
+risposta reale. `upsert.ts` scarica ogni allegato PRIMA di aprire la
+transazione, con lo stesso motivo della casella email; se il download fallisce
+l'allegato entra comunque come solo metadato, mai un messaggio perso per
+questo.
+
+**Ancora da fare**: normalizzazione in uscita per canale
+(`core/attachments/normalize.ts` — su Amazon solo pdf, png, txt, doc, docx,
+tiff, bmp, max 6 MB; JPG e HEIC convertiti automaticamente in PNG, mai
+rifiutati; oltre soglia si ricomprime, non si fallisce e basta), e
 l'estensione del policy guard perché `POST /threads/reply` rifiuti con 422
 anche un allegato non ammesso, non solo un testo.
 
