@@ -8,6 +8,25 @@ describe('policy — amazon', () => {
     expect(esito.violazioni.map((v) => v.codice)).toContain('url_non_ammesso')
   })
 
+  it('ammette un link di tracciamento di un corriere', () => {
+    const esito = check(
+      'amazon',
+      'Il tracking è disponibile qui: https://www.poste.it/cerca/index.html#/risultati-spedizioni/1UW1URV142811',
+    )
+    expect(esito.ok).toBe(true)
+    expect(esito.violazioni).toEqual([])
+  })
+
+  it('blocca comunque un link che non è di un corriere, mescolato a uno di tracciamento', () => {
+    const esito = check(
+      'amazon',
+      'Tracking qui https://www.poste.it/cerca/x e scrivici anche su https://esempio.it/altro',
+    )
+    expect(esito.ok).toBe(false)
+    expect(esito.violazioni).toHaveLength(1)
+    expect(esito.violazioni[0]?.porzione).toContain('esempio.it')
+  })
+
   it('blocca un indirizzo email', () => {
     const esito = check('amazon', 'Scrivici a assistenza@esempio.it per aiuto')
     expect(esito.ok).toBe(false)

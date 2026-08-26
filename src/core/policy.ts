@@ -54,6 +54,47 @@ const RICHIESTA_RECENSIONE_TERMINI = [
   'reseña positiva',
 ]
 
+// I link di tracciamento dei corrieri sono un'eccezione nota alla policy
+// URL di Amazon: rispondono a "dov'è il mio pacco", non portano il
+// cliente fuori piattaforma per altri scopi. Domini dei corrieri più
+// comuni in Italia e internazionali — non è un dato specifico di questa
+// azienda: vale per chiunque venda su Amazon con questo sistema, a
+// prescindere da quale corriere usi per un singolo ordine.
+const DOMINI_CORRIERE = [
+  'poste.it',
+  'bartolini.it',
+  'brt.it',
+  'gls-italy.com',
+  'gls-group.com',
+  'sda.it',
+  'nexive.it',
+  'inpost.it',
+  'ups.com',
+  'fedex.com',
+  'dhl.com',
+  'dhl.it',
+  'tnt.com',
+  'correos.es',
+  'chronopost.fr',
+  'colissimo.fr',
+  'laposte.fr',
+  'parcelforce.com',
+  'royalmail.com',
+  'hermesworld.com',
+  'evri.com',
+  '17track.net',
+  'aftership.com',
+]
+
+function dominioDiCorriere(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return DOMINI_CORRIERE.some((d) => host === d || host.endsWith(`.${d}`))
+  } catch {
+    return false
+  }
+}
+
 const CONTATTA_FUORI_TERMINI = [
   'scrivici direttamente a',
   'contattaci fuori da',
@@ -118,6 +159,9 @@ export function check(kind: string, testo: string): EsitoPolicy {
 
   if (regole.vieta_url) {
     for (const porzione of trovaTutte(testo, URL_RE)) {
+      // Un link di tracciamento risponde a "dov'è il mio pacco": è
+      // un'eccezione nota, non un modo di aggirare la regola.
+      if (dominioDiCorriere(porzione)) continue
       violazioni.push({
         codice: 'url_non_ammesso',
         messaggio: 'Il messaggio contiene un link: non ammesso su questo canale.',

@@ -205,6 +205,12 @@ password per app non ha scadenza.
   contatti diretti; Shopify ed email restano senza restrizioni. Una
   violazione torna 422 con la porzione di testo incriminata, mai un
   rifiuto silenzioso.
+  **Eccezione**: i link di tracciamento dei corrieri sono ammessi anche su
+  Amazon — rispondono a "dov'è il mio pacco", non portano il cliente fuori
+  piattaforma per altri scopi. Riconosciuti per dominio (`DOMINI_CORRIERE`,
+  i più comuni in Italia e internazionali): un link che non corrisponde a
+  nessuno di questi resta bloccato, anche mescolato a uno di tracciamento
+  vero nello stesso messaggio.
 
 - `ripulisci.ts` — riduce il corpo a ciò che ha scritto il cliente, togliendo
   l'impalcatura del relay. **Non restituisce mai il vuoto**: se non riconosce
