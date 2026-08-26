@@ -52,3 +52,24 @@ export async function caricaAllegato(
 
   return `${BUCKET}/${percorso}`
 }
+
+/**
+ * Scarica un file dal bucket. `percorso` accetta sia `allegati/x/y` (come
+ * restituito da caricaAllegato) sia `x/y` da solo: entrambi finiscono
+ * sullo stesso oggetto.
+ */
+export async function scaricaAllegato(config: Config, percorso: string): Promise<Buffer> {
+  if (!storageConfigurato(config)) {
+    throw new Error('Storage non configurato: mancano SUPABASE_URL e/o SUPABASE_SERVICE_ROLE_KEY.')
+  }
+
+  const senzaPrefisso = percorso.startsWith(`${BUCKET}/`) ? percorso.slice(BUCKET.length + 1) : percorso
+  const url = `${config.SUPABASE_URL}/storage/v1/object/${BUCKET}/${senzaPrefisso}`
+  const risposta = await fetch(url, {
+    headers: { Authorization: `Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}` },
+  })
+  if (!risposta.ok) {
+    throw new Error(`Download da Storage fallito (${risposta.status}): ${percorso}`)
+  }
+  return Buffer.from(await risposta.arrayBuffer())
+}

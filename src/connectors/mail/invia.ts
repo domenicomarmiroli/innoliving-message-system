@@ -1,8 +1,12 @@
+import { createHash } from 'node:crypto'
 import nodemailer, { type Transporter } from 'nodemailer'
 
 import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
+import type { FilePronto } from '../../core/attachments/normalize.js'
+import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
+import { dimensioniImmagine } from '../../core/immagine.js'
 import { normalizzaMessageId } from './parse.js'
 
 /**
@@ -20,6 +24,8 @@ export interface RichiestaInvio {
   /** Chi ha scritto la risposta: serve solo per l'audit, non per il testo. */
   agent_id: string | null
   testo: string
+  /** Già passati da core/attachments/normalize.ts: pronti per essere spediti. */
+  allegati?: FilePronto[]
 }
 
 export interface EsitoInvio {
@@ -103,6 +109,11 @@ export async function inviaRisposta(
     text: richiesta.testo,
     inReplyTo: ultimo.rfc822_id ? `<${ultimo.rfc822_id}>` : undefined,
     references: references.length > 0 ? references : undefined,
+    attachments: richiesta.allegati?.map((a) => ({
+      filename: a.nome_file,
+      content: a.contenuto,
+      contentType: a.mime,
+    })),
   })
 
   const rfc822 = normalizzaMessageId(inviato.messageId ?? null)
@@ -121,6 +132,35 @@ export async function inviaRisposta(
     )
     returning id
   `
+
+  // --- Gli allegati spediti davvero, non solo quelli richiesti --------
+  // Registriamo il file COSÌ COM'È PARTITO (dopo un'eventuale conversione
+  // da normalize.ts), per poter mostrare in cronologia cosa il cliente ha
+  // ricevuto davvero, non cosa l'agente aveva scelto.
+  for (const a of richiesta.allegati ?? []) {
+    const checksum = createHash('sha256').update(a.contenuto).digest('hex')
+    let storage_path: string | null = null
+    if (storageConfigurato(config)) {
+      try {
+        storage_path = await caricaAllegato(config, `out/${riga!.id}/${checksum}-${a.nome_file}`, a.contenuto, a.mime)
+      } catch (errore) {
+        log.error(
+          { err: errore instanceof Error ? errore.message : String(errore) },
+          'upload su Storage dell\'allegato in uscita fallito: registrato solo il metadato',
+        )
+      }
+    }
+    const dimensioni = await dimensioniImmagine(a.contenuto)
+    await db`
+      insert into attachment (
+        message_id, direzione, nome_file, mime, dimensione_byte, checksum,
+        storage_path, convertito_da, larghezza, altezza
+      ) values (
+        ${riga!.id}, 'out', ${a.nome_file}, ${a.mime}, ${a.contenuto.byteLength}, ${checksum},
+        ${storage_path}, ${a.convertito_da}, ${dimensioni?.larghezza ?? null}, ${dimensioni?.altezza ?? null}
+      )
+    `
+  }
 
   await db`
     update thread

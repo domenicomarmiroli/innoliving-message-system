@@ -6,6 +6,8 @@ import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { verificaAgente } from '../core/agente.js'
 import { check as verificaPolicy } from '../core/policy.js'
+import { prepare, type FilePronto } from '../core/attachments/normalize.js'
+import { scaricaAllegato } from '../core/storage.js'
 import { inviaRisposta } from '../connectors/mail/invia.js'
 import { inviaMessaggioMirakl } from '../connectors/mirakl/invia.js'
 import { messaggioErrore } from '../connectors/mail/imap.js'
@@ -31,6 +33,19 @@ const corpo = z.object({
   thread_id: z.string().uuid(),
   testo: z.string().min(1).max(20_000),
   agent_id: z.string().uuid().nullable().optional(),
+  // Riferimenti a file già caricati dall'interfaccia direttamente su
+  // Supabase Storage (stesso bucket 'allegati', percorso a sua scelta):
+  // il worker li scarica, li normalizza per canale e solo allora li spedisce.
+  allegati: z
+    .array(
+      z.object({
+        storage_path: z.string().min(1),
+        nome_file: z.string().min(1),
+        mime: z.string().min(1),
+      }),
+    )
+    .max(10)
+    .optional(),
 })
 
 function confrontoCostante(a: string, b: string): boolean {
@@ -112,6 +127,37 @@ export async function replyRoutes(
         })
       }
 
+      const richiestaAllegati = analizzato.data.allegati ?? []
+
+      // Il meccanismo di invio allegati su Mirakl non è ancora deciso
+      // (vedi CLAUDE.md): meglio un 422 esplicito che un allegato
+      // silenziosamente ignorato o un errore oscuro dall'API.
+      if (richiestaAllegati.length > 0 && canale.kind === 'mirakl') {
+        return reply.code(422).send({
+          errore: 'gli allegati non sono ancora supportati sui canali Mirakl',
+        })
+      }
+
+      // Ogni allegato passa dalla normalizzazione per canale — su Amazon
+      // converte JPG/HEIC e ricomprime, non solo valida — PRIMA di essere
+      // spedito. Un allegato rifiutato blocca l'intero invio: l'agente
+      // deve saperlo prima che il testo parta senza la foto che serviva.
+      const allegatiPronti: FilePronto[] = []
+      for (const rif of richiestaAllegati) {
+        const contenuto = await scaricaAllegato(config, rif.storage_path)
+        const esito = await prepare(canale.kind, {
+          nome_file: rif.nome_file,
+          mime: rif.mime,
+          contenuto,
+        })
+        if (!esito.ok) {
+          return reply.code(422).send({
+            errore: `allegato "${rif.nome_file}" non ammesso: ${esito.motivo}`,
+          })
+        }
+        allegatiPronti.push(esito)
+      }
+
       const esito =
         canale.kind === 'mirakl'
           ? await inviaMessaggioMirakl(db, req.log, {
@@ -123,6 +169,7 @@ export async function replyRoutes(
               thread_id: analizzato.data.thread_id,
               agent_id: analizzato.data.agent_id ?? null,
               testo: analizzato.data.testo,
+              allegati: allegatiPronti,
             })
       // Il destinatario è un alias del relay: non lo rimandiamo indietro,
       // non serve all'interfaccia e non ha motivo di girare.

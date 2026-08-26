@@ -232,12 +232,28 @@ transazione, con lo stesso motivo della casella email; se il download fallisce
 l'allegato entra comunque come solo metadato, mai un messaggio perso per
 questo.
 
-**Ancora da fare**: normalizzazione in uscita per canale
-(`core/attachments/normalize.ts` — su Amazon solo pdf, png, txt, doc, docx,
-tiff, bmp, max 6 MB; JPG e HEIC convertiti automaticamente in PNG, mai
-rifiutati; oltre soglia si ricomprime, non si fallisce e basta), e
-l'estensione del policy guard perché `POST /threads/reply` rifiuti con 422
-anche un allegato non ammesso, non solo un testo.
+**In uscita**: `core/attachments/normalize.ts` converte e ricomprime prima di
+spedire. Su Amazon: pdf/png/txt/doc/docx/tiff/bmp passano invariati; JPG viene
+convertito in PNG (mai rifiutato — è il formato in cui arrivano le foto dai
+telefoni); oltre i 6 MB si ricomprime (per un'immagine, riducendo i pixel:
+un PNG non ha un parametro di qualità) puntando a 4 MB; un tipo non ammesso o
+non ricomprimibile sotto soglia viene rifiutato con un motivo leggibile, mai
+in silenzio. `POST /threads/reply` accetta ora `allegati: [{storage_path,
+nome_file, mime}]` — riferimenti a file che l'interfaccia carica direttamente
+su Supabase Storage, bucket `allegati`; il worker li scarica, li normalizza
+per canale e SOLO se tutti passano procede con l'invio: un allegato rifiutato
+blocca l'intero messaggio, l'agente non deve scoprire dopo che è partito solo
+il testo. Il file davvero spedito (dopo un'eventuale conversione) viene
+ricaricato su Storage e registrato in `attachment` con `direzione='out'`, per
+mostrare in cronologia cosa il cliente ha ricevuto, non cosa l'agente aveva
+scelto.
+
+**Ancora da fare**: allegati in uscita su Mirakl (il meccanismo — multipart su
+M12 o documenti d'ordine via OR74 — non è deciso: `/threads/reply` rifiuta con
+422 esplicito piuttosto che tentare alla cieca), e la policy RLS su
+`storage.objects` che permette a Lovable di caricare i file in uscita
+direttamente (di competenza di Lovable, non di questo repo — vedi migrazione
+0008).
 
 **Cosa entra in coda** (`app_config.mail_ingest`, migrazioni 0003 e 0004):
 `domini_esclusi` è una lista di **esclusi, non di ammessi** — scelta
