@@ -101,6 +101,13 @@ codice.
   finisca in un bundle servito al browser: bypassa RLS e aprirebbe in lettura
   e scrittura tutti i messaggi dei clienti.
 
+## Cosa resta da fare
+Vedi **`STATO.md`** nella radice del repository: elenca i passi aperti, i
+debiti dichiarati (parti scritte sulla documentazione e non su dati reali) e
+il problema strutturale degli ordini Amazon che non passano da Shopify.
+Va letto prima di riprendere il lavoro, e aggiornato man mano che i punti si
+chiudono.
+
 ## Stato attuale
 Fatto: scheletro, configurazione validata, connessione al database, `/health`,
 migrazione iniziale con schema/RLS/seed, e il **connettore Shopify completo**
