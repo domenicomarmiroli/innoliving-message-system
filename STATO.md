@@ -118,11 +118,17 @@ assegnazione. Gestione utenti implementata da Domenico nel frattempo.
   una libreria dedicata. Oggi un HEIC in entrata si carica senza dimensioni
   né conversione; in uscita viene rifiutato con un motivo esplicito, non
   convertito.
-- **Allegati Mirakl in uscita**: meccanismo non deciso (multipart su M12,
-  trovato verificando l'API pubblica, oppure documenti d'ordine via OR74,
-  come scritto nel runbook originale — le due fonti non coincidono).
-  `/threads/reply` risponde 422 esplicito su un allegato Mirakl, non tenta
-  alla cieca.
+
+**✅ Risolto: allegati Mirakl in uscita (26/08 sera).** Il conflitto fra le
+due fonti (multipart M12 vs documenti d'ordine OR74) risolto leggendo la
+documentazione pubblica di entrambi gli endpoint, non fidandosi del runbook
+originale: OR74 è a livello di ordine, non di thread — non è la strada
+giusta. M12 accetta `multipart/form-data` con `message_input.body` +
+`files[]`, pensato esattamente per allegare file a una risposta. Implementato
+in `client.ts` (`postMultipart`) e `invia.ts`; `/threads/reply` non rifiuta
+più con 422 gli allegati su Mirakl. Resta il debito di sempre su questo
+connettore: verificato sulla documentazione, non ancora su un invio reale —
+nessun cliente Mirakl ha ancora scritto.
 
 **Fatto anche lato Lovable, tre prompt inviati ed eseguiti:**
 5. Invio risposta collegato a `/threads/reply` con sessione Supabase,
