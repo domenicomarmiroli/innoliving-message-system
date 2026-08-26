@@ -21,79 +21,48 @@ Passaggio di consegne da una sessione Cowork a Claude Code.
 
 ## Da fare subito
 
-### 1. Push e deploy
-L'ultimo lavoro (registrazione webhook Shopify + allineamento periodico)
-è committato ma potrebbe non essere ancora su GitHub. Render deploya da
-`main`: senza push, i comandi nuovi non esistono sul server.
+### 1. ✅ Push e deploy
+Fatto il 26/08: `CLAUDE.md` + `STATO.md`, poi le sessioni successive,
+tutto su `main`.
 
-### 2. Webhook Shopify — **la causa degli ordini mancanti**
-Non sono mai stati registrati. È per questo che gli ordini recenti non
-comparivano nel database.
-
-```bash
-npm run shopify:webhooks -- https://hub-messaggi-worker.onrender.com
+### 2. ✅ Webhook Shopify — **la causa degli ordini mancanti**
+Registrati il 26/08 dalla Shell di Render:
 ```
-
-Se risponde 403, all'app manca lo scope `write_webhooks`: aggiungerlo nel
-Dev Dashboard, fare una release, reinstallare.
-
-### 3. Mirakl — completare la configurazione
-- Variabile `MIRAKL_MMS_KEY` su Render (chiave dal back office Mirakl:
-  proprio nome in alto a destra → Le mie impostazioni → API key)
-- E in Supabase:
-
-```sql
-update channel_account
-set config     = config || jsonb_build_object(
-                   'endpoint',  'https://mediamarktsaturn.mirakl.net',
-                   'deep_link', 'https://mediamarktsaturn.mirakl.net/mmp/shop/order/{id}'
-                 ),
-    secret_ref = 'MIRAKL_MMS_KEY',
-    updated_at = now()
-where code = 'mirakl-mms';
+ORDERS_CREATE        creato
+ORDERS_UPDATED       creato
+FULFILLMENTS_CREATE  creato
 ```
+Nessun problema di scope — lo scope `write_webhooks` era già presente.
 
-Il `deep_link` è un'ipotesi: va confrontato con l'URL vero di un ordine
-nel back office.
+### 3. ✅ Mirakl — configurazione completata
+`channel_account` per `mirakl-mms` verificato in Supabase: `endpoint`,
+`deep_link` (confermato contro un URL vero — `/mmp/shop/order/{id}` era
+corretto) e `secret_ref = 'MIRAKL_MMS_KEY'` tutti presenti. Variabile
+d'ambiente impostata su Render direttamente in dashboard.
+Resta il debito dichiarato più sotto: nessun cliente Mirakl ha ancora
+scritto davvero, quindi il normalizzatore non è stato collaudato su
+dati reali.
 
-### 4. Migrazioni — verificare quali sono state applicate
-Le migrazioni si eseguono a mano nell'editor SQL di Supabase e non c'è
-un registro. Da 0001 a 0007. Per capire a che punto siamo:
-
+### 4. ✅ Migrazioni — verificate, tutte applicate (26/08)
 ```sql
 select jsonb_pretty(value) from app_config where key = 'mail_ingest';
 ```
+ha confermato `domini_esclusi` (19 voci), `domini_notifica`
+(`amazon.com`), `domini_avviso` (`amazon.it`), `avviso_sla_minuti` (240),
+`avviso_tag`, `giorni_coda` (7). 0001→0007 tutte a posto.
 
-Deve contenere `domini_esclusi` (19 voci), `domini_notifica`
-(`amazon.com`), `domini_avviso` (`amazon.it`), `avviso_sla_minuti`,
-`avviso_tag`, `giorni_coda`. Se manca qualcosa, la migrazione
-corrispondente non è stata eseguita — sono tutte idempotenti, si possono
-rilanciare senza danno.
+### 5. ✅ Pulizia dei dati sporchi — fatta, in forma ridotta
+La query di ricognizione (`select ca.code, t.state, count(*)...`) ha
+mostrato solo 3 thread di rumore sull'account casella (2 `amazon.com`,
+1 `amazon.it` — notifiche/avvisi di piattaforma, non clienti): cancellati
+con lo step 3 della 0003. Il resto (577 thread, tutti su `amazon-it`) è
+risultato legittimo — 539 `closed` dallo step 4, 38 `unmatched` in attesa
+del problema strutturale (ordini Amazon non ancora sincronizzati, vedi
+sotto). **Non** è stato lanciato il `delete from thread` totale che
+questo file proponeva come alternativa: i dati non erano residui da
+buttare, solo rumore puntuale.
 
-### 5. Pulizia dei dati sporchi
-Il database contiene ancora conversazioni nate dalle prime letture, con
-le regole vecchie:
-
-```sql
--- guarda cosa c'è
-select ca.code, t.state, count(*) from thread t
-join channel_account ca on ca.id = t.account_id group by 1,2 order by 1,2;
-```
-
-Se ci sono ancora centinaia di thread `unmatched` su `amazon-it`, sono
-residui: la rilettura li salta perché i messaggi risultano già presenti.
-Per rifare da zero — nel database non c'è ancora lavoro umano da
-salvare, nessuna risposta scritta, nessuna assegnazione:
-
-```sql
-delete from thread;                                    -- i messaggi vanno in cascata
-delete from sync_state where account_id in (
-  select id from channel_account where kind in ('email','mirakl'));
-```
-
-Poi il polling rilegge tutto da solo entro un minuto.
-
-### 6. Pulizia dei corpi già importati
+### 6. Pulizia dei corpi già importati — ancora da fare
 ```bash
 npm run mail:ripulisci -- --prova     # mostra cosa cambierebbe
 npm run mail:ripulisci                # riscrive
