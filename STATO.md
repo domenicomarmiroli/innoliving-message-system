@@ -157,10 +157,32 @@ scambio — conferma che anche il threading (In-Reply-To/References) regge.
 Prima verifica reale, non solo test automatici, dell'intera catena di
 invio ricostruita oggi.
 
+**Fatto anche: galleria/anteprima allegati (quarto prompt Lovable).**
+`attachmentsQuery` in un solo giro, miniature vere per le immagini (URL
+firmati, bucket privato) sotto ogni messaggio e nella scheda "Allegati";
+icona generica per ciò che non ha un file (upload fallito, o HEIC).
+
+**✅ VERIFICATO END-TO-END ANCHE CON ALLEGATO, SU UN CLIENTE VERO (26/08,
+17:47).** Primo tentativo fallito con **502**, causa trovata nei log e
+risolta in due passaggi:
+1. Il nome del file (uno screenshot, tipicamente pieno di spazi:
+   `Screenshot 2026-08-26 173753.png`) non veniva codificato nell'URL
+   verso Supabase Storage — 400 su ogni file con uno spazio nel nome,
+   il caso comune, non l'eccezione. `codificaPercorso()` in
+   `core/storage.ts`, con test di regressione.
+2. Il 400 persisteva ANCHE dopo quel fix: mancava l'header `apikey`
+   accanto ad `Authorization` — Supabase lo richiede sempre insieme per
+   identificare il progetto. Aggiunto su upload e download, con test
+   che verifica la presenza di entrambi gli header.
+Poi trovato un terzo dettaglio più piccolo: dopo l'invio l'interfaccia
+invalidava `["message", thread.id]` e `["threads"]` ma non
+`["attachment", thread.id]` (aggiunta dopo, in un prompt successivo) —
+l'allegato spedito non compariva finché non si riapriva il thread.
+Corretto con un quinto prompt Lovable, una riga.
+Dopo questi tre fix: risposta con screenshot allegato inviata su un
+thread Amazon reale, confermata su Gmail Inviati ("One attachment").
+
 **Resta da fare, lato Lovable:**
-- Galleria/anteprima degli allegati in entrata (tab "Allegati" nel
-  pannello contesto, oggi vuoto).
-- Verificare un invio con allegato vero (serve prima la policy RLS sopra).
 - Verificare un invio su un thread Mirakl (testo — gli allegati lì
   restano non supportati, per scelta).
 
