@@ -95,10 +95,11 @@ cliente o nostro.
 
 ## Cose che nessuno ha ancora fatto e vanno fatte
 
-**Ruotare la password del database Supabase.** È stata scritta in chiaro
-in una conversazione. Usare solo caratteri alfanumerici: i simboli nella
-connection string vanno codificati e generano errori difficili da
-diagnosticare. Poi aggiornare `SUPABASE_DB_URL` su Render.
+**✅ Ruotata la password del database Supabase** (26/08, fatta da Domenico
+direttamente in Supabase e Render — non verificata riga per riga da qui
+per non maneggiare il segreto, ma confermata indirettamente: i log di
+Render non mostrano nessun `CONNECT_TIMEOUT` né errore di autenticazione
+dopo le 13:00 del 26/08, e l'ultimo deploy è `live`).
 
 **Cancellare i dati dimostrativi**, se ancora presenti:
 ```sql
