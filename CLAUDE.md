@@ -184,9 +184,22 @@ password per app non ha scadenza.
 - `invia.ts` — risponde **sempre da `MAIL_USER`**: la casella che riceve deve
   essere la stessa identità che risponde, altrimenti il relay del marketplace
   rifiuta e il thread si perde. Non è configurabile apposta.
-- `routes/reply.ts` — protetta da `WORKER_API_TOKEN`. **Senza quel segreto la
-  rotta non viene registrata**: un endpoint aperto che spedisce dall'identità
-  venditore è troppo pericoloso per essere il default.
+- `routes/reply.ts` — due modi di autenticarsi: `WORKER_API_TOKEN` per
+  automazioni da server a server, oppure `Authorization: Bearer <sessione
+  Supabase>` per l'agente che scrive dall'interfaccia — verificata chiedendo
+  a Supabase Auth di chi è il token, mai un segreto statico nel browser.
+  **Senza ALMENO UNO dei due la rotta non viene registrata**: un endpoint
+  aperto che spedisce dall'identità venditore è troppo pericoloso per
+  essere il default. Con una sessione agente, `agent_id` nel corpo viene
+  ignorato e sostituito da quello vero: altrimenti chiunque potrebbe
+  firmare l'invio col nome di un collega.
+- `core/policy.ts` — il guardiano dei contenuti, chiamato da `reply.ts`
+  prima di ogni invio. Regole per genere di canale (`kind`), non per
+  singolo account: su Amazon niente URL, contatti, richieste di recensione
+  o inviti a contattare fuori piattaforma (in 5 lingue); su Mirakl niente
+  contatti diretti; Shopify ed email restano senza restrizioni. Una
+  violazione torna 422 con la porzione di testo incriminata, mai un
+  rifiuto silenzioso.
 
 - `ripulisci.ts` — riduce il corpo a ciò che ha scritto il cliente, togliendo
   l'impalcatura del relay. **Non restituisce mai il vuoto**: se non riconosce

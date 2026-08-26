@@ -4,6 +4,8 @@ import { z } from 'zod'
 
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
+import { verificaAgente } from '../core/agente.js'
+import { check as verificaPolicy } from '../core/policy.js'
 import { inviaRisposta } from '../connectors/mail/invia.js'
 import { inviaMessaggioMirakl } from '../connectors/mirakl/invia.js'
 import { messaggioErrore } from '../connectors/mail/imap.js'
@@ -11,10 +13,18 @@ import { messaggioErrore } from '../connectors/mail/imap.js'
 /**
  * Invio di una risposta, chiamato dall'interfaccia.
  *
- * Protetto da un segreto condiviso: questo endpoint spedisce email
- * dall'identità venditore, e lasciarlo aperto significherebbe regalare a
- * chiunque la possibilità di scrivere ai clienti a nome dell'azienda.
- * Senza WORKER_API_TOKEN la rotta non viene registrata affatto.
+ * Due modi di autenticarsi, per due chiamanti diversi:
+ *  - X-Worker-Token: WORKER_API_TOKEN — per automazioni da server a
+ *    server, dove non c'è un agente loggato dietro la chiamata;
+ *  - Authorization: Bearer <token di sessione Supabase> — per l'agente
+ *    che scrive dall'interfaccia. Il worker chiede a Supabase Auth di
+ *    chi è quel token invece di tenere un segreto condiviso col browser:
+ *    un token statico lì dentro sarebbe estraibile dagli strumenti
+ *    sviluppatore e userebbe a chiunque per spedire dall'identità
+ *    venditore, bypassando anche le policy RLS di Lovable.
+ * Senza ALMENO UNO dei due meccanismi configurato, la rotta non viene
+ * registrata affatto: un endpoint aperto che spedisce dall'identità
+ * venditore è troppo pericoloso per essere il comportamento predefinito.
  */
 
 const corpo = z.object({
@@ -36,20 +46,36 @@ export async function replyRoutes(
 ) {
   const { db, config } = opts
 
-  if (!config.WORKER_API_TOKEN) {
+  const worker_token_attivo = Boolean(config.WORKER_API_TOKEN)
+  const sessione_attiva = Boolean(config.SUPABASE_URL && config.SUPABASE_ANON_KEY)
+
+  if (!worker_token_attivo && !sessione_attiva) {
     app.log.warn(
-      'WORKER_API_TOKEN non impostato: la rotta di invio risposta resta disattivata',
+      'nessuna autenticazione configurata (WORKER_API_TOKEN o SUPABASE_URL/SUPABASE_ANON_KEY): ' +
+        'la rotta di invio risposta resta disattivata',
     )
     return
   }
 
-  const atteso = config.WORKER_API_TOKEN
-
   app.post('/threads/reply', async (req, reply) => {
-    const header = req.headers['x-worker-token']
-    const fornito = Array.isArray(header) ? header[0] : header
-    if (!fornito || !confrontoCostante(fornito, atteso)) {
-      return reply.code(401).send({ errore: 'non autorizzato' })
+    // --- Autenticazione: token di servizio, poi sessione agente ---------
+    let agente_id: string | null = null
+
+    const headerWorker = req.headers['x-worker-token']
+    const tokenWorker = Array.isArray(headerWorker) ? headerWorker[0] : headerWorker
+    const worker_ok =
+      worker_token_attivo && !!tokenWorker && confrontoCostante(tokenWorker, config.WORKER_API_TOKEN!)
+
+    if (!worker_ok) {
+      const headerAuth = req.headers.authorization
+      const tokenSessione = headerAuth?.startsWith('Bearer ') ? headerAuth.slice(7) : null
+      const agente = tokenSessione && sessione_attiva
+        ? await verificaAgente(db, config, tokenSessione)
+        : null
+      if (!agente) {
+        return reply.code(401).send({ errore: 'non autorizzato' })
+      }
+      agente_id = agente.id
     }
 
     const analizzato = corpo.safeParse(req.body)
@@ -59,6 +85,10 @@ export async function replyRoutes(
         dettagli: analizzato.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
       })
     }
+    // Con una sessione agente, chi ha inviato è l'agente autenticato, non
+    // un agent_id qualunque nel corpo: altrimenti chiunque potrebbe
+    // firmare l'invio col nome di un collega.
+    if (agente_id) analizzato.data.agent_id = agente_id
 
     try {
       // Da quale canale si risponde lo decide la conversazione, non chi
@@ -71,6 +101,16 @@ export async function replyRoutes(
         where t.id = ${analizzato.data.thread_id}
       `
       if (!canale) return reply.code(404).send({ errore: 'conversazione inesistente' })
+
+      // Le regole di contenuto valgono qui, prima di chiamare qualunque
+      // adapter: né l'interfaccia né una bozza AI possono aggirarle.
+      const policy = verificaPolicy(canale.kind, analizzato.data.testo)
+      if (!policy.ok) {
+        return reply.code(422).send({
+          errore: 'contenuto non ammesso su questo canale',
+          violazioni: policy.violazioni,
+        })
+      }
 
       const esito =
         canale.kind === 'mirakl'

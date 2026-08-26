@@ -50,11 +50,20 @@ const schema = z.object({
   MS_MAILBOX: z.string().min(1).optional(),
   MS_WEBHOOK_CLIENT_STATE: z.string().min(1).optional(),
 
-  // Segreto condiviso che protegge gli endpoint di invio. Senza, la
-  // rotta di risposta non viene nemmeno registrata: un endpoint aperto
-  // che spedisce dalla tua identità venditore è troppo pericoloso per
-  // essere il comportamento predefinito.
+  // Segreto condiviso che protegge gli endpoint di invio, per chiamate
+  // da server a server (automazioni, non l'interfaccia). Senza NESSUNO
+  // dei due meccanismi di autenticazione (questo o SUPABASE_URL +
+  // SUPABASE_ANON_KEY sotto), la rotta di risposta non viene nemmeno
+  // registrata: un endpoint aperto che spedisce dalla tua identità
+  // venditore è troppo pericoloso per essere il comportamento predefinito.
   WORKER_API_TOKEN: z.string().min(16).optional(),
+
+  // Per verificare la sessione di un agente loggato in Lovable: il
+  // worker chiede a Supabase Auth di chi è il token, senza mai tenere un
+  // segreto condiviso col browser. Stessi valori — non sensibili, sono
+  // già nel bundle di Lovable — usati dall'interfaccia.
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_ANON_KEY: z.string().min(1).optional(),
 
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
