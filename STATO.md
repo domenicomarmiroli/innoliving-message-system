@@ -74,6 +74,69 @@ un caso che il parser sbaglia.
 
 ---
 
+## Interfaccia e allegati — sessione del 26/08 pomeriggio
+
+Ripreso il lavoro con l'obiettivo di portare l'interfaccia Lovable a un
+livello tipo Zendesk: editor risposte, allegati in/out, tag, assegnazione,
+gestione utenti. Trovati e letti i documenti di analisi originali (panoramica,
+runbook L0-L10/C1-C20, mockup pannello ordine) e ispezionato il progetto
+Lovable vero via MCP — non solo il runbook, il codice reale.
+
+**Stato reale di Lovable trovato**: L0 (design system) e buona parte di L2
+(coda, pannello contesto, conversazione) già fatti e funzionanti, letti da
+Supabase. `reply-editor.tsx` esiste ma è solo un guscio visivo — nessuna
+mutazione da nessuna parte in `hub-data.ts`: niente invio, niente tag, niente
+assegnazione. Gestione utenti implementata da Domenico nel frattempo.
+
+**Fatto qui (worker), tutto deployato e verificato senza errori nei log:**
+
+1. **Autenticazione sicura per l'invio.** `/threads/reply` non richiede più
+   solo `WORKER_API_TOKEN`: accetta anche `Authorization: Bearer <sessione
+   Supabase>`, verificata chiedendo a Supabase Auth di chi è il token
+   (`core/agente.ts`) — niente segreto statico nel bundle di Lovable, che
+   sarebbe stato estraibile dagli strumenti sviluppatore. `SUPABASE_URL` e
+   `SUPABASE_ANON_KEY` (valori pubblici, presi da `src/lib/supabase.ts` di
+   Lovable) impostati su Render.
+2. **Policy guard** (`core/policy.ts`): niente URL/email/telefono/richieste
+   di recensione/inviti a contattare fuori piattaforma su Amazon (5 lingue),
+   niente contatti diretti su Mirakl. 422 con la porzione di testo
+   incriminata.
+3. **Allegati in entrata**, byte veri non solo metadati: casella email
+   (`core/storage.ts` + `upsert.ts`) e Mirakl via M13 (`client.ts.download()`
+   + `upsert.ts`). Migrazione 0008 (bucket privato `allegati` + colonne
+   `larghezza`/`altezza`) applicata. `SUPABASE_SERVICE_ROLE_KEY` impostata su
+   Render.
+4. **Allegati in uscita** (`core/attachments/normalize.ts`): su Amazon
+   converte JPG→PNG automaticamente (mai rifiuta — è il formato delle foto
+   da telefono) e ricomprime sopra i 6 MB. Testato sui due criteri esatti del
+   runbook: JPG 9+ MB → PNG sotto 5 MB, zip rifiutato con motivo leggibile.
+   `/threads/reply` accetta `allegati: [{storage_path, nome_file, mime}]` —
+   riferimenti a file caricati da Lovable direttamente su Storage.
+
+**Debiti nuovi, dichiarati in CLAUDE.md:**
+- **HEIC/HEIF** (foto iPhone): sharp non lo legge in modo affidabile senza
+  una libreria dedicata. Oggi un HEIC in entrata si carica senza dimensioni
+  né conversione; in uscita viene rifiutato con un motivo esplicito, non
+  convertito.
+- **Allegati Mirakl in uscita**: meccanismo non deciso (multipart su M12,
+  trovato verificando l'API pubblica, oppure documenti d'ordine via OR74,
+  come scritto nel runbook originale — le due fonti non coincidono).
+  `/threads/reply` risponde 422 esplicito su un allegato Mirakl, non tenta
+  alla cieca.
+
+**Resta da fare, lato Lovable — non ancora inviato nessun prompt:**
+- Cablare il pulsante "Invia" già presente in `reply-editor.tsx" alla nuova
+  rotta, con sessione Supabase invece di un token nel browser, e mostrare le
+  violazioni 422 in modo specifico.
+- Gestione tag e assegnazione (`agent` query mancante in `hub-data.ts`) —
+  attenzione: `threadIntent()` usa già il primo tag diverso da `"demo"` come
+  intento classificato, i tag non sono generici.
+- Upload allegati in uscita direttamente su Storage (serve una policy RLS su
+  `storage.objects` per gli utenti autenticati — di competenza Lovable, non
+  di questo repo) e galleria/anteprima in entrata.
+
+---
+
 ## Debiti dichiarati
 
 **Mirakl è scritto sulla documentazione, non su risposte vere.** Quando è
