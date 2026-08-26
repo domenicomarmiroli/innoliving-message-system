@@ -1,9 +1,61 @@
+import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
+import { dimensioniImmagine } from '../../core/immagine.js'
+import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
 import { chiaveThread, type Aggancio } from './aggancia.js'
 import { perArchivio } from './parse.js'
 import { ripulisci } from './ripulisci.js'
-import type { EmailGrezza, OpzioniIngest, Riconoscimento } from './tipi.js'
+import type { AllegatoGrezzo, EmailGrezza, OpzioniIngest, Riconoscimento } from './tipi.js'
+
+interface AllegatoPronto extends AllegatoGrezzo {
+  storage_path: string | null
+  larghezza: number | null
+  altezza: number | null
+}
+
+/**
+ * Carica i byte su Storage PRIMA di aprire la transazione: è I/O di rete,
+ * e tenerla dentro una transazione database terrebbe lock aperti per
+ * tutta la durata dell'upload. Se lo storage non è configurato, l'email
+ * entra comunque — solo senza il file, non senza il messaggio: un
+ * allegato mancante è un problema più piccolo di un ticket perso.
+ */
+async function preparaAllegati(
+  config: Config,
+  log: Logger,
+  accountCode: string,
+  allegati: AllegatoGrezzo[],
+): Promise<AllegatoPronto[]> {
+  if (allegati.length === 0) return []
+
+  if (!storageConfigurato(config)) {
+    log.warn('Storage non configurato: allegati registrati solo come metadati')
+    return allegati.map((a) => ({ ...a, storage_path: null, larghezza: null, altezza: null }))
+  }
+
+  return Promise.all(
+    allegati.map(async (a) => {
+      const dimensioni = await dimensioniImmagine(a.contenuto)
+      let storage_path: string | null = null
+      try {
+        const percorso = `${accountCode}/${a.checksum}-${a.nome_file ?? 'allegato'}`
+        storage_path = await caricaAllegato(config, percorso, a.contenuto, a.mime)
+      } catch (errore) {
+        log.error(
+          { err: errore instanceof Error ? errore.message : String(errore), nome_file: a.nome_file },
+          'upload allegato su Storage fallito: registrato solo il metadato',
+        )
+      }
+      return {
+        ...a,
+        storage_path,
+        larghezza: dimensioni?.larghezza ?? null,
+        altezza: dimensioni?.altezza ?? null,
+      }
+    }),
+  )
+}
 
 /**
  * Scrittura idempotente di una email in arrivo.
@@ -26,11 +78,19 @@ export interface RisultatoUpsertEmail {
 export async function upsertEmail(
   db: Db,
   log: Logger,
+  config: Config,
   email: EmailGrezza,
   riconoscimento: Riconoscimento,
   agg: Aggancio,
   opzioni: OpzioniIngest,
 ): Promise<RisultatoUpsertEmail> {
+  const allegatiPronti = await preparaAllegati(
+    config,
+    log,
+    riconoscimento.account_code,
+    email.allegati,
+  )
+
   return db.begin(async (tx) => {
     const arrivata = email.date ?? new Date()
 
@@ -129,13 +189,15 @@ export async function upsertEmail(
     }
 
     // --- Gli allegati ---------------------------------------------------
-    for (const a of email.allegati) {
+    for (const a of allegatiPronti) {
       await tx`
         insert into attachment (
-          message_id, direzione, nome_file, mime, dimensione_byte, checksum
+          message_id, direzione, nome_file, mime, dimensione_byte, checksum,
+          storage_path, larghezza, altezza
         ) values (
           ${messaggio.id}, 'in', ${a.nome_file}, ${a.mime},
-          ${a.dimensione_byte}, ${a.checksum}
+          ${a.dimensione_byte}, ${a.checksum},
+          ${a.storage_path}, ${a.larghezza}, ${a.altezza}
         )
       `
     }

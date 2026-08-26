@@ -157,7 +157,7 @@ export async function leggiCasella(
 
         const ric = riconosci(email, regole, casella)
         const agg = await aggancia(db, email, ric)
-        const scritto = await upsertEmail(db, log, email, ric, agg, opzioni)
+        const scritto = await upsertEmail(db, log, config, email, ric, agg, opzioni)
 
         if (scritto.esito === 'inserito') esito.inserite += 1
         else esito.gia_presenti += 1

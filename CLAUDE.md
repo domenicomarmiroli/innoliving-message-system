@@ -206,6 +206,31 @@ password per app non ha scadenza.
   niente rende il testo originale, perché un corpo rumoroso si legge comunque
   mentre un corpo vuoto fa perdere il messaggio. L'integrale resta in `raw`.
 
+### Allegati (migrazione 0008)
+`core/storage.ts` carica i byte su Supabase Storage (bucket privato `allegati`,
+REST diretto, non l'SDK — coerente con postgres.js: niente client pesante dove
+basta una `fetch`). Serve `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`; senza,
+l'allegato entra comunque ma solo come metadato, mai un'email persa per questo.
+
+**In entrata (casella)**: `upsert.ts` carica ogni allegato **prima** di aprire
+la transazione database — è I/O di rete, tenerla dentro una transazione
+terrebbe lock aperti per tutto l'upload. Percorso `{account_code}/{checksum}-
+{nome_file}`, upload idempotente (`x-upsert`). `core/immagine.ts` legge
+larghezza e altezza con sharp per le miniature.
+
+**DEBITO**: sharp/libvips di default non legge HEIC/HEIF in modo affidabile —
+il formato delle foto iPhone. Oggi l'allegato HEIC si carica comunque (i byte
+originali arrivano su Storage) ma senza dimensioni, e senza la conversione a
+JPEG per la visualizzazione prevista dal runbook: resta da costruire, con una
+libreria verificata per quel formato specifico, non assunta.
+
+**Ancora da fare**: download dai messaggi Mirakl (M13), normalizzazione in
+uscita per canale (`core/attachments/normalize.ts` — su Amazon solo pdf, png,
+txt, doc, docx, tiff, bmp, max 6 MB; JPG e HEIC convertiti automaticamente in
+PNG, mai rifiutati; oltre soglia si ricomprime, non si fallisce e basta), e
+l'estensione del policy guard perché `POST /threads/reply` rifiuti con 422
+anche un allegato non ammesso, non solo un testo.
+
 **Cosa entra in coda** (`app_config.mail_ingest`, migrazioni 0003 e 0004):
 `domini_esclusi` è una lista di **esclusi, non di ammessi** — scelta
 deliberata. Con una lista di ammessi, il cliente che scrive direttamente da un

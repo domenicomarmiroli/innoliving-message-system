@@ -64,6 +64,10 @@ const schema = z.object({
   // già nel bundle di Lovable — usati dall'interfaccia.
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_ANON_KEY: z.string().min(1).optional(),
+  // Per caricare i byte degli allegati su Supabase Storage: bypassa RLS,
+  // come SUPABASE_DB_URL. Non va mai data a Lovable né a nulla che finisca
+  // in un bundle browser.
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

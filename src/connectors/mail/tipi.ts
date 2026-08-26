@@ -30,6 +30,12 @@ export interface AllegatoGrezzo {
   dimensione_byte: number
   /** Checksum del contenuto: identifica l'allegato senza conservarlo. */
   checksum: string
+  /**
+   * I byte veri, tenuti solo in memoria durante l'elaborazione: non
+   * finiscono mai in `message.raw` (vedi perArchivio in parse.ts), solo
+   * su Supabase Storage.
+   */
+  contenuto: Buffer
 }
 
 /** Le regole di riconoscimento, come stanno nel database. */

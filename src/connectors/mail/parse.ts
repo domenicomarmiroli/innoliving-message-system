@@ -27,10 +27,8 @@ export async function analizza(sorgente: Buffer, uid: number | null): Promise<Em
     nome_file: a.filename ?? null,
     mime: a.contentType ?? null,
     dimensione_byte: a.size ?? a.content?.length ?? 0,
-    // Il contenuto non lo teniamo qui: identificarlo basta al momento
-    // dell'ingestione, il file vero andrà nello storage a un passo
-    // successivo. Il checksum permette di riconoscerlo senza riscaricarlo.
     checksum: createHash('sha256').update(a.content ?? Buffer.alloc(0)).digest('hex'),
+    contenuto: a.content ?? Buffer.alloc(0),
   }))
 
   return {
@@ -88,7 +86,9 @@ export function perArchivio(email: EmailGrezza): Record<string, unknown> {
     date: email.date?.toISOString() ?? null,
     body_text: email.body_text,
     body_html: email.body_html,
-    allegati: email.allegati,
+    // Mai il campo `contenuto`: i byte degli allegati vanno solo su
+    // Storage, non nel JSONB — gonfierebbero il database senza motivo.
+    allegati: email.allegati.map(({ contenuto: _contenuto, ...resto }) => resto),
     uid: email.uid,
   }
 }
