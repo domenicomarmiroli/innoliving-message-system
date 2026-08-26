@@ -26,6 +26,7 @@
     "imapflow": "^1.7.6",
     "mailparser": "^3.9.16",
     "nodemailer": "^9.0.5",
+    "pdf-parse": "^2.4.5",
     "pino": "^9.6.0",
     "postgres": "^3.4.5",
     "sharp": "^0.35.4",
@@ -35,6 +36,7 @@
     "@types/mailparser": "^3.4.6",
     "@types/node": "^22.10.5",
     "@types/nodemailer": "^8.0.1",
+    "@types/pdf-parse": "^1.1.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"

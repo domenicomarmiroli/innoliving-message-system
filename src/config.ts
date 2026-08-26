@@ -76,6 +76,16 @@ const schema = z.object({
   // configurata esplicitamente e non dedotta.
   INTERFACCIA_ORIGINS: z.string().optional(),
 
+  // --- Bozze AI (passo 07) ---------------------------------------------
+  // Un solo provider oggi, dietro un'interfaccia che ne ammette altri
+  // domani (core/ai/provider.ts): aggiungerne uno è implementarla, non
+  // riscrivere la generazione delle bozze.
+  AI_PROVIDER: z.enum(['anthropic']).default('anthropic'),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  // claude-sonnet-5: equilibrio fra qualità e costo per una bozza di
+  // risposta. Non il modello più economico né il più costoso.
+  ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-5'),
+
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

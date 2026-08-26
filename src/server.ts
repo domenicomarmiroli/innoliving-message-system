@@ -6,6 +6,8 @@ import { logger } from './logger.js'
 import { createDb } from './db/index.js'
 import { healthRoutes } from './routes/health.js'
 import { replyRoutes } from './routes/reply.js'
+import { draftRoutes } from './routes/draft.js'
+import { knowledgeRoutes } from './routes/knowledge.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
 import { avviaPolling } from './connectors/mail/poll.js'
 import { avviaAllineamentoOrdini } from './connectors/shopify/periodico.js'
@@ -39,6 +41,8 @@ export async function buildServer(config: Config) {
   await app.register(healthRoutes, { db })
   await app.register(shopifyWebhookRoutes, { db, config })
   await app.register(replyRoutes, { db, config })
+  await app.register(draftRoutes, { db, config })
+  await app.register(knowledgeRoutes, { db, config })
 
   // La casella si legge chiedendo, non aspettando: IMAP non ha notifiche.
   // Se le credenziali mancano il ciclo non parte e il resto funziona

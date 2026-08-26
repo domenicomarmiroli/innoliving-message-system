@@ -367,4 +367,40 @@ npm run mirakl:check -- --forma
 Non scrive nulla: stampa i nomi dei campi che l'API restituisce davvero, li
 confronta con quelli attesi e non mostra il contenuto dei messaggi.
 
-Prossimo passo: classificazione dell'intento e bozze AI.
+### Bozze AI e knowledge base (passo 07, migrazione 0010)
+`core/ai/` — un provider dietro un'interfaccia (`provider.ts`), un'implementazione
+oggi (`anthropic.ts`, Claude via REST diretto, non l'SDK — coerente con Storage
+e Mirakl). Aggiungerne un secondo domani è implementare l'interfaccia, non
+riscrivere `draft.ts`.
+
+**Tre cose non negoziabili in `generaBozza`, in quest'ordine:**
+1. `message.interno = true` (le note fra operatori) non entra **mai** nel
+   contesto — può contenere qualunque cosa un collega abbia scritto pensando
+   restasse fra colleghi.
+2. Ogni messaggio del cliente passa da `core/ai/redazione.ts` prima di finire
+   nel prompt: IBAN, carte, codici fiscali oscurati — regola 8, qui non si
+   tratta. Il pattern delle carte è scritto apposta per NON confondersi con un
+   numero d'ordine Amazon (`407-6403985-4699551` ha la stessa forma
+   cifre-trattini di un numero di carta letto alla leggera): c'è un test
+   dedicato a questo.
+3. Il testo che il modello propone non è la risposta: passa dallo stesso
+   `core/policy.ts` di un invio vero prima di tornare all'agente, così una
+   violazione si vede in anteprima e non al momento di premere Invia. Il
+   risultato si salva in `ai_draft`, **mai spedito da questa funzione**.
+
+**Recupero dalla knowledge base**: per sovrapposizione fra `knowledge.tag` e
+`thread.tags` — gli stessi tag che in Lovable fanno già da "intento
+classificato". **DEBITO dichiarato**: nessuna ricerca semantica/embeddings,
+solo overlap di tag. Funziona finché la knowledge base resta piccola e ben
+taggata; un vero passo successivo se cresce.
+
+**Due modi di entrare nella knowledge base**: un documento (PDF o TXT,
+`POST /knowledge`, riservato al ruolo admin — passa dal worker perché serve
+estrarre il testo dal file, cosa che non ha senso far fare al browser) o una
+risposta di un operatore segnalata come buon esempio (`fonte =
+'esempio_operatore'`, scrittura diretta da Lovable: è un dato interno, stessa
+categoria di tag/note).
+
+Prossimo passo: interfaccia Lovable per bozze, pannello knowledge base, e
+verifica su casi reali (`ai_draft.outcome` confrontato con cosa l'agente
+manda davvero).
