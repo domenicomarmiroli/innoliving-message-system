@@ -7,6 +7,7 @@ import { healthRoutes } from './routes/health.js'
 import { replyRoutes } from './routes/reply.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
 import { avviaPolling } from './connectors/mail/poll.js'
+import { avviaAllineamentoOrdini } from './connectors/shopify/periodico.js'
 
 export async function buildServer(config: Config) {
   const app = Fastify({
@@ -26,8 +27,15 @@ export async function buildServer(config: Config) {
   // lo stesso — il worker non deve morire perché manca un pezzo.
   const casella = avviaPolling(db, logger, config)
 
+  // Gli ordini arrivano dai webhook, che sono immediati. Questo giro è
+  // la rete sotto: un webhook può perdersi durante un deploy o dopo un
+  // 500, e un ordine mancante significa un cliente che scrive di un
+  // ordine che per noi non esiste.
+  const ordini = avviaAllineamentoOrdini(db, logger, config)
+
   app.addHook('onClose', async () => {
     casella?.ferma()
+    ordini?.ferma()
     await db.end({ timeout: 5 })
   })
 

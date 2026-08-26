@@ -127,6 +127,29 @@ per un token valido 24 ore, in `src/connectors/shopify/token.ts`.
 Il token statico resta supportato e ha la precedenza, per le installazioni che
 ce l'hanno già.
 
+### Allineamento degli ordini
+Due vie, e servono entrambe.
+
+**I webhook** sono la via principale: `orders/create`, `orders/updated`,
+`fulfillments/create` verso `/webhooks/shopify`. Si registrano con
+`npm run shopify:webhooks -- https://<host>` — idempotente, crea solo il
+mancante. L'indirizzo si passa come argomento perché cambia da
+installazione a installazione e non deve stare nel codice.
+
+**Il giro periodico** (`SHOPIFY_SYNC_MINUTES`, default 60) è la rete sotto.
+Un sistema che si fida solo dei webhook prima o poi perde qualcosa: un
+riavvio durante il deploy, un 500 momentaneo, una notifica ritentata e poi
+abbandonata. Un ordine mancante significa un cliente che scrive di un ordine
+che per noi non esiste.
+
+Differenza col backfill: quello guarda `created_at` e serve una volta sola,
+questo guarda **`updated_at`** — un ordine spedito ieri e tracciato oggi non è
+nuovo ma è cambiato, e il tracking è la risposta a "dov'è il mio pacco".
+Il segnalibro sta in `app_config.shopify_sync`, **non** in
+`sync_state.api_cursor`: quel campo per l'account Shopify contiene il cursore
+di paginazione del backfill, e sovrascriverlo romperebbe la ripresa di un
+backfill interrotto.
+
 ### Connettore casella (passo 05)
 La casella è su Gmail, letta via **IMAP** e scritta via **SMTP** con una
 *password per app*. Microsoft Graph resta la destinazione finale — le variabili

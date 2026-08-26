@@ -16,7 +16,9 @@
     "verify": "npm run typecheck && npm test && npm run build",
     "mail:check": "tsx src/commands/mail-check.ts",
     "mail:ripulisci": "tsx src/commands/mail-ripulisci.ts",
-    "mirakl:check": "tsx src/commands/mirakl-check.ts"
+    "mirakl:check": "tsx src/commands/mirakl-check.ts",
+    "shopify:webhooks": "tsx src/commands/shopify-webhooks.ts",
+    "shopify:sync": "tsx src/commands/shopify-sync.ts"
   },
   "dependencies": {
     "fastify": "^5.2.1",

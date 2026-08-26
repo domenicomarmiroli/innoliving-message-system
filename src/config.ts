@@ -40,6 +40,10 @@ const schema = z.object({
   // Cartella da leggere. Su Gmail le cartelle IMAP sono le etichette.
   MAIL_FOLDER: z.string().min(1).default('INBOX'),
 
+  // Ogni quanti minuti riallineare gli ordini con Shopify. È la rete di
+  // sicurezza sotto i webhook, non il canale principale: un'ora basta.
+  SHOPIFY_SYNC_MINUTES: z.coerce.number().int().positive().default(60),
+
   MS_TENANT_ID: z.string().min(1).optional(),
   MS_CLIENT_ID: z.string().min(1).optional(),
   MS_CLIENT_SECRET: z.string().min(1).optional(),
