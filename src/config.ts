@@ -69,6 +69,13 @@ const schema = z.object({
   // in un bundle browser.
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 
+  // Origini autorizzate a chiamare le rotte del browser (CORS), separate
+  // da virgola — l'interfaccia Lovable, pubblicata e in anteprima. Senza
+  // questa, il browser blocca la richiesta ancora prima che arrivi qui:
+  // non sembra un 401, sembra un errore di rete, ed è per questo che va
+  // configurata esplicitamente e non dedotta.
+  INTERFACCIA_ORIGINS: z.string().optional(),
+
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

@@ -193,6 +193,11 @@ password per app non ha scadenza.
   essere il default. Con una sessione agente, `agent_id` nel corpo viene
   ignorato e sostituito da quello vero: altrimenti chiunque potrebbe
   firmare l'invio col nome di un collega.
+- **CORS** (`server.ts`): senza `INTERFACCIA_ORIGINS` (origini separate da virgola)
+  il browser di Lovable blocca la chiamata a `/threads/reply` PRIMA che arrivi
+  al server — non un 401, un errore di rete generico, diagnosticabile solo
+  sapendo che manca questo. Nessun jolly: elenco esplicito, sono rotte con
+  una sessione agente autenticata dietro.
 - `core/policy.ts` — il guardiano dei contenuti, chiamato da `reply.ts`
   prima di ogni invio. Regole per genere di canale (`kind`), non per
   singolo account: su Amazon niente URL, contatti, richieste di recensione
