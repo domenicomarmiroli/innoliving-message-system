@@ -158,9 +158,33 @@ password per app non ha scadenza.
   rotta non viene registrata**: un endpoint aperto che spedisce dall'identità
   venditore è troppo pericoloso per essere il default.
 
-**Debito noto:** le fixture in `test/fixtures/mail/` sono sintetiche, non email
-reali — vedi il LEGGIMI lì dentro. Per questo il codice non interpreta il corpo
-delle email: si aggancia all'alias e, come ripiego, al numero d'ordine, che ha
-una forma fissa. Vanno sostituite con esemplari veri appena la casella riceve.
+- `ripulisci.ts` — riduce il corpo a ciò che ha scritto il cliente, togliendo
+  l'impalcatura del relay. **Non restituisce mai il vuoto**: se non riconosce
+  niente rende il testo originale, perché un corpo rumoroso si legge comunque
+  mentre un corpo vuoto fa perdere il messaggio. L'integrale resta in `raw`.
+
+**Cosa entra in coda** (`app_config.mail_ingest`, migrazioni 0003 e 0004):
+`domini_esclusi` è una lista di **esclusi, non di ammessi** — scelta
+deliberata. Con una lista di ammessi, il cliente che scrive direttamente da un
+indirizzo nuovo sparirebbe in silenzio; con una di esclusi il caso peggiore è
+un po' di rumore in coda, che si vede e si corregge. Il confronto è per
+suffisso, quindi `google.com` copre tutti i suoi sottodomini — e `amazon.com`
+(notifiche di mancata consegna) resta ben distinto da `marketplace.amazon.it`
+(messaggi veri dei clienti).
+`domini_notifica` è il terzo genere: gli avvisi di mancata consegna di Amazon
+(`amazon.com`, non `marketplace.amazon.it`) non diventano ticket — non c'è
+niente a cui rispondere — ma vengono annotati sulla conversazione di
+quell'ordine, che prende il tag `consegna-fallita` e torna aperta. È
+l'informazione che serve dove serve: quel cliente non ha ricevuto la risposta.
+Una notifica che non si aggancia finisce in `ingest_anomaly`, non nel nulla.
+
+E le email più vecchie di `giorni_coda` entrano già `closed`: la prima lettura
+importò tre mesi di storico e produsse 371 ticket "in ritardo di 2000 ore",
+che nascondevano i pochi a cui rispondere oggi.
+
+**Fixture:** `amazon-messaggio-reale.eml` ha il corpo vero (headers ricostruiti);
+gli altri file in `test/fixtures/mail/` sono sintetici — vedi il LEGGIMI lì
+dentro. Per questo il codice non interpreta la semantica del corpo: si aggancia
+all'alias e, come ripiego, al numero d'ordine, che ha una forma fissa.
 
 Prossimo passo: classificazione dell'intento e bozze AI.

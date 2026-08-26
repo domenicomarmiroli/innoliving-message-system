@@ -14,7 +14,8 @@
     "test": "vitest run",
     "backfill:shopify": "tsx src/commands/backfill-shopify.ts",
     "verify": "npm run typecheck && npm test && npm run build",
-    "mail:check": "tsx src/commands/mail-check.ts"
+    "mail:check": "tsx src/commands/mail-check.ts",
+    "mail:ripulisci": "tsx src/commands/mail-ripulisci.ts"
   },
   "dependencies": {
     "fastify": "^5.2.1",

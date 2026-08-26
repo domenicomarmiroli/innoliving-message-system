@@ -45,6 +45,43 @@ export function dominioCombacia(dominio: string, regola: string): boolean {
   return d === r || d.endsWith('.' + r)
 }
 
+/**
+ * Questa email va scartata prima ancora di guardarla?
+ *
+ * Lista di ESCLUSI, non di ammessi. La differenza non è di stile: con
+ * una lista di ammessi, il messaggio di un cliente che scrive da un
+ * indirizzo nuovo sparisce senza che nessuno se ne accorga. Con una
+ * lista di esclusi il caso peggiore è un po' di rumore in coda, che si
+ * vede e si corregge.
+ *
+ * Si guardano sia il From sia il Reply-To: basta che uno dei due sia in
+ * lista perché il messaggio non entri.
+ */
+export function daEscludere(
+  email: Pick<EmailGrezza, 'from' | 'reply_to'>,
+  dominiEsclusi: string[],
+): boolean {
+  if (dominiEsclusi.length === 0) return false
+  for (const indirizzo of [email.from, email.reply_to]) {
+    const dominio = dominioDi(indirizzo)
+    if (!dominio) continue
+    if (dominiEsclusi.some((d) => dominioCombacia(dominio, d))) return true
+  }
+  return false
+}
+
+/** Che genere di posta è, prima ancora di chiedersi da quale canale viene. */
+export type GenereMittente = 'escluso' | 'notifica' | 'messaggio'
+
+export function classificaMittente(
+  email: Pick<EmailGrezza, 'from' | 'reply_to'>,
+  opzioni: { domini_esclusi: string[]; domini_notifica: string[] },
+): GenereMittente {
+  if (daEscludere(email, opzioni.domini_esclusi)) return 'escluso'
+  if (daEscludere(email, opzioni.domini_notifica)) return 'notifica'
+  return 'messaggio'
+}
+
 export function riconosci(
   email: EmailGrezza,
   regole: RegolaCanale[],
@@ -74,6 +111,7 @@ export function riconosci(
       // L'alias c'è, ma se corrisponda davvero a un ordine lo dirà
       // l'aggancio: qui registriamo solo che l'abbiamo trovato.
       strategia: 'alias',
+      testo: regola.testo,
     }
   }
 
@@ -86,6 +124,7 @@ export function riconosci(
     alias: candidati[0] ?? null,
     numero_ordine: estraiNumeroOrdine(email, null),
     strategia: 'nessuna',
+    testo: casella.testo,
   }
 }
 

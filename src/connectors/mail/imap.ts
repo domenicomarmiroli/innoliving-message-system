@@ -6,7 +6,8 @@ import type { Logger } from '../../logger.js'
 import { aggancia } from './aggancia.js'
 import { analizza } from './parse.js'
 import { caricaRegole } from './regole.js'
-import { riconosci } from './riconosci.js'
+import { registraNotifica } from './notifica.js'
+import { classificaMittente, riconosci } from './riconosci.js'
 import { upsertEmail } from './upsert.js'
 
 /**
@@ -26,6 +27,10 @@ export interface EsitoCiclo {
   lette: number
   inserite: number
   gia_presenti: number
+  /** Scartate perché il mittente è in `domini_esclusi`. */
+  ignorate: number
+  /** Avvisi di mancata consegna, annotati sulla conversazione. */
+  notifiche: number
   errori: number
   ultimo_uid: number | null
 }
@@ -52,7 +57,7 @@ export async function leggiCasella(
     )
   }
 
-  const { regole, casella } = await caricaRegole(db)
+  const { regole, casella, opzioni } = await caricaRegole(db)
   const stato = await leggiStato(db, casella.account_id)
 
   const client = new ImapFlow({
@@ -69,6 +74,8 @@ export async function leggiCasella(
     lette: 0,
     inserite: 0,
     gia_presenti: 0,
+    ignorate: 0,
+    notifiche: 0,
     errori: 0,
     ultimo_uid: stato.imap_uid,
   }
@@ -104,9 +111,37 @@ export async function leggiCasella(
 
       try {
         const email = await analizza(msg.source as Buffer, msg.uid)
+
+        // Tre generi di posta, e solo uno diventa un ticket.
+        //  - esclusa: posta di servizio, non entra e basta.
+        //  - notifica: avvisi di mancata consegna. Non sono richieste,
+        //    ma dicono che una nostra risposta non è arrivata: si
+        //    annotano sulla conversazione di quell'ordine.
+        //  - messaggio: tutto il resto, compresa la posta diretta di un
+        //    cliente che non passa da nessun marketplace.
+        const genere = classificaMittente(email, opzioni)
+
+        if (genere === 'escluso') {
+          esito.ignorate += 1
+          continue
+        }
+
+        if (genere === 'notifica') {
+          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
+          await registraNotifica(
+            db,
+            log,
+            email,
+            casella.account_id,
+            canale.order_id_pattern,
+          )
+          esito.notifiche += 1
+          continue
+        }
+
         const ric = riconosci(email, regole, casella)
         const agg = await aggancia(db, email, ric)
-        const scritto = await upsertEmail(db, log, email, ric, agg)
+        const scritto = await upsertEmail(db, log, email, ric, agg, opzioni)
 
         if (scritto.esito === 'inserito') esito.inserite += 1
         else esito.gia_presenti += 1

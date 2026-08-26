@@ -1,5 +1,6 @@
 import type { Db } from '../../db/index.js'
-import type { RegolaCanale } from './tipi.js'
+import { regoleDaConfig } from './ripulisci.js'
+import type { OpzioniIngest, RegolaCanale } from './tipi.js'
 
 /**
  * Le regole di riconoscimento vivono nel database, non nel codice
@@ -10,7 +11,7 @@ interface RigaAccount {
   id: string
   code: string
   kind: RegolaCanale['kind']
-  config: { sender_domains?: unknown; order_id_pattern?: unknown } | null
+  config: Record<string, unknown> | null
 }
 
 function domini(config: RigaAccount['config']): string[] {
@@ -19,10 +20,21 @@ function domini(config: RigaAccount['config']): string[] {
   return v.filter((x): x is string => typeof x === 'string' && x.length > 0)
 }
 
-export async function caricaRegole(db: Db): Promise<{
+const OPZIONI_PREDEFINITE: OpzioniIngest = {
+  // Vuota per scelta: senza configurazione entra tutto. Il default
+  // prudente qui è "non perdere niente", non "filtrare bene".
+  domini_esclusi: [],
+  domini_notifica: [],
+  giorni_coda: 7,
+}
+
+export interface Regole {
   regole: RegolaCanale[]
   casella: RegolaCanale
-}> {
+  opzioni: OpzioniIngest
+}
+
+export async function caricaRegole(db: Db): Promise<Regole> {
   const righe = await db<RigaAccount[]>`
     select id, code, kind, config
     from channel_account
@@ -36,7 +48,10 @@ export async function caricaRegole(db: Db): Promise<{
     kind: r.kind,
     sender_domains: domini(r.config),
     order_id_pattern:
-      typeof r.config?.order_id_pattern === 'string' ? r.config.order_id_pattern : null,
+      typeof r.config?.order_id_pattern === 'string'
+        ? (r.config.order_id_pattern as string)
+        : null,
+    testo: regoleDaConfig(r.config),
   }))
 
   const casella = tutte.find((r) => r.kind === 'email')
@@ -47,7 +62,28 @@ export async function caricaRegole(db: Db): Promise<{
     )
   }
 
+  const [conf] = await db<{ value: Record<string, unknown> }[]>`
+    select value from app_config where key = 'mail_ingest'
+  `
+
+  const opzioni: OpzioniIngest = {
+    domini_esclusi: Array.isArray(conf?.value?.domini_esclusi)
+      ? (conf.value.domini_esclusi as unknown[]).filter(
+          (x): x is string => typeof x === 'string' && x.length > 0,
+        )
+      : OPZIONI_PREDEFINITE.domini_esclusi,
+    domini_notifica: Array.isArray(conf?.value?.domini_notifica)
+      ? (conf.value.domini_notifica as unknown[]).filter(
+          (x): x is string => typeof x === 'string' && x.length > 0,
+        )
+      : OPZIONI_PREDEFINITE.domini_notifica,
+    giorni_coda:
+      typeof conf?.value?.giorni_coda === 'number' && conf.value.giorni_coda >= 0
+        ? (conf.value.giorni_coda as number)
+        : OPZIONI_PREDEFINITE.giorni_coda,
+  }
+
   // La casella non è un canale di provenienza: è il contenitore di ciò
   // che non riconosciamo. Escluderla evita che si riconosca da sola.
-  return { regole: tutte.filter((r) => r.kind !== 'email'), casella }
+  return { regole: tutte.filter((r) => r.kind !== 'email'), casella, opzioni }
 }

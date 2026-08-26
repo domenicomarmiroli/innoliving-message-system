@@ -2,7 +2,8 @@ import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { chiaveThread, type Aggancio } from './aggancia.js'
 import { perArchivio } from './parse.js'
-import type { EmailGrezza, Riconoscimento } from './tipi.js'
+import { ripulisci } from './ripulisci.js'
+import type { EmailGrezza, OpzioniIngest, Riconoscimento } from './tipi.js'
 
 /**
  * Scrittura idempotente di una email in arrivo.
@@ -28,9 +29,22 @@ export async function upsertEmail(
   email: EmailGrezza,
   riconoscimento: Riconoscimento,
   agg: Aggancio,
+  opzioni: OpzioniIngest,
 ): Promise<RisultatoUpsertEmail> {
   return db.begin(async (tx) => {
     const arrivata = email.date ?? new Date()
+
+    // Il corpo che si legge è quello ripulito dall'impalcatura del
+    // relay. L'integrale non si perde: resta in `raw`, da cui si
+    // riprocessa se un giorno scopriremo che la pulizia tagliava troppo.
+    const testoPulito = ripulisci(email.body_text, riconoscimento.testo)
+
+    // Un'email vecchia entra già chiusa: serve nello storico e nella
+    // ricerca, non in coda. Senza questo, importare tre mesi di casella
+    // produce trecento ticket "in ritardo di 2000 ore" che nascondono i
+    // pochi a cui bisogna davvero rispondere oggi.
+    const etaGiorni = (Date.now() - arrivata.getTime()) / 86_400_000
+    const vecchia = etaGiorni > opzioni.giorni_coda
 
     // --- SLA del canale, per sapere entro quando va risposto -----------
     const [account] = await tx<{ sla_minutes: number }[]>`
@@ -56,7 +70,8 @@ export async function upsertEmail(
             first_inbound_at, last_inbound_at, due_at
           ) values (
             ${riconoscimento.account_id}, ${chiave}, ${agg.order_id},
-            ${email.subject}, ${agg.order_id ? 'new' : 'unmatched'},
+            ${email.subject},
+            ${vecchia ? 'closed' : agg.order_id ? 'new' : 'unmatched'},
             ${arrivata}, ${arrivata}, ${scadenza}
           )
           on conflict (account_id, external_thread_id)
@@ -73,7 +88,7 @@ export async function upsertEmail(
             first_inbound_at, last_inbound_at, due_at
           ) values (
             ${riconoscimento.account_id}, ${agg.order_id}, ${email.subject},
-            'unmatched', ${arrivata}, ${arrivata}, ${scadenza}
+            ${vecchia ? 'closed' : 'unmatched'}, ${arrivata}, ${arrivata}, ${scadenza}
           )
           returning id
         `
@@ -94,7 +109,7 @@ export async function upsertEmail(
         body_text, body_html, sent_at, match_strategy, raw
       ) values (
         ${threadId}, 'in', 'customer', ${chiaveEsterna}, ${email.rfc822_id},
-        ${email.in_reply_to}, ${email.body_text}, ${email.body_html},
+        ${email.in_reply_to}, ${testoPulito}, ${email.body_html},
         ${arrivata}, ${agg.strategia}, ${tx.json(perArchivio(email) as never)}
       )
       on conflict (rfc822_id) where rfc822_id is not null
@@ -135,10 +150,12 @@ export async function upsertEmail(
         order_id         = coalesce(${agg.order_id}, order_id),
         subject          = coalesce(subject, ${email.subject}),
         due_at           = ${scadenza},
+        -- Un'email vecchia non riapre niente: importare lo storico non
+        -- deve far risalire in coda conversazioni concluse mesi fa.
         state            = case
+                             when ${vecchia} then state
                              when state = 'unmatched' and ${agg.order_id}::uuid is not null then 'open'
-                             when state = 'closed' then 'open'
-                             when state = 'pending_customer' then 'open'
+                             when state in ('closed', 'pending_customer') then 'open'
                              else state
                            end,
         updated_at       = now()
