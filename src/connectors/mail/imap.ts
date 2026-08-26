@@ -6,7 +6,7 @@ import type { Logger } from '../../logger.js'
 import { aggancia } from './aggancia.js'
 import { analizza } from './parse.js'
 import { caricaRegole } from './regole.js'
-import { registraNotifica } from './notifica.js'
+import { registraAvviso, registraNotifica } from './notifica.js'
 import { classificaMittente, riconosci } from './riconosci.js'
 import { upsertEmail } from './upsert.js'
 
@@ -31,6 +31,8 @@ export interface EsitoCiclo {
   ignorate: number
   /** Avvisi di mancata consegna, annotati sulla conversazione. */
   notifiche: number
+  /** Avvisi su un ordine: garanzia A-to-Z, richieste di rimborso. */
+  avvisi: number
   errori: number
   ultimo_uid: number | null
 }
@@ -76,6 +78,7 @@ export async function leggiCasella(
     gia_presenti: 0,
     ignorate: 0,
     notifiche: 0,
+    avvisi: 0,
     errori: 0,
     ultimo_uid: stato.imap_uid,
   }
@@ -114,15 +117,28 @@ export async function leggiCasella(
 
         // Tre generi di posta, e solo uno diventa un ticket.
         //  - esclusa: posta di servizio, non entra e basta.
+        //  - avviso: garanzia dalla A alla Z, richieste di rimborso.
+        //    Non li scrive il cliente ma sono la cosa più urgente che
+        //    passa di qui, e per la A-to-Z non esiste API: questa email
+        //    è l'unico modo di saperlo.
         //  - notifica: avvisi di mancata consegna. Non sono richieste,
         //    ma dicono che una nostra risposta non è arrivata: si
         //    annotano sulla conversazione di quell'ordine.
         //  - messaggio: tutto il resto, compresa la posta diretta di un
         //    cliente che non passa da nessun marketplace.
-        const genere = classificaMittente(email, opzioni)
+        const genere = classificaMittente(email, opzioni, regole)
 
         if (genere === 'escluso') {
           esito.ignorate += 1
+          continue
+        }
+
+        if (genere === 'avviso') {
+          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
+          await registraAvviso(
+            db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
+          )
+          esito.avvisi += 1
           continue
         }
 

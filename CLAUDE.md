@@ -178,6 +178,21 @@ quell'ordine, che prende il tag `consegna-fallita` e torna aperta. È
 l'informazione che serve dove serve: quel cliente non ha ricevuto la risposta.
 Una notifica che non si aggancia finisce in `ingest_anomaly`, non nel nulla.
 
+`domini_avviso` è il quarto genere, ed è il più importante: richieste di
+garanzia dalla A alla Z e richieste di rimborso con azione richiesta. Non le
+scrive il cliente, ma sono la cosa più urgente che passa dalla casella — una
+A-to-Z non gestita pesa sulla salute dell'account e **per quelle non esiste
+API**: l'email è l'unico modo di saperlo. Entrano con SLA corta (240 minuti) e
+aprono la conversazione dell'ordine se non c'è.
+
+**Precedenza — la parte delicata.** L'ordine è: escluso → canale riconosciuto →
+avviso → notifica → messaggio. Il passaggio "canale riconosciuto" viene PRIMA
+delle liste per genere perché il dominio del relay dei clienti è un
+sottodominio di quello degli avvisi: senza, tutti i messaggi dei clienti
+diventerebbero avvisi e il canale principale si spegnerebbe in silenzio.
+C'è un test che tiene separati i due casi, ed è stato quel test a scoprire il
+bug la prima volta.
+
 E le email più vecchie di `giorni_coda` entrano già `closed`: la prima lettura
 importò tre mesi di storico e produsse 371 ticket "in ritardo di 2000 ore",
 che nascondevano i pochi a cui rispondere oggi.

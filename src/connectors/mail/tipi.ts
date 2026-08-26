@@ -68,6 +68,24 @@ export interface OpzioniIngest {
    */
   domini_notifica: string[]
   /**
+   * Domini che portano AVVISI su un ordine: richieste di garanzia
+   * dalla A alla Z, richieste di rimborso con azione richiesta.
+   *
+   * Non sono messaggi del cliente — arrivano da Amazon, non
+   * dall'acquirente — ma sono la cosa più urgente che passa da questa
+   * casella: una A-to-Z non gestita pesa sulla salute dell'account, e
+   * per quelle non esiste API. L'email è l'unico modo di saperlo.
+   *
+   * Vengono agganciate alla conversazione dell'ordine, o ne aprono una
+   * se non c'è: un reclamo su un ordine di cui il cliente non ci ha mai
+   * scritto è comunque lavoro da fare.
+   */
+  domini_avviso: string[]
+  /** Entro quanti minuti va gestito un avviso. Molto meno di un ticket. */
+  avviso_sla_minuti: number
+  /** Coppie [testo nell'oggetto, tag]. In configurazione, non nel codice. */
+  avviso_tag: Array<[string, string]>
+  /**
    * Le email più vecchie di tanti giorni entrano già chiuse. Servono
    * nello storico e nella ricerca, non nella coda: un ticket di tre mesi
    * fa non è "in ritardo di 2175 ore", è concluso.

@@ -71,13 +71,35 @@ export function daEscludere(
 }
 
 /** Che genere di posta è, prima ancora di chiedersi da quale canale viene. */
-export type GenereMittente = 'escluso' | 'notifica' | 'messaggio'
+export type GenereMittente = 'escluso' | 'notifica' | 'avviso' | 'messaggio'
 
 export function classificaMittente(
   email: Pick<EmailGrezza, 'from' | 'reply_to'>,
-  opzioni: { domini_esclusi: string[]; domini_notifica: string[] },
+  opzioni: {
+    domini_esclusi: string[]
+    domini_notifica: string[]
+    domini_avviso: string[]
+  },
+  regole: RegolaCanale[] = [],
 ): GenereMittente {
+  // L'ordine di queste righe è la parte delicata di tutto il modulo.
+  //
+  // 1. L'esclusione esplicita vince su tutto: `sell.amazon.com` resta
+  //    fuori senza essere scambiato per altro solo per via del suffisso.
   if (daEscludere(email, opzioni.domini_esclusi)) return 'escluso'
+
+  // 2. Un canale di vendita riconosciuto è SEMPRE un messaggio, e viene
+  //    prima delle altre liste. Il dominio del relay dei clienti è un
+  //    SOTTODOMINIO di quello da cui arrivano gli avvisi della
+  //    piattaforma: senza questa riga i messaggi dei clienti verrebbero
+  //    inghiottiti dalla lista degli avvisi e il canale principale si
+  //    spegnerebbe in silenzio. È il motivo per cui esiste un test che
+  //    tiene separati i due casi.
+  const domini = regole.flatMap((r) => r.sender_domains)
+  if (daEscludere(email, domini)) return 'messaggio'
+
+  // 3. Solo ora le liste per genere.
+  if (daEscludere(email, opzioni.domini_avviso)) return 'avviso'
   if (daEscludere(email, opzioni.domini_notifica)) return 'notifica'
   return 'messaggio'
 }

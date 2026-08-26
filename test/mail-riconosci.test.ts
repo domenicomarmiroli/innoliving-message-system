@@ -11,6 +11,7 @@ import {
   indirizzoDi,
   riconosci,
 } from '../src/connectors/mail/riconosci.js'
+import { tagDaOggetto } from '../src/connectors/mail/notifica.js'
 import { regoleDaConfig, ripulisci } from '../src/connectors/mail/ripulisci.js'
 import type { RegolaCanale } from '../src/connectors/mail/tipi.js'
 
@@ -277,7 +278,8 @@ describe('generi di posta', () => {
   const nulla = { rfc822_id: null, in_reply_to: null, references: [], to: [],
     subject: null, date: null, body_text: null, body_html: null,
     allegati: [], uid: null }
-  const opz = { domini_esclusi: ['google.com'], domini_notifica: ['amazon.com'] }
+  const opz = { domini_esclusi: ['google.com'], domini_notifica: ['amazon.com'],
+                domini_avviso: [] }
 
   it('la posta di servizio è esclusa', () => {
     expect(classificaMittente({ ...nulla, from: 'x@google.com', reply_to: null }, opz))
@@ -304,7 +306,61 @@ describe('generi di posta', () => {
 
   it('l esclusione ha la precedenza sulla notifica', () => {
     expect(classificaMittente({ ...nulla, from: 'x@google.com', reply_to: null },
-      { domini_esclusi: ['google.com'], domini_notifica: ['google.com'] }))
+      { domini_esclusi: ['google.com'], domini_notifica: ['google.com'],
+        domini_avviso: [] }))
+      .toBe('escluso')
+  })
+})
+
+describe('avvisi su un ordine', () => {
+  // Oggetti reali, presi dalla casella.
+  const REGOLE_TAG: Array<[string, string]> = [
+    ['dalla A alla Z', 'garanzia-a-z'],
+    ['Azione richiesta', 'rimborso-richiesto'],
+  ]
+
+  it('riconosce la richiesta di garanzia dalla A alla Z', () => {
+    expect(tagDaOggetto(
+      "La tua richiesta di garanzia Amazon dalla A alla Z per l'ordine 406-7088663-0211",
+      REGOLE_TAG)).toBe('garanzia-a-z')
+  })
+
+  it('riconosce la richiesta di rimborso con azione richiesta', () => {
+    expect(tagDaOggetto(
+      'Azione richiesta: Richiesta di rimborso ricevuta per l’ordine 404-9859208-2535',
+      REGOLE_TAG)).toBe('rimborso-richiesto')
+  })
+
+  it('un oggetto sconosciuto non si perde: prende un tag generico', () => {
+    expect(tagDaOggetto('Qualcosa di nuovo da Amazon', REGOLE_TAG))
+      .toBe('avviso-piattaforma')
+    expect(tagDaOggetto(null, REGOLE_TAG)).toBe('avviso-piattaforma')
+  })
+
+  it('il numero d ordine si legge da questi oggetti veri', () => {
+    const base = { rfc822_id: null, in_reply_to: null, references: [],
+      from: null, reply_to: null, to: [], date: null, body_html: null,
+      body_text: null, allegati: [], uid: null }
+    expect(estraiNumeroOrdine({ ...base,
+      subject: "La tua richiesta di garanzia Amazon dalla A alla Z per l'ordine 406-7088663-0211913" },
+      null)).toBe('406-7088663-0211913')
+  })
+
+  it('amazon.it e marketplace.amazon.it restano generi diversi', () => {
+    const opz = { domini_esclusi: ['sell.amazon.com'],
+                  domini_notifica: ['amazon.com'], domini_avviso: ['amazon.it'] }
+    const n = { rfc822_id: null, in_reply_to: null, references: [], to: [],
+      subject: null, date: null, body_text: null, body_html: null,
+      allegati: [], uid: null, reply_to: null }
+    // marketplace.amazon.it e' sottodominio di amazon.it: senza le
+    // regole dei canali finirebbe fra gli avvisi, e il canale
+    // principale si spegnerebbe in silenzio.
+    expect(classificaMittente({ ...n, from: 'x@amazon.it' }, opz, REGOLE)).toBe('avviso')
+    expect(classificaMittente({ ...n, from: 'x@marketplace.amazon.it' }, opz, REGOLE))
+      .toBe('messaggio')
+    expect(classificaMittente({ ...n, from: 'x@amazon.com' }, opz, REGOLE)).toBe('notifica')
+    // L'esclusione vince, nonostante il suffisso amazon.com
+    expect(classificaMittente({ ...n, from: 'x@sell.amazon.com' }, opz, REGOLE))
       .toBe('escluso')
   })
 })

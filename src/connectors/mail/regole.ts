@@ -25,6 +25,11 @@ const OPZIONI_PREDEFINITE: OpzioniIngest = {
   // prudente qui è "non perdere niente", non "filtrare bene".
   domini_esclusi: [],
   domini_notifica: [],
+  domini_avviso: [],
+  // Molto più corta di quella di un ticket: una richiesta di garanzia
+  // dalla A alla Z ha una finestra di risposta, e superarla costa.
+  avviso_sla_minuti: 240,
+  avviso_tag: [],
   giorni_coda: 7,
 }
 
@@ -77,6 +82,27 @@ export async function caricaRegole(db: Db): Promise<Regole> {
           (x): x is string => typeof x === 'string' && x.length > 0,
         )
       : OPZIONI_PREDEFINITE.domini_notifica,
+    domini_avviso: Array.isArray(conf?.value?.domini_avviso)
+      ? (conf.value.domini_avviso as unknown[]).filter(
+          (x): x is string => typeof x === 'string' && x.length > 0,
+        )
+      : OPZIONI_PREDEFINITE.domini_avviso,
+    avviso_sla_minuti:
+      typeof conf?.value?.avviso_sla_minuti === 'number' &&
+      conf.value.avviso_sla_minuti > 0
+        ? (conf.value.avviso_sla_minuti as number)
+        : OPZIONI_PREDEFINITE.avviso_sla_minuti,
+    avviso_tag: Array.isArray(conf?.value?.avviso_tag)
+      ? (conf.value.avviso_tag as unknown[])
+          .filter(
+            (v): v is [string, string] =>
+              Array.isArray(v) &&
+              v.length === 2 &&
+              typeof v[0] === 'string' &&
+              typeof v[1] === 'string',
+          )
+          .map((v) => [v[0], v[1]] as [string, string])
+      : OPZIONI_PREDEFINITE.avviso_tag,
     giorni_coda:
       typeof conf?.value?.giorni_coda === 'number' && conf.value.giorni_coda >= 0
         ? (conf.value.giorni_coda as number)
