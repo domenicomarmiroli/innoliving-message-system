@@ -104,18 +104,9 @@ per non maneggiare il segreto, ma confermata indirettamente: i log di
 Render non mostrano nessun `CONNECT_TIMEOUT` né errore di autenticazione
 dopo le 13:00 del 26/08, e l'ultimo deploy è `live`).
 
-**Cancellare i dati dimostrativi**, se ancora presenti: `ordini_demo`
-verificato a **0** il 26/08. Manca ancora il conteggio di `thread_demo`
-per chiudere del tutto il punto:
-```sql
-select count(*) as thread_demo from thread where 'demo' = any(tags);
-```
-Se anche questo torna zero, il punto si chiude senza eseguire nulla
-sotto. Query di pulizia, da usare solo se i conteggi sopra sono > 0:
-```sql
-delete from thread where 'demo' = any(tags);
-delete from "order" where raw->>'demo' = 'true';
-```
+**✅ Dati dimostrativi — verificato, non ce n'erano** (26/08): sia
+`ordini_demo` che `thread_demo` sono risultati **0**. Nessuna `delete`
+eseguita, non serviva.
 
 ---
 
