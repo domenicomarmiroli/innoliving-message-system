@@ -198,6 +198,11 @@ password per app non ha scadenza.
   al server — non un 401, un errore di rete generico, diagnosticabile solo
   sapendo che manca questo. Nessun jolly: elenco esplicito, sono rotte con
   una sessione agente autenticata dietro.
+  **Lovable ha DUE origini diverse da autorizzare**, scoperto quando il
+  pulsante "Genera bozza" sembrava rotto dall'editor ma funzionava dal sito
+  pubblicato: il sito pubblicato/anteprima (`*.lovable.app`) e l'iframe di
+  anteprima dentro l'editor stesso, un dominio del tutto diverso
+  (`*.lovableproject.com`, con l'id del progetto). Mancava la seconda.
 - `core/policy.ts` — il guardiano dei contenuti, chiamato da `reply.ts`
   prima di ogni invio. Regole per genere di canale (`kind`), non per
   singolo account: su Amazon niente URL, contatti, richieste di recensione
