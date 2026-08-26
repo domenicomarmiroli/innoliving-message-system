@@ -92,11 +92,14 @@ export async function generaBozza(
     .join('\n\n')
 
   // --- Knowledge base: solo ciò che condivide un tag col thread -------
+  // Priorità prima di tutto: una procedura ("se il danno è segnalato,
+  // chiedi sempre le foto") deve prevalere su una nota generica con lo
+  // stesso tag, non essere scartata perché più vecchia.
   const fonti = await db<{ id: string; titolo: string; contenuto: string; fonte: string }[]>`
     select id, titolo, contenuto, fonte
     from knowledge
     where attivo = true and tag && ${thread.tags}
-    order by created_at desc
+    order by priorita desc, created_at desc
     limit ${MAX_FONTI_KB}
   `
 

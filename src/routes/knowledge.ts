@@ -20,6 +20,7 @@ const corpo = z.object({
   mime: z.string().min(1),
   titolo: z.string().min(1).max(200),
   tag: z.array(z.string().min(1)).max(20).default([]),
+  priorita: z.number().int().min(0).max(100).default(0),
 })
 
 export async function knowledgeRoutes(app: FastifyInstance, opts: { db: Db; config: Config }) {
@@ -49,7 +50,7 @@ export async function knowledgeRoutes(app: FastifyInstance, opts: { db: Db; conf
         dettagli: analizzato.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
       })
     }
-    const { storage_path, file_nome, mime, titolo, tag } = analizzato.data
+    const { storage_path, file_nome, mime, titolo, tag, priorita } = analizzato.data
 
     try {
       const contenuto = await scaricaAllegato(config, storage_path)
@@ -57,10 +58,10 @@ export async function knowledgeRoutes(app: FastifyInstance, opts: { db: Db; conf
 
       const [riga] = await db<{ id: string }[]>`
         insert into knowledge (
-          titolo, contenuto, fonte, file_nome, storage_path, tag, creato_da
+          titolo, contenuto, fonte, file_nome, storage_path, tag, priorita, creato_da
         ) values (
           ${titolo}, ${testo}, 'documento', ${file_nome}, ${storage_path},
-          ${tag}, ${agente.id}
+          ${tag}, ${priorita}, ${agente.id}
         )
         returning id
       `

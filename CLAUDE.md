@@ -395,16 +395,27 @@ riscrivere `draft.ts`.
 
 **Recupero dalla knowledge base**: per sovrapposizione fra `knowledge.tag` e
 `thread.tags` — gli stessi tag che in Lovable fanno già da "intento
-classificato". **DEBITO dichiarato**: nessuna ricerca semantica/embeddings,
-solo overlap di tag. Funziona finché la knowledge base resta piccola e ben
-taggata; un vero passo successivo se cresce.
+classificato" — ordinato per `priorita` (migrazione 0011) prima ancora che
+per data: una procedura tipo "se il danno è segnalato, chiedi sempre le foto"
+deve prevalere su una nota generica con lo stesso tag, non essere scartata
+perché più vecchia. **DEBITO dichiarato**: nessuna ricerca
+semantica/embeddings, solo overlap di tag. Funziona finché la knowledge base
+resta piccola e ben taggata; un vero passo successivo se cresce.
 
-**Due modi di entrare nella knowledge base**: un documento (PDF o TXT,
-`POST /knowledge`, riservato al ruolo admin — passa dal worker perché serve
-estrarre il testo dal file, cosa che non ha senso far fare al browser) o una
-risposta di un operatore segnalata come buon esempio (`fonte =
-'esempio_operatore'`, scrittura diretta da Lovable: è un dato interno, stessa
-categoria di tag/note).
+**Tre modi di entrare nella knowledge base**, stesso schema per tutti e tre —
+una "procedura" non è un tipo a parte, è una voce con i tag e la priorità
+giusti:
+- un documento (PDF o TXT, `POST /knowledge`, riservato al ruolo admin —
+  passa dal worker perché serve estrarre il testo dal file, cosa che non ha
+  senso far fare al browser);
+- una voce scritta a mano dal pannello admin (`fonte = 'manuale'`, scrittura
+  diretta da Lovable: dato interno, stessa categoria di tag/note — qui vive
+  anche una procedura);
+- una risposta di un operatore segnalata come buon esempio (`fonte =
+  'esempio_operatore'`, scrittura diretta anch'essa).
+
+Mai una `delete` su una voce: si disattiva (`attivo = false`) — potrebbe
+essere già stata usata in una bozza passata.
 
 Prossimo passo: interfaccia Lovable per bozze, pannello knowledge base, e
 verifica su casi reali (`ai_draft.outcome` confrontato con cosa l'agente
