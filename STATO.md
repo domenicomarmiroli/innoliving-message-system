@@ -229,12 +229,28 @@ sera)**, Claude Sonnet 5, testo coerente col contesto (reso/garanzia)
 del thread. Nessuna fonte knowledge base (base ancora vuota, nessun
 documento caricato) — atteso.
 
-**Resta da fare, lato Lovable:**
-- Pannello admin per la knowledge base (caricamento PDF/TXT, elenco,
-  tag, disattivazione) — `POST /knowledge` pronto sul worker.
-- Un modo per segnalare una risposta inviata come "buon esempio":
-  scrittura diretta su Supabase (`knowledge`, `fonte =
-  'esempio_operatore'`), stessa categoria di tag/note interne.
+**✅ Migrazione 0011 applicata (26/08 sera)**: colonna `knowledge.priorita`
+(verificata: `integer`, default `0`) e fonte `'manuale'` ammessa dal
+vincolo — una voce scritta a mano dal pannello admin, senza passare da un
+file. Il recupero in `draft.ts` ordina ora `priorita desc, created_at desc`.
+
+**✅ Pannello admin knowledge base — costruito (26/08 sera).** Pagina
+`/conoscenza` in Lovable: elenco con filtri fonte/tag e ordine per
+priorità, caricamento documento (upload su Storage → `POST /knowledge`
+sul worker per l'estrazione testo), inserimento manuale, modifica,
+disattivazione (mai `delete`). Azione "Segnala come buon esempio" su ogni
+risposta inviata in conversazione (`fonte = 'esempio_operatore'`),
+disponibile a qualunque agente, non solo admin.
+
+Policy RLS fornite da Lovable ed **eseguite da Domenico** nell'editor SQL
+di Supabase: funzioni `public.e_admin()` / `public.e_agente()` (security
+definer, su `agent.user_id`/`ruolo`/`active`), policy select/insert/update
+su `knowledge` e insert su `storage.objects` per il prefisso `knowledge/`
+nel bucket `allegati`.
+
+**Resta da fare**: verifica funzionale nel pannello vero (inserimento
+manuale, caricamento PDF, segnalazione esempio) — non fatta da qui, la
+pagina richiede login che non ho.
 
 ---
 
