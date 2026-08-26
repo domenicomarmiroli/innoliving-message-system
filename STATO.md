@@ -62,12 +62,15 @@ sotto). **Non** è stato lanciato il `delete from thread` totale che
 questo file proponeva come alternativa: i dati non erano residui da
 buttare, solo rumore puntuale.
 
-### 6. Pulizia dei corpi già importati — ancora da fare
-```bash
-npm run mail:ripulisci -- --prova     # mostra cosa cambierebbe
-npm run mail:ripulisci                # riscrive
+### 6. ✅ Pulizia dei corpi già importati — fatta (26/08)
 ```
-Riparte da `raw`, quindi si può rifare quante volte serve.
+messaggi esaminati: 1445
+da riscrivere:      1437
+già a posto:        8
+```
+Lanciata dalla Shell di Render dopo una prova a secco coerente. Riparte
+da `raw`, quindi si può rifare quante volte serve se in futuro si scopre
+un caso che il parser sbaglia.
 
 ---
 
@@ -101,7 +104,14 @@ per non maneggiare il segreto, ma confermata indirettamente: i log di
 Render non mostrano nessun `CONNECT_TIMEOUT` né errore di autenticazione
 dopo le 13:00 del 26/08, e l'ultimo deploy è `live`).
 
-**Cancellare i dati dimostrativi**, se ancora presenti:
+**Cancellare i dati dimostrativi**, se ancora presenti: `ordini_demo`
+verificato a **0** il 26/08. Manca ancora il conteggio di `thread_demo`
+per chiudere del tutto il punto:
+```sql
+select count(*) as thread_demo from thread where 'demo' = any(tags);
+```
+Se anche questo torna zero, il punto si chiude senza eseguire nulla
+sotto. Query di pulizia, da usare solo se i conteggi sopra sono > 0:
 ```sql
 delete from thread where 'demo' = any(tags);
 delete from "order" where raw->>'demo' = 'true';
