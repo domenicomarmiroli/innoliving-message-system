@@ -272,6 +272,18 @@ di caricare i file in uscita direttamente (di competenza di Lovable, non di
 questo repo — vedi migrazione 0008; già fornita, verificare che sia stata
 eseguita).
 
+### Note interne (migrazione 0009)
+`message.interno` distingue un appunto fra operatori da un messaggio vero: non
+esce mai verso il marketplace. Come tag/assegnazione/stato, è un dato
+puramente interno — si scrive direttamente su Supabase (message + eventuali
+attachment collegati), mai tramite il worker, con la stessa policy RLS di
+INSERT già prevista per quelle scritture.
+
+**Regola per chi tocca il passo 07 (bozze AI) o qualunque cosa componga testo
+verso il cliente o verso un modello**: le righe con `interno = true` vanno
+SEMPRE escluse. Stessa logica della regola 8 su IBAN e dati personali fuori
+dai prompt, applicata a un'intera categoria di messaggi.
+
 **Cosa entra in coda** (`app_config.mail_ingest`, migrazioni 0003 e 0004):
 `domini_esclusi` è una lista di **esclusi, non di ammessi** — scelta
 deliberata. Con una lista di ammessi, il cliente che scrive direttamente da un
