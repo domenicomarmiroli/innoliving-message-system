@@ -262,14 +262,18 @@ mano: il worker non lo scarica mai, è solo un riferimento passato al
 modello con l'istruzione di non incollarlo nella risposta. Campo aggiunto
 al form di inserimento/modifica e all'elenco (link cliccabile) in Lovable.
 
-**✅ Esito bozza AI (`ai_draft.outcome`/`final_text`, 26/08 sera).**
+**✅ Esito bozza AI (`ai_draft.outcome`/`final_text`, 27/08).**
 `/threads/reply` accetta un `draft_id` facoltativo e, se presente,
 confronta il testo spedito con `draft_text` (`core/ai/esito.ts`) scrivendo
 `usata_invariata` o `usata_modificata`. È il pezzo di "verifica su casi
-reali" che CLAUDE.md segnava come prossimo passo. **Resta da fare, lato
-Lovable**: far ricordare all'editor l'id della bozza caricata con "Usa
-questa bozza" e passarlo come `draft_id` in `/threads/reply` — senza
-questo, l'esito non si popola mai.
+reali" che CLAUDE.md segnava come prossimo passo.
+
+Lato Lovable, `draft_id` è collegato end-to-end: "Usa questa bozza" passa
+`draft.id` insieme al testo, uno stato `pendingDraftId`/`activeDraftId`
+lo tiene fino all'invio e lo resetta su invio riuscito, editor svuotato,
+cambio thread o scelta di un template. **Resta solo da accumulare dati
+reali** e leggere `ai_draft.outcome` per capire quanto le bozze vengono
+usate così come sono.
 
 ---
 
