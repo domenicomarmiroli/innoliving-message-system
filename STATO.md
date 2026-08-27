@@ -297,6 +297,13 @@ cliente o nostro.
 
 **Il `deep_link` Mirakl** è inventato (vedi punto 3).
 
+**✅ Bug corretto (27/08): falso positivo "telefono" su un numero
+d'ordine Amazon.** Una bozza AI citava il numero d'ordine del cliente
+(`405-0668977-2033157`) per chiedere conferma, e `core/policy.ts` la
+bloccava scambiandolo per un contatto — stessa forma superficiale del
+formato ordine, stesso problema già risolto per la redazione IBAN/carte.
+Corretto con la stessa distinzione, test di regressione aggiunto.
+
 ---
 
 ## Cose che nessuno ha ancora fatto e vanno fatte
