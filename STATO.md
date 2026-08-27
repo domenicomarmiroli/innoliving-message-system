@@ -412,6 +412,20 @@ futuro)**: un afflusso improvviso di migliaia di righe è un test di
 carico non pianificato per l'interfaccia. Verificare la coda subito dopo
 un import grosso, non solo il worker.
 
+**✅ Tre bug del connettore Mirakl trovati e corretti collaudando su
+questo primo cliente reale** (dettagli in CLAUDE.md): `from.type` ha tre
+valori veri (noi/cliente/marketplace, non solo noi/cliente — il
+marketplace scrive notifiche automatiche tipo richieste di fattura); M12
+non accetta JSON, solo multipart, e il ramo JSON del connettore non
+avrebbe mai funzionato; `message_input.to` è obbligatorio e mancava del
+tutto — ogni invio reale sarebbe stato rifiutato. Tutti e tre corretti
+prima che un cliente Mirakl ricevesse una risposta rotta.
+
+**Resta da fare, lato Lovable**: selettore destinatario ("Cliente" /
+"Operatore" / "Entrambi") nell'editor di risposta, visibile solo per i
+thread Mirakl — il worker accetta già `mirakl_destinatari` in
+`/threads/reply`.
+
 ---
 
 ## Prossimo passo del runbook
