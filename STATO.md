@@ -373,6 +373,47 @@ vecchia della finestra — comportamento atteso, non un bug.
 
 ---
 
+## Leroy Merlin France (Mirakl) attivato — 27/08
+
+Domenico ha fornito la chiave API reale (`MIRAKL_LMFR_KEY`, endpoint
+`adeo-marketplace.mirakl.net`). `channel_account.code = 'mirakl-lmfr'`
+completato (endpoint + secret_ref) e chiave impostata su Render.
+
+**✅ VERIFICATO SU DATI VERI**: primo giro dopo il riavvio ha inserito
+**1.558 messaggi** reali, zero errori. È il primo cliente Mirakl reale che
+scrive in questo sistema dal giorno in cui il connettore è stato
+costruito — collauda di fatto il debito dichiarato in CLAUDE.md
+("scritto sulla documentazione, non su risposte vere").
+**505 ordini Leroy Merlin già presenti** in `order` (arrivano da
+Shopify): non è il problema strutturale di Amazon, l'aggancio funziona
+per gli ordini già sincronizzati; i thread ancora "non in archivio" si
+risolvono da soli quando arriva anche il resto.
+
+**⚠️ INCIDENTE, causato da questo stesso import — risolto in giornata.**
+L'afflusso improvviso (1.587 thread totali, raddoppiati da 583 a un
+tratto) ha rotto la coda principale di Lovable: "Nessun ticket in questa
+vista", zero errori a schermo. Due giri di fix:
+1. Diagnosi e primo fix: la query della coda non era paginata e
+   incorporava messaggi/allegati/righe ordine per ogni thread — troppo
+   pesante col volume raddoppiato. Aggiunta paginazione (200 per pagina)
+   e separazione fra dati leggeri della lista e dettaglio completo del
+   thread aperto.
+2. Il primo fix ha introdotto un bug nuovo, trovato con una seconda
+   indagine più rigorosa (git diff sulla cronologia, non supposizioni):
+   il limite di 200 righe veniva applicato **prima** del filtro che
+   esclude i thread chiusi, non dopo. Ordinati per scadenza, i primi 200
+   erano per caso tutti `closed` (verosimile con centinaia di thread
+   storici), il filtro lato client li eliminava tutti e la lista restava
+   vuota. Corretto spostando il filtro di stato nella query lato server,
+   prima del limite.
+
+**Lezione per il prossimo operatore Mirakl (o qualunque import massiccio
+futuro)**: un afflusso improvviso di migliaia di righe è un test di
+carico non pianificato per l'interfaccia. Verificare la coda subito dopo
+un import grosso, non solo il worker.
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge
