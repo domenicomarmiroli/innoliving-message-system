@@ -248,9 +248,28 @@ definer, su `agent.user_id`/`ruolo`/`active`), policy select/insert/update
 su `knowledge` e insert su `storage.objects` per il prefisso `knowledge/`
 nel bucket `allegati`.
 
-**Resta da fare**: verifica funzionale nel pannello vero (inserimento
-manuale, caricamento PDF, segnalazione esempio) — non fatta da qui, la
-pagina richiede login che non ho.
+**✅ Verifica funzionale — inserimento manuale confermato (26/08 sera).**
+Domenico ha creato una voce dal pannello e ho controllato la riga in
+Supabase: `fonte = 'manuale'`, tag corretti, `attivo = true`, `creato_da`
+valorizzato. Le policy RLS funzionano end-to-end. **Resta da verificare**:
+caricamento PDF e "segnala come buon esempio" — non urgenti, si vedono
+al primo uso reale.
+
+**✅ Link di riferimento (`knowledge.url`, migrazione 0012, 26/08 sera).**
+Una voce manuale può ora portare un link alle linee guida ufficiali di un
+marketplace (es. la pagina resi di Amazon) accanto al testo scritto a
+mano: il worker non lo scarica mai, è solo un riferimento passato al
+modello con l'istruzione di non incollarlo nella risposta. Campo aggiunto
+al form di inserimento/modifica e all'elenco (link cliccabile) in Lovable.
+
+**✅ Esito bozza AI (`ai_draft.outcome`/`final_text`, 26/08 sera).**
+`/threads/reply` accetta un `draft_id` facoltativo e, se presente,
+confronta il testo spedito con `draft_text` (`core/ai/esito.ts`) scrivendo
+`usata_invariata` o `usata_modificata`. È il pezzo di "verifica su casi
+reali" che CLAUDE.md segnava come prossimo passo. **Resta da fare, lato
+Lovable**: far ricordare all'editor l'id della bozza caricata con "Usa
+questa bozza" e passarlo come `draft_id` in `/threads/reply` — senza
+questo, l'esito non si popola mai.
 
 ---
 

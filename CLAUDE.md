@@ -83,8 +83,8 @@ npm run typecheck   controllo dei tipi
 npm run build       compilazione
 ```
 Comandi previsti dai passi successivi del runbook, non ancora implementati:
-`backfill:shopify`, `graph:subscribe`, `graph:delta`, `ricambi:deriva`,
-`instance:init`, `instance:export`, `eval:classify`.
+`graph:subscribe`, `graph:delta`, `ricambi:deriva`, `instance:init`,
+`instance:export`, `eval:classify`.
 
 ## Stile
 Niente `any`. Funzioni pure dove possibile, effetti collaterali confinati in
@@ -425,6 +425,17 @@ link è incluso nel prompt come riferimento per il modello, con
 un'istruzione esplicita a non incollarlo nella risposta a meno che non
 serva davvero al cliente.
 
-Prossimo passo: interfaccia Lovable per bozze, pannello knowledge base, e
-verifica su casi reali (`ai_draft.outcome` confrontato con cosa l'agente
-manda davvero).
+**Esito della bozza** (`ai_draft.outcome`/`final_text`): `/threads/reply`
+accetta ora un `draft_id` facoltativo. Se presente, dopo l'invio confronta
+`draft_text` col testo davvero spedito (`core/ai/esito.ts`, uguaglianza
+dopo trim) e scrive `outcome` (`usata_invariata` | `usata_modificata`) e
+`final_text` sulla riga in `ai_draft`. Non fa mai fallire l'invio già
+avvenuto: un problema qui finisce in un log, non in un errore all'agente.
+Lato Lovable, l'editor deve ricordare l'id della bozza caricata con "Usa
+questa bozza" e passarlo in `draft_id` all'invio — se l'agente scrive da
+zero senza mai caricare una bozza, `draft_id` resta assente e quell'invio
+non viene contato.
+
+Prossimo passo: lato Lovable, passare `draft_id` da "Usa questa bozza"
+fino all'invio; poi, con dati reali accumulati, leggere `ai_draft.outcome`
+per capire quanto le bozze vengono usate così come sono.

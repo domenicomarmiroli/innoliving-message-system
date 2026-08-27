@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { verificaAgente } from '../core/agente.js'
+import { calcolaEsito } from '../core/ai/esito.js'
 import { check as verificaPolicy } from '../core/policy.js'
 import { prepare, type FilePronto } from '../core/attachments/normalize.js'
 import { scaricaAllegato } from '../core/storage.js'
@@ -33,6 +34,11 @@ const corpo = z.object({
   thread_id: z.string().uuid(),
   testo: z.string().min(1).max(20_000),
   agent_id: z.string().uuid().nullable().optional(),
+  // Se il testo parte da una bozza AI generata da POST /threads/draft,
+  // l'interfaccia passa l'id: serve a chiudere il cerchio in ai_draft
+  // (outcome/final_text) per confrontare la proposta con cosa è stato
+  // davvero spedito. Facoltativo: un testo scritto da zero non ce l'ha.
+  draft_id: z.string().uuid().nullable().optional(),
   // Riferimenti a file già caricati dall'interfaccia direttamente su
   // Supabase Storage (stesso bucket 'allegati', percorso a sua scelta):
   // il worker li scarica, li normalizza per canale e solo allora li spedisce.
@@ -163,6 +169,36 @@ export async function replyRoutes(
               testo: analizzato.data.testo,
               allegati: allegatiPronti,
             })
+      // Chiude il cerchio con la bozza AI, se questo invio ne veniva una:
+      // non deve mai far fallire l'invio già avvenuto, quindi solo un log
+      // se qualcosa non torna (bozza di un altro thread, già cancellata).
+      if (analizzato.data.draft_id) {
+        try {
+          const [bozza] = await db<{ draft_text: string | null }[]>`
+            select draft_text from ai_draft
+            where id = ${analizzato.data.draft_id} and thread_id = ${analizzato.data.thread_id}
+          `
+          if (bozza) {
+            const esitoBozza = calcolaEsito(bozza.draft_text ?? '', analizzato.data.testo)
+            await db`
+              update ai_draft
+              set outcome = ${esitoBozza}, final_text = ${analizzato.data.testo}, updated_at = now()
+              where id = ${analizzato.data.draft_id}
+            `
+          } else {
+            req.log.warn(
+              { draft_id: analizzato.data.draft_id, thread_id: analizzato.data.thread_id },
+              'draft_id passato a /threads/reply non trovato per questo thread',
+            )
+          }
+        } catch (erroreEsito) {
+          req.log.warn(
+            { draft_id: analizzato.data.draft_id, err: messaggioErrore(erroreEsito) },
+            'aggiornamento esito bozza AI fallito, invio già andato a buon fine',
+          )
+        }
+      }
+
       // Il destinatario è un alias del relay: non lo rimandiamo indietro,
       // non serve all'interfaccia e non ha motivo di girare.
       return reply.code(200).send({
