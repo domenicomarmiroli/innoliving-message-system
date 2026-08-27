@@ -14,12 +14,19 @@ import type { Db } from '../db/index.js'
  * un caso che non è il loro.
  *
  * Un `channel_account` per sito/brand, kind = 'contatto' (migrazione
- * 0016) — stesso pattern degli operatori Mirakl: un brand in più è una
- * riga di SQL più una variabile d'ambiente. Il codice non sa quanti siti
- * ci sono né come si chiamano.
+ * 0016) — il codice non sa quanti siti ci sono né come si chiamano, il
+ * brand di un ticket è sempre quello nell'URL.
+ *
+ * **Un solo token per tutti i brand** (`CONTATTO_TOKEN`), non uno per
+ * riga come per gli operatori Mirakl: qui non c'è un vero bisogno di
+ * isolamento — stesso sito, stessa infrastruttura, gestiti dalla stessa
+ * persona — e un token per brand sarebbe stata solo un'occasione in più
+ * di sbagliare la configurazione. Il token autentica il chiamante, il
+ * `:codice` nell'URL sceglie il brand: sono due cose distinte anche se
+ * oggi il secondo controllo (`CONTATTO_TOKEN` impostato) è unico.
  *
  * **Deve girare lato server**, non dal browser del sito: il token è un
- * segreto per brand, e mai un segreto finisce nel bundle di un sito
+ * segreto condiviso, e mai un segreto finisce nel bundle di un sito
  * pubblico. Per questo qui non c'è CORS: non è pensato per essere
  * chiamato da JavaScript in una pagina.
  *
@@ -51,35 +58,46 @@ export function normalizzaNumeroOrdine(v: string): string {
 }
 
 export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; config: Config }) {
-  const { db } = opts
+  const { db, config } = opts
+
+  if (!config.CONTATTO_TOKEN) {
+    app.log.warn(
+      'CONTATTO_TOKEN non impostato: la rotta di apertura ticket dai siti esterni resta disattivata',
+    )
+    return
+  }
+  const chiave = config.CONTATTO_TOKEN
 
   app.post('/contatti/:codice/ticket', async (req, reply) => {
     const { codice } = req.params as { codice: string }
 
-    const [account] = await db<
-      { id: string; sla_minutes: number; secret_ref: string | null; active: boolean }[]
-    >`
-      select id, sla_minutes, secret_ref, active
-      from channel_account
-      where code = ${codice} and kind = 'contatto'
-    `
-    if (!account) return reply.code(404).send({ errore: 'sito non configurato' })
-    if (!account.active) return reply.code(404).send({ errore: 'sito non configurato' })
-    if (!account.secret_ref) {
-      req.log.error({ codice }, 'channel_account contatto senza secret_ref')
-      return reply.code(500).send({ errore: 'configurazione incompleta' })
-    }
-
-    const chiave = process.env[account.secret_ref]
-    if (!chiave) {
-      req.log.error({ codice, variabile: account.secret_ref }, 'token del sito non impostato')
-      return reply.code(500).send({ errore: 'configurazione incompleta' })
-    }
-
     const headerAuth = req.headers.authorization
     const token = headerAuth?.startsWith('Bearer ') ? headerAuth.slice(7) : null
     if (!token || !confrontoCostante(token, chiave)) {
+      // Mai il valore del token nei log — solo la forma, per capire senza
+      // maneggiare il segreto: header assente, senza 'Bearer ', o presente
+      // ma diverso da quello configurato per questo sito.
+      req.log.warn(
+        {
+          codice,
+          motivo: !headerAuth
+            ? 'header Authorization assente'
+            : !headerAuth.startsWith('Bearer ')
+              ? "header presente ma senza prefisso 'Bearer '"
+              : 'token presente ma non corrisponde a quello configurato',
+        },
+        'apertura ticket rifiutata: token non valido',
+      )
       return reply.code(401).send({ errore: 'non autorizzato' })
+    }
+
+    const [account] = await db<{ id: string; sla_minutes: number; active: boolean }[]>`
+      select id, sla_minutes, active
+      from channel_account
+      where code = ${codice} and kind = 'contatto'
+    `
+    if (!account || !account.active) {
+      return reply.code(404).send({ errore: 'sito non configurato' })
     }
 
     const analizzato = corpo.safeParse(req.body)

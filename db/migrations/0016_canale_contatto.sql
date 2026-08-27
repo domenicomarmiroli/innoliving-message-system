@@ -26,15 +26,19 @@ where conrelid = 'channel_account'::regclass and conname = 'channel_account_kind
 -- =====================================================================
 -- NOTA — come aggiungere un sito
 --
--- Un channel_account per sito, kind = 'contatto':
+-- Un channel_account per sito, kind = 'contatto'. `secret_ref` NON si usa
+-- per questo canale (ripensato dopo il primo giro con più brand: un
+-- token per riga come per Mirakl era solo un'occasione in più di
+-- sbagliare la configurazione, senza un vero bisogno di isolamento fra
+-- siti della stessa infrastruttura). Un solo CONTATTO_TOKEN in
+-- .env.example autentica tutti i brand; il brand del ticket resta
+-- sempre quello nell'URL (:codice), non nel token.
 --
---   insert into channel_account (kind, code, display_name, locale, config, secret_ref)
---   values ('contatto', 'contatto-<brand>', '<Nome del brand>', 'it',
---           '{}'::jsonb, 'CONTATTO_<BRAND>_TOKEN');
+--   insert into channel_account (kind, code, display_name, locale, config)
+--   values ('contatto', 'contatto-<brand>', '<Nome del brand>', 'it', '{}'::jsonb);
 --
--- Il TOKEN è un segreto generato a caso (es. openssl rand -hex 32),
--- impostato come variabile d'ambiente su Render col nome indicato in
--- secret_ref — MAI nel codice, MAI nel bundle del sito che chiama
--- l'endpoint (che deve girare lato server, non nel browser: un token
--- nel JavaScript del sito sarebbe leggibile da chiunque).
+-- Il TOKEN condiviso va impostato UNA volta come variabile d'ambiente su
+-- Render (CONTATTO_TOKEN) — MAI nel codice, MAI nel bundle del sito che
+-- chiama l'endpoint (che deve girare lato server, non nel browser: un
+-- token nel JavaScript del sito sarebbe leggibile da chiunque).
 -- =====================================================================

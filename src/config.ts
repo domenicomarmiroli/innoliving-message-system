@@ -58,6 +58,14 @@ const schema = z.object({
   // venditore è troppo pericoloso per essere il comportamento predefinito.
   WORKER_API_TOKEN: z.string().min(16).optional(),
 
+  // Segreto condiviso per POST /contatti/:codice/ticket, usato dalle
+  // edge function dei siti esterni (stesso codice, brand diversi — un
+  // token per riga come per gli operatori Mirakl sarebbe stata
+  // separazione senza un vero bisogno di isolamento, solo più occasioni
+  // di sbagliare la configurazione). Il canale (brand) resta comunque
+  // nell'URL: questo token autentica il chiamante, non sceglie il brand.
+  CONTATTO_TOKEN: z.string().min(16).optional(),
+
   // Per verificare la sessione di un agente loggato in Lovable: il
   // worker chiede a Supabase Auth di chi è il token, senza mai tenere un
   // segreto condiviso col browser. Stessi valori — non sensibili, sono

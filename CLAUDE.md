@@ -529,14 +529,17 @@ mandare un'email formattata a mano — che avrebbe costretto
 marketplace) a interpretare un caso che non è il loro.
 
 `src/routes/contatti.ts` — `POST /contatti/:codice/ticket`. Un
-`channel_account` per sito/brand, `kind = 'contatto'`, stesso pattern
-degli operatori Mirakl: un brand in più è una riga di SQL più una
-variabile d'ambiente, il codice non sa quanti siti ci sono né come si
-chiamano. Autenticazione con un token per brand (`secret_ref` punta al
-nome della variabile, esattamente come Mirakl) — **deve girare lato
-server** del sito chiamante, mai nel browser: un token nel JavaScript di
-un sito pubblico sarebbe leggibile da chiunque. Per questo niente CORS su
-questa rotta: non è pensata per essere chiamata da una pagina.
+`channel_account` per sito/brand, `kind = 'contatto'` — il codice non sa
+quanti siti ci sono né come si chiamano, il brand di un ticket è sempre
+quello nell'URL. **Un solo token per tutti i brand** (`CONTATTO_TOKEN`),
+non uno per riga come Mirakl: qui non c'è un vero bisogno di isolamento
+fra siti (stessa infrastruttura, stessa persona che li gestisce), e un
+token per brand era solo un'occasione in più di sbagliare la
+configurazione — deciso dopo il primo giro con più brand attivi insieme.
+**Deve girare lato server** del sito chiamante, mai nel browser: un
+token nel JavaScript di un sito pubblico sarebbe leggibile da chiunque.
+Per questo niente CORS su questa rotta: non è pensata per essere
+chiamata da una pagina.
 
 Corpo: `email`, `nome` (facoltativo), `numero_ordine` (facoltativo,
 confrontato contro `order.external_order_id`/`shopify_name`, con o senza
