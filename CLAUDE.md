@@ -520,3 +520,35 @@ query torna vuota, è quello.
 Prossimo passo: pannello Lovable che legge queste viste e mostra grafici
 (ticket/giorno per canale, tempo di risposta medio, statistiche per
 agente, utilizzo AI, ticket per tipologia).
+
+### Canale "contatto" — ticket dai siti esterni (migrazione 0016)
+I siti con l'agente AI nella pagina Contattaci (fatti in Lovable, brand
+diversi dal marketplace principale) aprono un ticket qui invece di
+mandare un'email formattata a mano — che avrebbe costretto
+`ripulisci.ts`/`riconosci.ts` (pensati per email umane inoltrate da un
+marketplace) a interpretare un caso che non è il loro.
+
+`src/routes/contatti.ts` — `POST /contatti/:codice/ticket`. Un
+`channel_account` per sito/brand, `kind = 'contatto'`, stesso pattern
+degli operatori Mirakl: un brand in più è una riga di SQL più una
+variabile d'ambiente, il codice non sa quanti siti ci sono né come si
+chiamano. Autenticazione con un token per brand (`secret_ref` punta al
+nome della variabile, esattamente come Mirakl) — **deve girare lato
+server** del sito chiamante, mai nel browser: un token nel JavaScript di
+un sito pubblico sarebbe leggibile da chiunque. Per questo niente CORS su
+questa rotta: non è pensata per essere chiamata da una pagina.
+
+Corpo: `email`, `nome` (facoltativo), `numero_ordine` (facoltativo,
+confrontato contro `order.external_order_id`/`shopify_name`, con o senza
+`#` iniziale — nessun ordine trovato non è un errore, il ticket si apre
+comunque `unmatched`), `testo`, `richiesta_id` (facoltativo: se il
+chiamante lo manda, un retry di rete con lo stesso valore non apre un
+secondo ticket — regola 2, idempotenza).
+
+Il messaggio si scrive con `raw.from = email`: `core/mail/invia.ts`
+(usato per qualunque canale non-Mirakl) legge già quel campo per sapere a
+chi rispondere, quindi la risposta dell'agente parte via email verso
+l'indirizzo lasciato dal cliente senza nessuna modifica al connettore di
+invio — stesso meccanismo di sempre, un canale in più che lo usa.
+
+Come aggiungere un sito: la nota è scritta dentro la migrazione 0016.
