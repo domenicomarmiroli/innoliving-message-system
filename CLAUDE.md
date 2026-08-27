@@ -371,21 +371,52 @@ l'identificativo, che è lo stesso `external_order_id` importato da Shopify.
 Nessun testo da interpretare — al contrario di Amazon, dove il numero va
 cercato nell'oggetto o nel corpo.
 
-**DEBITO IMPORTANTE — scritto sulla documentazione, non su risposte vere.**
-Quando è stato costruito nessun cliente Mirakl aveva ancora scritto e l'API
-restituiva `{"data":[]}`. Per questo il normalizzatore è tollerante e
-*loquace*: ogni scostamento dallo schema atteso finisce in `ingest_anomaly`
-con tipo `mirakl_*` invece di rompersi o, peggio, di essere ignorato. Il punto
-più incerto è `from.type`, da cui dipende il verso del messaggio: i valori
-considerati "nostri" stanno in `MITTENTI_NOSTRI_PREDEFINITI` e i tipi
-sconosciuti vengono registrati.
+**✅ COLLAUDATO SU DATI VERI (27/08)**: Leroy Merlin France (Adeo,
+`mirakl-lmfr`) è il primo cliente Mirakl reale che scrive in questo
+sistema. Primo giro dopo l'attivazione: **1.558 messaggi** inseriti, zero
+errori — il debito "scritto sulla documentazione, non su risposte vere"
+si è ridotto parecchio, restano da collaudare solo gli allegati in
+entrata/uscita (nessuno ancora arrivato con un file).
 
-Al primo messaggio vero, il collaudo è un comando:
+Tre cose scoperte proprio su questo primo collaudo, tutte corrette:
+
+1. **`from.type` — tre valori reali**: `SHOP_USER` (siamo noi, ora in
+   `MITTENTI_NOSTRI_PREDEFINITI` insieme a `SHOP`/`SELLER`/`STORE`),
+   `CUSTOMER_USER` (il cliente, comportamento di default già corretto),
+   `OPERATOR_USER` (**il marketplace stesso**, non il cliente — verificato
+   sul contenuto reale: mittente "Operator", notifiche automatiche tipo
+   "hai ricevuto una richiesta di fattura", indirizzate al negozio). I
+   valori del marketplace stanno in `MITTENTI_MARKETPLACE_PREDEFINITI` e
+   producono `author_kind = 'system'` — la colonna esisteva già nello
+   schema, inutilizzata: era pensata esattamente per questo caso. Un tipo
+   davvero ignoto (né nostro né marketplace) resta `customer` per
+   prudenza e finisce comunque in `ingest_anomaly`.
+
+2. **M12 non accetta JSON** — solo `multipart/form-data`, in ogni caso,
+   anche senza allegati. Il ramo JSON che il connettore usava per i
+   messaggi senza allegati non avrebbe mai potuto funzionare: non è mai
+   stato eseguito prima d'ora, quindi non aveva ancora fatto danni, ma
+   sarebbe fallito al primo invio reale senza file. Ora `invia.ts` usa
+   sempre multipart.
+
+3. **`message_input.to` è obbligatorio**, non facoltativo: senza, l'API
+   rifiuta la richiesta. Un thread può avere due controparti — il
+   cliente e l'operatore del marketplace (vedi sopra) — e l'agente deve
+   poter scegliere a chi rispondere, come sul portale Mirakl. Di default
+   si risponde solo al cliente (`DestinatarioMirakl`, in `invia.ts`);
+   `/threads/reply` accetta `mirakl_destinatari` (facoltativo, solo per
+   thread Mirakl) per scegliere `CUSTOMER`, `OPERATOR`, o entrambi. Vale
+   per qualunque operatore Mirakl, non solo Leroy Merlin — stessa API per
+   tutti. **Lato Lovable**: manca ancora il selettore nell'editor di
+   risposta per i thread Mirakl — prossimo passo.
+
+Per un nuovo operatore, lo stesso collaudo:
 ```
 npm run mirakl:check -- --forma
 ```
 Non scrive nulla: stampa i nomi dei campi che l'API restituisce davvero, li
 confronta con quelli attesi e non mostra il contenuto dei messaggi.
+Ma il vero collaudo, come dimostrato qui, è il primo cliente che scrive.
 
 ### Bozze AI e knowledge base (passo 07, migrazione 0010)
 `core/ai/` — un provider dietro un'interfaccia (`provider.ts`), un'implementazione

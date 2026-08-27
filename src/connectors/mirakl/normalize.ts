@@ -27,6 +27,8 @@ export interface AllegatoMirakl {
 export interface MessaggioMirakl {
   external_id: string | null
   direzione: 'in' | 'out'
+  /** Chi ha scritto davvero: noi, il cliente, o il marketplace stesso (notifiche automatiche). */
+  autore_kind: 'agent' | 'customer' | 'system'
   autore: string | null
   /** Il valore grezzo di from.type: serve per capire i casi non previsti. */
   tipo_mittente: string | null
@@ -57,8 +59,20 @@ export interface EsitoNormalizza {
  * Quali valori di `from.type` significano "l'abbiamo scritto noi".
  * Configurabile perché è l'unica cosa che non ho potuto verificare: se
  * l'enum reale è diverso, si corregge senza toccare il codice.
+ * `SHOP_USER` verificato su un cliente reale (Leroy Merlin/Adeo, 27/08).
  */
-export const MITTENTI_NOSTRI_PREDEFINITI = ['SHOP', 'SELLER', 'STORE']
+export const MITTENTI_NOSTRI_PREDEFINITI = ['SHOP', 'SELLER', 'STORE', 'SHOP_USER']
+
+/**
+ * Quali valori di `from.type` sono il marketplace stesso, non un cliente:
+ * notifiche automatiche indirizzate al negozio (es. "hai ricevuto una
+ * richiesta di fattura"). Non è né un messaggio nostro né del cliente —
+ * `author_kind = 'system'` esisteva già nello schema, inutilizzato:
+ * questo è il caso per cui era pensato.
+ * `OPERATOR_USER` verificato su un cliente reale (Leroy Merlin/Adeo, 27/08):
+ * mittente "Operator", testo "Ti informiamo che hai ricevuto...".
+ */
+export const MITTENTI_MARKETPLACE_PREDEFINITI = ['OPERATOR', 'OPERATOR_USER']
 
 /** L'entità che rappresenta un ordine nel modello Mirakl. */
 const ENTITA_ORDINE = ['MMP_ORDER', 'MPS_ORDER']
@@ -74,6 +88,7 @@ function numero(v: unknown): number | null {
 export function normalizzaRisposta(
   risposta: unknown,
   mittentiNostri: string[] = MITTENTI_NOSTRI_PREDEFINITI,
+  mittentiMarketplace: string[] = MITTENTI_MARKETPLACE_PREDEFINITI,
 ): EsitoNormalizza {
   const stranezze: EsitoNormalizza['stranezze'] = []
   const threads: ThreadMirakl[] = []
@@ -107,7 +122,7 @@ export function normalizzaRisposta(
       creato_il: testo(t.date_created),
       aggiornato_il: testo(t.date_updated),
       external_order_id: ordineDa(t.entities, stranezze, id),
-      messaggi: messaggiDa(t.messages, mittentiNostri, stranezze, id),
+      messaggi: messaggiDa(t.messages, mittentiNostri, mittentiMarketplace, stranezze, id),
       raw: grezzo,
     })
   }
@@ -158,6 +173,7 @@ function ordineDa(
 function messaggiDa(
   messages: unknown,
   mittentiNostri: string[],
+  mittentiMarketplace: string[],
   stranezze: EsitoNormalizza['stranezze'],
   threadId: string,
 ): MessaggioMirakl[] {
@@ -169,10 +185,21 @@ function messaggiDa(
     const from = msg?.from as Record<string, unknown> | undefined
     const tipoMittente = testo(from?.type)
 
+    const autoreKind: MessaggioMirakl['autore_kind'] =
+      tipoMittente && mittentiNostri.includes(tipoMittente)
+        ? 'agent'
+        : tipoMittente && mittentiMarketplace.includes(tipoMittente)
+          ? 'system'
+          : 'customer'
+
     // Il verso del messaggio è l'unica cosa che non ho potuto
-    // verificare su dati veri. Se il tipo è ignoto lo registriamo: è
-    // l'informazione che serve per correggere l'elenco.
-    if (tipoMittente && !mittentiNostri.includes(tipoMittente)) {
+    // verificare su dati veri. Se il tipo è ignoto (non in nessuna delle
+    // due liste) lo registriamo: è l'informazione che serve a correggerle.
+    if (
+      tipoMittente &&
+      !mittentiNostri.includes(tipoMittente) &&
+      !mittentiMarketplace.includes(tipoMittente)
+    ) {
       const gia = stranezze.some(
         (s) =>
           s.tipo === 'mirakl_tipo_mittente' &&
@@ -188,7 +215,10 @@ function messaggiDa(
 
     fuori.push({
       external_id: testo(msg?.id),
-      direzione: tipoMittente && mittentiNostri.includes(tipoMittente) ? 'out' : 'in',
+      // Il marketplace non l'abbiamo scritto noi: 'in' è corretto anche
+      // per lui, author_kind='system' lo distingue dal cliente vero.
+      direzione: autoreKind === 'agent' ? 'out' : 'in',
+      autore_kind: autoreKind,
       autore: testo(from?.display_name),
       tipo_mittente: tipoMittente,
       corpo: testo(msg?.body),

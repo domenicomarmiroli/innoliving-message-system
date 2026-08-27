@@ -15,13 +15,31 @@ import { ClientMirakl, costruisciOperatori } from './client.js'
  * risponde dentro il thread, autenticati come negozio, e il messaggio
  * arriva dove deve. È il vantaggio di avere una API vera.
  *
- * Con allegati, M12 accetta multipart/form-data con `message_input.body`
- * e `files[]` — verificato sulla documentazione pubblica (non ancora su
- * un invio reale con file: nessun cliente Mirakl ha ancora scritto).
+ * **Sempre multipart/form-data, con o senza allegati**: la documentazione
+ * di M12 non elenca `application/json` come content-type accettato, solo
+ * multipart — verificato leggendo lo schema pubblico dopo aver scoperto
+ * che il ramo JSON di prima (usato quando non c'erano allegati) non
+ * sarebbe mai potuto funzionare. `message_input.body` e `files[]` restano
+ * comunque non verificati su un invio reale — nessun cliente Mirakl ha
+ * ancora scritto quando questo file è stato costruito.
+ *
+ * **`message_input.to` è obbligatorio**, non un dettaglio facoltativo:
+ * senza, l'API rifiuta la richiesta. Un thread Mirakl può avere due
+ * controparti diverse — il cliente e l'operatore del marketplace stesso,
+ * che a volte scrive nello stesso thread (es. richieste di fattura) — e
+ * l'agente deve poter scegliere a chi rispondere, come sul portale
+ * Mirakl. Di default si risponde al cliente: è il caso comune, e non
+ * richiede che l'agente pensi a niente in più per il 99% dei messaggi.
+ * Vale per qualunque operatore Mirakl, non solo uno specifico — è la
+ * stessa API per tutti.
  * OR74 ("carica documenti per un ordine") non è questo: è a livello di
  * ordine, non di thread di messaggistica — scartato dopo aver letto la
  * documentazione, non solo il runbook originale.
  */
+
+export type DestinatarioMirakl = 'CUSTOMER' | 'OPERATOR'
+
+const DESTINATARI_DEFAULT: DestinatarioMirakl[] = ['CUSTOMER']
 
 export interface RichiestaInvioMirakl {
   thread_id: string
@@ -30,6 +48,8 @@ export interface RichiestaInvioMirakl {
   draft_id?: string | null
   testo: string
   allegati?: FilePronto[]
+  /** A chi va la risposta. Vuoto/assente ⇒ solo al cliente. */
+  destinatari?: DestinatarioMirakl[]
 }
 
 export interface EsitoInvioMirakl {
@@ -91,17 +111,20 @@ export async function inviaMessaggioMirakl(
   const client = new ClientMirakl(operatore, log)
   const percorsoInvio = `/inbox/threads/${encodeURIComponent(thread.external_thread_id)}/message`
 
-  const risposta =
-    richiesta.allegati && richiesta.allegati.length > 0
-      ? await (() => {
-          const form = new FormData()
-          form.append('message_input.body', richiesta.testo)
-          for (const a of richiesta.allegati!) {
-            form.append('files', new Blob([new Uint8Array(a.contenuto)], { type: a.mime }), a.nome_file)
-          }
-          return client.postMultipart<{ id?: unknown }>(percorsoInvio, form)
-        })()
-      : await client.post<{ id?: unknown }>(percorsoInvio, { body: richiesta.testo })
+  const destinatari =
+    richiesta.destinatari && richiesta.destinatari.length > 0
+      ? richiesta.destinatari
+      : DESTINATARI_DEFAULT
+
+  const form = new FormData()
+  form.append('message_input.body', richiesta.testo)
+  destinatari.forEach((tipo, i) => {
+    form.append(`message_input.to[${i}].type`, tipo)
+  })
+  for (const a of richiesta.allegati ?? []) {
+    form.append('files', new Blob([new Uint8Array(a.contenuto)], { type: a.mime }), a.nome_file)
+  }
+  const risposta = await client.postMultipart<{ id?: unknown }>(percorsoInvio, form)
 
   // Se Mirakl restituisce l'id del messaggio lo usiamo come chiave
   // esterna: al prossimo giro di sincronizzazione lo stesso messaggio

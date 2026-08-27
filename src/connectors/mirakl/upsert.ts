@@ -187,8 +187,7 @@ export async function upsertThread(
           thread_id, direction, author_kind, external_id, body_text,
           sent_at, match_strategy, raw
         ) values (
-          ${threadId}, ${m.direzione},
-          ${m.direzione === 'out' ? 'agent' : 'customer'},
+          ${threadId}, ${m.direzione}, ${m.autore_kind},
           ${m.external_id}, ${m.corpo},
           ${m.inviato_il ? new Date(m.inviato_il) : aggiornato},
           'api', ${tx.json(m.raw as never)}

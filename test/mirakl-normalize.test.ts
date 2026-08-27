@@ -65,6 +65,49 @@ describe('normalizzazione M11', () => {
   })
 })
 
+describe('classificazione del mittente — verificata su Leroy Merlin/Adeo reale', () => {
+  const threadCon = (tipoMittente: string) => ({
+    data: [
+      {
+        id: 't1',
+        messages: [{ id: 'm1', from: { type: tipoMittente, display_name: 'X' }, body: 'ciao' }],
+      },
+    ],
+  })
+
+  it('SHOP_USER è noi: out/agent, nessuna stranezza registrata', () => {
+    const { threads, stranezze } = normalizzaRisposta(threadCon('SHOP_USER'))
+    const m = threads[0]!.messaggi[0]!
+    expect(m.direzione).toBe('out')
+    expect(m.autore_kind).toBe('agent')
+    expect(stranezze).toEqual([])
+  })
+
+  it('OPERATOR_USER è il marketplace, non il cliente: in/system, nessuna stranezza', () => {
+    // Verificato su un thread reale: mittente "Operator", notifica
+    // automatica di richiesta fattura indirizzata al negozio.
+    const { threads, stranezze } = normalizzaRisposta(threadCon('OPERATOR_USER'))
+    const m = threads[0]!.messaggi[0]!
+    expect(m.direzione).toBe('in')
+    expect(m.autore_kind).toBe('system')
+    expect(stranezze).toEqual([])
+  })
+
+  it('CUSTOMER_USER è il cliente: in/customer', () => {
+    const { threads } = normalizzaRisposta(threadCon('CUSTOMER_USER'))
+    const m = threads[0]!.messaggi[0]!
+    expect(m.direzione).toBe('in')
+    expect(m.autore_kind).toBe('customer')
+  })
+
+  it('un tipo davvero ignoto resta customer per prudenza, ma si registra', () => {
+    const { threads, stranezze } = normalizzaRisposta(threadCon('QUALCOSA_DI_NUOVO'))
+    const m = threads[0]!.messaggi[0]!
+    expect(m.autore_kind).toBe('customer')
+    expect(stranezze.some((s) => s.tipo === 'mirakl_tipo_mittente')).toBe(true)
+  })
+})
+
 describe('robustezza del normalizzatore', () => {
   it('una risposta senza data non lancia: lo registra', () => {
     const { threads, stranezze } = normalizzaRisposta({ qualcosa: 'altro' })

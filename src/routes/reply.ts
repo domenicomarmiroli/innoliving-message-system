@@ -39,6 +39,10 @@ const corpo = z.object({
   // (outcome/final_text) per confrontare la proposta con cosa è stato
   // davvero spedito. Facoltativo: un testo scritto da zero non ce l'ha.
   draft_id: z.string().uuid().nullable().optional(),
+  // Solo per i thread Mirakl: a chi va la risposta. Un thread può avere
+  // due controparti (il cliente e l'operatore del marketplace stesso),
+  // e l'agente sceglie come sul portale Mirakl. Vuoto/assente ⇒ cliente.
+  mirakl_destinatari: z.array(z.enum(['CUSTOMER', 'OPERATOR'])).max(2).optional(),
   // Riferimenti a file già caricati dall'interfaccia direttamente su
   // Supabase Storage (stesso bucket 'allegati', percorso a sua scelta):
   // il worker li scarica, li normalizza per canale e solo allora li spedisce.
@@ -163,6 +167,7 @@ export async function replyRoutes(
               draft_id: analizzato.data.draft_id ?? null,
               testo: analizzato.data.testo,
               allegati: allegatiPronti,
+              destinatari: analizzato.data.mirakl_destinatari,
             }).then((e) => ({ message_id: e.message_id, rfc822_id: null }))
           : await inviaRisposta(db, req.log, config, {
               thread_id: analizzato.data.thread_id,
