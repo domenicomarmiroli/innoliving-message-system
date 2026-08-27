@@ -115,6 +115,14 @@ migrazione iniziale con schema/RLS/seed, e il **connettore Shopify completo**
 - `src/connectors/shopify/normalize.ts` — due adattatori (webhook REST e
   GraphQL) verso un solo normalizzatore. Il riconoscimento del canale è
   scritto una volta sola ed è testato su payload reali dello store.
+  **Indirizzi** (`shipping_address`/`billing_address`, migrazione 0013):
+  stessi nomi di campo in REST e GraphQL per queste chiavi (`address1`,
+  `city`, `zip`, `country`, `phone`, `name`), un solo estrattore per
+  entrambi. Per ordine, non per cliente: un cliente può farsi spedire un
+  ordine a un indirizzo diverso dal solito (regalo, seconda casa). Gli
+  ordini importati prima di questa migrazione restano con questi campi
+  `null` finché il giro periodico o un nuovo backfill non li ripassa —
+  non è un dato perso, prima non veniva proprio richiesto a Shopify.
 - `src/connectors/shopify/hmac.ts` — verifica della firma sul corpo grezzo,
   confronto a tempo costante.
 - `src/connectors/shopify/upsert.ts` — scrittura idempotente con gestione del

@@ -20,6 +20,8 @@ query Ordini($first: Int!, $after: String, $query: String) {
         nodes { title quantity sku originalUnitPriceSet { shopMoney { amount } } image { url } }
       }
       fulfillments(first: 1) { trackingInfo { number url company } }
+      shippingAddress { name phone address1 address2 city province zip country }
+      billingAddress { name phone address1 address2 city province zip country }
     }
   }
 }`

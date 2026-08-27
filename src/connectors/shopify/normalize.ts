@@ -16,6 +16,23 @@
 
 export type Canale = 'amazon' | 'mirakl' | 'tiktok' | 'shopify'
 
+/**
+ * Stessa forma sia dal webhook REST (snake_case: address1, address2, city,
+ * province, zip, country, phone, name) sia dalla GraphQL Admin API
+ * (identici tranne countryCodeV2/provinceCode che non servono qui): un
+ * solo estrattore basta per entrambi gli adattatori.
+ */
+export interface IndirizzoCanonico {
+  nome: string | null
+  telefono: string | null
+  indirizzo1: string | null
+  indirizzo2: string | null
+  citta: string | null
+  provincia: string | null
+  cap: string | null
+  paese: string | null
+}
+
 export interface RigaCanonica {
   sku: string | null
   titolo: string | null
@@ -42,6 +59,8 @@ export interface OrdineCanonico {
   currency: string | null
   /** Ordine di servizio (ricambio, garanzia): non è una vendita. */
   is_service_order: boolean
+  shipping_address: IndirizzoCanonico | null
+  billing_address: IndirizzoCanonico | null
   righe: RigaCanonica[]
   raw: unknown
 }
@@ -62,6 +81,8 @@ interface Grezzo {
   tracking_number: string | null
   tracking_url: string | null
   carrier: string | null
+  shipping_address: IndirizzoCanonico | null
+  billing_address: IndirizzoCanonico | null
   righe: RigaCanonica[]
   raw: unknown
 }
@@ -74,6 +95,20 @@ const num = (v: unknown): number | null => {
 
 const str = (v: unknown): string | null =>
   typeof v === 'string' && v.trim() !== '' ? v.trim() : null
+
+function estraiIndirizzo(a: Record<string, unknown> | null | undefined): IndirizzoCanonico | null {
+  if (!a) return null
+  return {
+    nome: str(a['name']),
+    telefono: str(a['phone']),
+    indirizzo1: str(a['address1']),
+    indirizzo2: str(a['address2']),
+    citta: str(a['city']),
+    provincia: str(a['province']),
+    cap: str(a['zip']),
+    paese: str(a['country']),
+  }
+}
 
 /** Tag di servizio: questi ordini non sono vendite e non entrano nel fatturato. */
 export const TAG_SERVIZIO = ['RICAMBIO', 'GARANZIA', 'SOSTITUZIONE']
@@ -160,6 +195,8 @@ function componi(g: Grezzo): OrdineCanonico {
     total: g.total,
     currency: g.currency,
     is_service_order: isServizio(g.tags),
+    shipping_address: g.shipping_address,
+    billing_address: g.billing_address,
     righe: g.righe,
     raw: g.raw,
   }
@@ -212,6 +249,8 @@ export function daWebhook(payload: Record<string, unknown>): OrdineCanonico {
     tracking_number: str(primo['tracking_number']),
     tracking_url: str(primo['tracking_url']),
     carrier: str(primo['tracking_company']),
+    shipping_address: estraiIndirizzo(payload['shipping_address'] as Record<string, unknown> | null),
+    billing_address: estraiIndirizzo(payload['billing_address'] as Record<string, unknown> | null),
     righe,
     raw: payload,
   })
@@ -253,6 +292,8 @@ export function daGraphQL(node: Record<string, any>): OrdineCanonico {
     tracking_number: str(tracking.number),
     tracking_url: str(tracking.url),
     carrier: str(tracking.company),
+    shipping_address: estraiIndirizzo(node.shippingAddress),
+    billing_address: estraiIndirizzo(node.billingAddress),
     righe,
     raw: node,
   })

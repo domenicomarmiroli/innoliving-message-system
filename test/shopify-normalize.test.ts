@@ -99,4 +99,73 @@ describe('robustezza', () => {
     expect(o.external_order_id).toBe('INSH0001')
     expect(o.righe).toEqual([])
   })
+
+  it('senza indirizzo nel payload, resta null (non un oggetto vuoto)', () => {
+    expect(daWebhook({ name: 'INSH0001' }).shipping_address).toBeNull()
+    expect(daGraphQL(gql.sito).shipping_address).toBeNull()
+  })
+})
+
+describe('indirizzi di spedizione e fatturazione', () => {
+  it('webhook REST: stessi nomi di campo (address1, city, zip, ...)', () => {
+    const o = daWebhook({
+      name: 'INSH9999',
+      shipping_address: {
+        name: 'Mario Rossi',
+        phone: '333 1234567',
+        address1: 'Via Roma 1',
+        address2: 'Interno 3',
+        city: 'Milano',
+        province: 'MI',
+        zip: '20100',
+        country: 'Italy',
+      },
+      billing_address: {
+        name: 'Mario Rossi',
+        address1: 'Via Torino 9',
+        city: 'Torino',
+        zip: '10100',
+        country: 'Italy',
+      },
+    })
+    expect(o.shipping_address).toEqual({
+      nome: 'Mario Rossi',
+      telefono: '333 1234567',
+      indirizzo1: 'Via Roma 1',
+      indirizzo2: 'Interno 3',
+      citta: 'Milano',
+      provincia: 'MI',
+      cap: '20100',
+      paese: 'Italy',
+    })
+    expect(o.billing_address).toEqual({
+      nome: 'Mario Rossi',
+      telefono: null,
+      indirizzo1: 'Via Torino 9',
+      indirizzo2: null,
+      citta: 'Torino',
+      provincia: null,
+      cap: '10100',
+      paese: 'Italy',
+    })
+  })
+
+  it('GraphQL: stessi nomi di campo di REST per questi indirizzi', () => {
+    const o = daGraphQL({
+      name: 'INSH9999',
+      shippingAddress: {
+        name: 'Anna Bianchi',
+        phone: '347 7654321',
+        address1: 'Corso Italia 5',
+        city: 'Roma',
+        province: 'RM',
+        zip: '00100',
+        country: 'Italy',
+      },
+      billingAddress: null,
+    })
+    expect(o.shipping_address?.nome).toBe('Anna Bianchi')
+    expect(o.shipping_address?.citta).toBe('Roma')
+    expect(o.billing_address).toBeNull()
+  })
 })

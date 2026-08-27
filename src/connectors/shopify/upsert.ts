@@ -68,12 +68,16 @@ export async function upsertOrdine(
       insert into "order" (
         channel, external_order_id, shopify_gid, shopify_name, operator, buyer_alias,
         placed_at, financial_status, fulfillment_status,
-        tracking_number, tracking_url, carrier, total, currency, raw
+        tracking_number, tracking_url, carrier, total, currency,
+        shipping_address, billing_address, raw
       ) values (
         ${o.channel}, ${o.external_order_id}, ${o.shopify_gid}, ${o.shopify_name},
         ${o.operator}, ${o.buyer_alias}, ${o.placed_at}, ${o.financial_status},
         ${o.fulfillment_status}, ${o.tracking_number}, ${o.tracking_url}, ${o.carrier},
-        ${o.total}, ${o.currency}, ${tx.json(o.raw as never)}
+        ${o.total}, ${o.currency},
+        ${o.shipping_address ? tx.json(o.shipping_address as never) : null},
+        ${o.billing_address ? tx.json(o.billing_address as never) : null},
+        ${tx.json(o.raw as never)}
       )
       on conflict (channel, external_order_id) do update set
         shopify_gid        = excluded.shopify_gid,
@@ -89,6 +93,8 @@ export async function upsertOrdine(
         carrier            = coalesce(excluded.carrier, "order".carrier),
         total              = excluded.total,
         currency           = excluded.currency,
+        shipping_address   = coalesce(excluded.shipping_address, "order".shipping_address),
+        billing_address    = coalesce(excluded.billing_address, "order".billing_address),
         raw                = excluded.raw,
         updated_at         = now()
       returning id
