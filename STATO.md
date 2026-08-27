@@ -337,6 +337,42 @@ previsto nel runbook e mai costruito.
 
 ---
 
+## Dashboard di reportistica — sessione del 27/08
+
+Richiesta da Domenico: ticket/giorno per canale, tempo di risposta medio,
+statistiche per agente, utilizzo AI, ticket per tipologia, rispetto SLA.
+
+**Fatto lato worker**: `message.agent_id`/`message.draft_id` (migrazione
+0014, chi ha spedito e da quale bozza), quattro viste `security_invoker =
+true` (migrazione 0015): `v_thread_metriche` (tempo alla prima risposta,
+`entro_sla`), `v_tempi_risposta` (tempo di risposta generale per agente),
+`v_tag_giornalieri` (tag srotolati per tipologia), `v_bozze_utilizzo`
+(bozze spedite per agente, invariate/modificate). 125 test verdi.
+
+**Fatto lato Lovable**: pagina `/report` (solo admin) — filtro date con
+periodi rapidi, granularità giorno/settimana/mese, KPI (nuovi ticket,
+prima risposta, risposta generale, % SLA), grafico "Ticket nel tempo",
+ripartizione per canale e per tipologia, tabella per agente, riquadro
+utilizzo AI. Policy RLS su `ai_draft` fornita da Lovable ed eseguita da
+Domenico (mai letto direttamente prima: la bozza arrivava dalla risposta
+HTTP del worker).
+
+**Bug trovato e corretto nello stesso giro**: "Nuovi ticket" contava
+`thread.created_at` (quando la riga entra nel database) invece di
+`thread.first_inbound_at` (quando il cliente scrive davvero) — per
+l'importazione storica di tre mesi di posta le due date sono lontanissime,
+e il grafico mostrava un picco finto di 583 ticket tutti sul giorno
+dell'import. Corretto: il grafico ora ha tre serie per ticket distinto
+(non messaggio grezzo) — Nuovi ticket, Conversazioni (rinominata da
+Domenico da "Hanno scritto"), Risposto.
+
+**✅ VERIFICATO da Domenico**: dopo il fix il totale passa correttamente
+da 583 a un numero più basso nella finestra di 30 giorni selezionata,
+perché la maggior parte dello storico importato ha una data reale più
+vecchia della finestra — comportamento atteso, non un bug.
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge
