@@ -23,6 +23,8 @@ export interface RichiestaInvio {
   thread_id: string
   /** Chi ha scritto la risposta: serve solo per l'audit, non per il testo. */
   agent_id: string | null
+  /** Se il testo viene da una bozza AI: per le statistiche di utilizzo. */
+  draft_id?: string | null
   testo: string
   /** Già passati da core/attachments/normalize.ts: pronti per essere spediti. */
   allegati?: FilePronto[]
@@ -124,10 +126,11 @@ export async function inviaRisposta(
   const [riga] = await db<{ id: string }[]>`
     insert into message (
       thread_id, direction, author_kind, external_id, rfc822_id,
-      in_reply_to, body_text, sent_at, delivery_state, raw
+      in_reply_to, body_text, sent_at, delivery_state, draft_id, agent_id, raw
     ) values (
       ${richiesta.thread_id}, 'out', 'agent', ${rfc822}, ${rfc822},
       ${ultimo.rfc822_id}, ${richiesta.testo}, ${new Date()}, 'inviato',
+      ${richiesta.draft_id ?? null}, ${richiesta.agent_id},
       ${db.json({ to: destinatario, subject: oggetto, accepted: inviato.accepted })}
     )
     returning id

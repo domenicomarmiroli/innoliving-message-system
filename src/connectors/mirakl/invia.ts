@@ -26,6 +26,8 @@ import { ClientMirakl, costruisciOperatori } from './client.js'
 export interface RichiestaInvioMirakl {
   thread_id: string
   agent_id: string | null
+  /** Se il testo viene da una bozza AI: per le statistiche di utilizzo. */
+  draft_id?: string | null
   testo: string
   allegati?: FilePronto[]
 }
@@ -110,10 +112,11 @@ export async function inviaMessaggioMirakl(
   const [riga] = await db<{ id: string }[]>`
     insert into message (
       thread_id, direction, author_kind, external_id, body_text,
-      sent_at, delivery_state, match_strategy, raw
+      sent_at, delivery_state, match_strategy, draft_id, agent_id, raw
     ) values (
       ${richiesta.thread_id}, 'out', 'agent', ${externalId}, ${richiesta.testo},
-      ${new Date()}, 'inviato', 'api', ${db.json({ risposta } as never)}
+      ${new Date()}, 'inviato', 'api', ${richiesta.draft_id ?? null}, ${richiesta.agent_id},
+      ${db.json({ risposta } as never)}
     )
     on conflict (thread_id, external_id) do nothing
     returning id

@@ -160,12 +160,14 @@ export async function replyRoutes(
           ? await inviaMessaggioMirakl(db, req.log, config, {
               thread_id: analizzato.data.thread_id,
               agent_id: analizzato.data.agent_id ?? null,
+              draft_id: analizzato.data.draft_id ?? null,
               testo: analizzato.data.testo,
               allegati: allegatiPronti,
             }).then((e) => ({ message_id: e.message_id, rfc822_id: null }))
           : await inviaRisposta(db, req.log, config, {
               thread_id: analizzato.data.thread_id,
               agent_id: analizzato.data.agent_id ?? null,
+              draft_id: analizzato.data.draft_id ?? null,
               testo: analizzato.data.testo,
               allegati: allegatiPronti,
             })

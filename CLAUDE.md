@@ -451,6 +451,41 @@ questa bozza" e passarlo in `draft_id` all'invio — se l'agente scrive da
 zero senza mai caricare una bozza, `draft_id` resta assente e quell'invio
 non viene contato.
 
-Prossimo passo: lato Lovable, passare `draft_id` da "Usa questa bozza"
-fino all'invio; poi, con dati reali accumulati, leggere `ai_draft.outcome`
-per capire quanto le bozze vengono usate così come sono.
+Lato Lovable, `draft_id` è collegato end-to-end (fatto): "Usa questa
+bozza" lo porta fino all'invio.
+
+### Dashboard di reportistica (migrazioni 0014, 0015)
+`message.agent_id` e `message.draft_id` (0014) chiudono due lacune scoperte
+costruendo la dashboard: prima, chi avesse spedito un messaggio si trovava
+solo scavando in `audit_log` (fragile per una query che gira spesso), e da
+un messaggio non si risaliva a quale bozza AI l'avesse originato. Sono
+diretti sulla riga, non più solo nell'audit.
+
+Quattro viste (0015), tutte `security_invoker = true` — **senza, una vista
+gira con i permessi di chi l'ha creata e bypassa la RLS delle tabelle
+sottostanti per chiunque la interroghi**, l'opposto di quello che serve:
+- `v_thread_metriche` — una riga per thread: tempo alla prima risposta
+  (`prima_risposta_at`/`minuti_prima_risposta`, dalla prima uscita non
+  interna dopo `first_inbound_at`) e rispetto SLA (`entro_sla`, contro
+  `channel_account.sla_minutes`).
+- `v_tempi_risposta` — una riga per ogni messaggio in arrivo abbinato alla
+  risposta successiva: il tempo di risposta "generale" (non solo la
+  prima), con `agent_id` per le statistiche per operatore.
+- `v_tag_giornalieri` — i tag di `thread.tags` srotolati un rigo per tag:
+  la scomposizione per tipologia (RESO, DANNO, RECESSO, RIMBORSO,
+  TRACKING...) è un conteggio su questa vista.
+- `v_bozze_utilizzo` — bozze AI davvero spedite, con chi le ha spedite:
+  `message.draft_id` incrociato con `ai_draft.outcome`.
+
+**Non serve una vista** per ticket al giorno/per canale o per l'utilizzo AI
+aggregato: select dirette su `thread`+`channel_account` annidato e su
+`ai_draft`, stesso pattern già in uso in Lovable altrove.
+
+**DEBITO noto**: `ai_draft` probabilmente non ha ancora una policy SELECT
+per gli agenti autenticati — finora la bozza arrivava dalla risposta HTTP
+del worker, mai da una lettura diretta. Se la dashboard la richiede e la
+query torna vuota, è quello.
+
+Prossimo passo: pannello Lovable che legge queste viste e mostra grafici
+(ticket/giorno per canale, tempo di risposta medio, statistiche per
+agente, utilizzo AI, ticket per tipologia).
