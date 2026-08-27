@@ -216,6 +216,13 @@ password per app non ha scadenza.
   i più comuni in Italia e internazionali): un link che non corrisponde a
   nessuno di questi resta bloccato, anche mescolato a uno di tracciamento
   vero nello stesso messaggio.
+  **Altra eccezione, stessa logica di `core/ai/redazione.ts`**: il
+  controllo sul telefono non scambia più un numero d'ordine Amazon (tre
+  cifre-sette cifre-sette cifre, es. `405-0668977-2033157`) per un
+  contatto — trovato quando una bozza AI l'ha citato per chiedere
+  conferma di un ordine non ancora in archivio e la policy l'ha bloccata
+  per errore. Un telefono vero accanto a un numero d'ordine nello stesso
+  messaggio resta comunque bloccato.
 
 - `ripulisci.ts` — riduce il corpo a ciò che ha scritto il cliente, togliendo
   l'impalcatura del relay. **Non restituisce mai il vuoto**: se non riconosce

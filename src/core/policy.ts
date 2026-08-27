@@ -26,6 +26,12 @@ const EMAIL_RE = /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/gi
 // scambiare un numero d'ordine o un codice prodotto per un contatto.
 const TELEFONO_RE = /(?:\+?\d[\s.-]?){7,}\d/g
 
+// Un numero d'ordine Amazon ha la stessa forma superficiale (tre cifre -
+// sette cifre - sette cifre, es. 405-0668977-2033157) e la regola non
+// deve scambiarlo per un telefono: la stessa distinzione già fatta per
+// la redazione di IBAN/carte in core/ai/redazione.ts.
+const NUMERO_ORDINE_AMAZON_RE = /^\d{3}-\d{7}-\d{7}$/
+
 // Termini che chiedono una recensione o un contatto fuori piattaforma,
 // nelle lingue dei marketplace su cui operiamo. Non è un dato specifico
 // di questa azienda: è la policy del canale, uguale per chiunque venda
@@ -179,6 +185,7 @@ export function check(kind: string, testo: string): EsitoPolicy {
       })
     }
     for (const porzione of trovaTutte(testo, TELEFONO_RE)) {
+      if (NUMERO_ORDINE_AMAZON_RE.test(porzione)) continue
       violazioni.push({
         codice: 'telefono_non_ammesso',
         messaggio: 'Il messaggio contiene un numero di telefono: non ammesso su questo canale.',

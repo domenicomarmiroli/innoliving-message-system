@@ -39,6 +39,25 @@ describe('policy — amazon', () => {
     expect(esito.violazioni.map((v) => v.codice)).toContain('telefono_non_ammesso')
   })
 
+  it('non scambia un numero d\'ordine Amazon per un telefono', () => {
+    const esito = check(
+      'amazon',
+      'Al momento non risulta un ordine collegato con il numero indicato (405-0668977-2033157).',
+    )
+    expect(esito.ok).toBe(true)
+    expect(esito.violazioni).toEqual([])
+  })
+
+  it('blocca comunque un telefono vero anche accanto a un numero d\'ordine Amazon', () => {
+    const esito = check(
+      'amazon',
+      'Il suo ordine 405-0668977-2033157 è confermato. Ci chiami al 333 1234567 per urgenze.',
+    )
+    expect(esito.ok).toBe(false)
+    expect(esito.violazioni.map((v) => v.codice)).toContain('telefono_non_ammesso')
+    expect(esito.violazioni[0]?.porzione).not.toContain('405-0668977-2033157')
+  })
+
   it('blocca una richiesta di recensione, in più lingue', () => {
     expect(check('amazon', 'La preghiamo di lasciare una recensione positiva').ok).toBe(false)
     expect(check('amazon', 'Please leave a review if you are happy').ok).toBe(false)
