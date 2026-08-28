@@ -91,6 +91,9 @@ create table "order" (
   -- distinta dalla spedizione in uscita qui sopra.
   reso_carrier          text,
   reso_tracking_number  text,
+  -- Quando è stato notificato il reso, indipendente dalla presenza di
+  -- un'etichetta: visibile su qualunque ticket collegato all'ordine.
+  reso_richiesto_at     timestamptz,
   total              numeric(12,2),
   currency           text,
   raw                jsonb       not null default '{}'::jsonb,
@@ -146,9 +149,32 @@ create table thread (
   last_inbound_at     timestamptz,
   due_at              timestamptz,
   tags                text[]      not null default '{}'::text[],
+  -- Quando lo stato è passato a closed. Scritta dal trigger
+  -- thread_closed_at_trg, non a mano: ordina la vista "Chiusi" per
+  -- data di chiusura reale, non per ultimo aggiornamento qualunque.
+  closed_at           timestamptz,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
+
+create or replace function public.thread_set_closed_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.state = 'closed' and (old.state is distinct from 'closed') then
+    new.closed_at := now();
+  elsif new.state <> 'closed' and old.state = 'closed' then
+    new.closed_at := null;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger thread_closed_at_trg
+  before update on thread
+  for each row
+  execute function public.thread_set_closed_at();
 
 create table message (
   id              uuid primary key default gen_random_uuid(),

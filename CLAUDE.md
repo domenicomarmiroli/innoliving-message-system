@@ -388,6 +388,22 @@ Corriere e tracking del reso finiscono in `order.reso_carrier` /
 `tracking_number`, che tracciano la spedizione IN USCITA verso il cliente,
 non quella di rientro: nel frontend sono due sezioni diverse.
 
+**`order.reso_richiesto_at` (migrazione 0020, 28/08)**: quando è arrivata
+la notifica di reso, indipendente da corriere/tracking — un cliente può
+aprire un reso prima che Amazon emetta l'etichetta, e senza questa colonna
+il pannello "Reso" spariva del tutto in quel caso, perdendo l'informazione
+più importante. `registraReso()` la valorizza sempre (con `coalesce`, non
+sovrascrive una data già vista), a prescindere da corriere/tracking. È
+sull'**ordine**, non sul thread: visibile su qualunque ticket collegato a
+quell'ordine, non solo su quello che ha ricevuto l'email.
+
+**`thread.closed_at` (migrazione 0020)**: scritta da un trigger
+(`thread_set_closed_at`) al passaggio a `state = 'closed'`, azzerata alla
+riapertura — non a mano da Lovable, così resta corretta indipendentemente
+da quale punto dell'interfaccia cambia lo stato. Serve alla vista "Chiusi",
+ordinata per data di chiusura discendente invece che per scadenza SLA
+(che per un ticket già chiuso non ha più senso): l'ultimo gestito in cima.
+
 ### Connettore Mirakl (passo 06)
 API vera, al contrario di Amazon: **M11** `GET /api/inbox/threads` per leggere
 (`updated_since` + paginazione a cursore), **M12**

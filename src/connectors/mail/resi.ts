@@ -193,15 +193,20 @@ export async function registraReso(
       return { esito: 'orfano' as const, thread_id: null }
     }
 
-    if (dati.corriere_reso || dati.tracking_reso) {
-      await tx`
-        update "order" set
-          reso_carrier         = coalesce(${dati.corriere_reso}, reso_carrier),
-          reso_tracking_number = coalesce(${dati.tracking_reso}, reso_tracking_number),
-          updated_at            = now()
-        where id = ${ordine.id}
-      `
-    }
+    // reso_richiesto_at sempre, indipendentemente dal corriere: un
+    // cliente può aprire un reso prima che Amazon emetta l'etichetta, e
+    // l'operatore deve vederlo su QUALUNQUE ticket di quell'ordine, non
+    // solo su quello che ha ricevuto questa email. coalesce mantiene la
+    // prima data vista, non l'ultima: più email sullo stesso reso non
+    // devono spostare la data della richiesta originale.
+    await tx`
+      update "order" set
+        reso_richiesto_at     = coalesce(reso_richiesto_at, ${arrivato}),
+        reso_carrier          = coalesce(${dati.corriere_reso}, reso_carrier),
+        reso_tracking_number  = coalesce(${dati.tracking_reso}, reso_tracking_number),
+        updated_at            = now()
+      where id = ${ordine.id}
+    `
 
     // Stessa chiave di registraAvviso: se il cliente scrive di questo
     // ordine, finisce nella stessa conversazione, non in una parallela.

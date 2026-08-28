@@ -428,6 +428,61 @@ thread Mirakl — il worker accetta già `mirakl_destinatari` in
 
 ---
 
+## Vista Resi, dettaglio reso indipendente dal tracking, ordine dei
+## Chiusi — 28/08
+
+Domenico ha chiesto tre cose dopo aver visto la sezione "Reso" in azione:
+1. una vista dedicata coi soli ticket con reso aperto;
+2. vedere che un reso è stato aperto anche PRIMA che Amazon emetta
+   l'etichetta (oggi la sezione "Reso" spariva del tutto se
+   corriere/tracking erano vuoti);
+3. la vista "Chiusi" ordinata per ultima chiusura, non per scadenza SLA
+   (che per un ticket già chiuso non serve più).
+
+**Fatto lato worker** (migrazione 0020): `order.reso_richiesto_at`
+(sempre valorizzata da `registraReso()`, indipendente da corriere/
+tracking — è sull'ordine, quindi visibile su qualunque ticket collegato,
+non solo quello con l'email) e `thread.closed_at` (scritta da un trigger
+al passaggio a `closed`, azzerata alla riapertura — non lasciata a
+Lovable, così resta corretta da qualunque punto dell'interfaccia si
+cambi lo stato).
+
+**Fatto lato Lovable, stesso giro**: quinta vista "Resi" nella barra
+(tag `reso-richiesto`, esclusi i chiusi, scorciatoia `g r`); sezione
+"Reso" ora appare su `reso_richiesto_at` invece che su corriere/tracking,
+mostrando sempre la data della richiesta e, se presenti, corriere e
+tracking; vista "Chiusi" ordinata per `closed_at` discendente.
+
+**Da eseguire in Supabase**:
+```sql
+alter table "order" add column if not exists reso_richiesto_at timestamptz;
+alter table thread add column if not exists closed_at timestamptz;
+
+create or replace function public.thread_set_closed_at()
+returns trigger language plpgsql as $$
+begin
+  if new.state = 'closed' and (old.state is distinct from 'closed') then
+    new.closed_at := now();
+  elsif new.state <> 'closed' and old.state = 'closed' then
+    new.closed_at := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists thread_closed_at_trg on thread;
+create trigger thread_closed_at_trg
+  before update on thread
+  for each row execute function public.thread_set_closed_at();
+
+update thread set closed_at = updated_at
+where state = 'closed' and closed_at is null;
+```
+**Da verificare**: che la vista "Resi" e il nuovo ordinamento dei Chiusi
+funzionino su dati reali dopo che Domenico esegue la migrazione.
+
+---
+
 ## Bug Mirakl: primo invio reale falliva con 502 — 28/08
 
 Domenico ha testato il primo invio di una risposta su un thread Leroy
