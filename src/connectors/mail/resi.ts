@@ -195,10 +195,10 @@ export async function registraReso(
       await tx`
         insert into message (
           thread_id, direction, author_kind, external_id, rfc822_id,
-          body_text, sent_at, match_strategy, raw
+          body_text, sent_at, match_strategy, tipo_evento, raw
         ) values (
           ${t.id}, 'in', 'system', ${email.rfc822_id}, ${email.rfc822_id},
-          ${formattaReso(numero, dati)}, ${arrivato}, 'numero_ordine',
+          ${formattaReso(numero, dati)}, ${arrivato}, 'numero_ordine', 'reso_richiesto',
           ${tx.json(perArchivio(email) as never)}
         )
         on conflict (rfc822_id) where rfc822_id is not null do nothing

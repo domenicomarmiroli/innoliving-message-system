@@ -437,6 +437,22 @@ Verificato su un'email reale — vedi
 405-8567267-4113132 — non scritto sulla sola documentazione: qui la
 documentazione pubblica di Amazon non esiste nemmeno, come per i resi.
 
+**`message.tipo_evento` / `message.importo` / `message.importo_valuta`
+(migrazione 0022)**: servono alla dashboard per contare resi e rimborsi
+giorno per giorno. `v_tag_giornalieri` (migrazione 0015) non basta: è per
+thread, datata su `thread.created_at` (quando il thread è nato, non
+quando l'evento specifico è successo), e un thread può accumulare più
+tag nel tempo senza contarne le occorrenze ripetute — inadatto a un
+trend di eventi che si ripetono (i rimborsi parziali). `tipo_evento`
+('reso_richiesto' | 'rimborso_emesso', null altrove) distingue questi
+messaggi-annotazione da quelli generati da `registraAvviso`/
+`registraNotifica`, che hanno la stessa forma strutturale (`author_kind
+= 'system'`, `match_strategy = 'numero_ordine'`) ma nessun discriminatore
+prima d'ora. `importo`/`importo_valuta` sono l'importo di QUEL singolo
+evento (non cumulativo, a differenza di `order.rimborso_totale`): la
+dashboard somma per periodo, raggruppando per valuta — mai sommando
+valute diverse fra loro.
+
 ### Connettore Mirakl (passo 06)
 API vera, al contrario di Amazon: **M11** `GET /api/inbox/threads` per leggere
 (`updated_since` + paginazione a cursore), **M12**

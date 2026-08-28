@@ -522,6 +522,52 @@ reali dopo che Domenico esegue la migrazione.
 
 ---
 
+## Resi e rimborsi nel report — 28/08
+
+Domenico ha chiesto di aggiungere resi e rimborsi alla dashboard: numero
+di richieste di reso nel grafico giornaliero; per i rimborsi, numero E
+valore.
+
+**Trovato subito**: la vista `v_tag_giornalieri` (migrazione 0015),
+pensata per la ripartizione per tipologia, non andava bene qui — è
+datata su `thread.created_at` (quando il thread è nato, non quando
+l'evento è successo) e un tag non conta le occorrenze ripetute (un
+ordine può avere più rimborsi parziali nel tempo, stesso thread, stesso
+tag "rimborso-emesso" una volta sola). Serviva il livello del singolo
+messaggio-evento con la sua data vera.
+
+**Fatto lato worker** (migrazione 0022): `message.tipo_evento`
+('reso_richiesto' | 'rimborso_emesso', null per i messaggi normali) —
+serve a isolare questi eventi dagli altri messaggi di sistema (avvisi,
+notifiche) che hanno la stessa forma ma nessun modo di distinguersi
+prima d'ora. `message.importo`/`message.importo_valuta`: l'importo DI
+QUEL rimborso specifico, non cumulativo — la dashboard soma per
+periodo. 152 test verdi.
+
+**Fatto lato Lovable, stesso giro**: due KPI ("Richieste di reso",
+"Rimborsi emessi" con totale), grafico "Richieste di reso nel tempo"
+(barre) e "Rimborsi nel tempo" (barre + linea del valore su asse
+destro) — select dirette su `message`, stesso periodo/granularità del
+resto della pagina. **Dettaglio gestito bene dall'agente senza che
+glielo chiedessi**: i totali si raggruppano per `importo_valuta` invece
+di assumere sempre EUR — valute diverse non si sommano fra loro, e se ne
+compare più di una lo segnala sotto il grafico.
+
+**Da eseguire in Supabase**:
+```sql
+alter table message
+  add column if not exists tipo_evento     text,
+  add column if not exists importo         numeric(12,2),
+  add column if not exists importo_valuta  text;
+
+create index if not exists message_tipo_evento_idx
+  on message (tipo_evento, sent_at) where tipo_evento is not null;
+```
+**Da verificare**: i due grafici su dati reali dopo la migrazione — oggi
+in produzione c'è già almeno un reso e un rimborso reali da mostrare.
+
+---
+
 ## Bug Mirakl: primo invio reale falliva con 502 — 28/08
 
 Domenico ha testato il primo invio di una risposta su un thread Leroy

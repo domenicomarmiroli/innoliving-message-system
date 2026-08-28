@@ -196,6 +196,12 @@ create table message (
   -- Solo messaggi in uscita su thread Mirakl: a chi è andata la
   -- risposta (CUSTOMER, OPERATOR, o entrambi). Null altrove.
   mirakl_destinatari text[],
+  -- Discriminatore per i messaggi generati dal sistema (reso_richiesto,
+  -- rimborso_emesso), con l'importo di QUESTO evento se pertinente —
+  -- non cumulativo, serve al grafico giornaliero della reportistica.
+  tipo_evento     text,
+  importo         numeric(12,2),
+  importo_valuta  text,
   raw             jsonb       not null default '{}'::jsonb,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),

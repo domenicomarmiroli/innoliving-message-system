@@ -167,10 +167,11 @@ export async function registraRimborso(
     const [msg] = await tx<{ id: string }[]>`
       insert into message (
         thread_id, direction, author_kind, external_id, rfc822_id,
-        body_text, sent_at, match_strategy, raw
+        body_text, sent_at, match_strategy, tipo_evento, importo, importo_valuta, raw
       ) values (
         ${t.id}, 'in', 'system', ${email.rfc822_id}, ${email.rfc822_id},
-        ${formattaRimborso(numero, dati)}, ${arrivato}, 'numero_ordine',
+        ${formattaRimborso(numero, dati)}, ${arrivato}, 'numero_ordine', 'rimborso_emesso',
+        ${dati.importo_totale}, ${dati.valuta},
         ${tx.json(perArchivio(email) as never)}
       )
       on conflict (rfc822_id) where rfc822_id is not null do nothing
