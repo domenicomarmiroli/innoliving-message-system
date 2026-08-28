@@ -1,5 +1,6 @@
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
+import { campoEtichettaGrassetto, campoEtichettaSemplice, estraiRigheTabella } from './html.js'
 import { anomalia } from './notifica.js'
 import { perArchivio } from './parse.js'
 import { estraiNumeroOrdine } from './riconosci.js'
@@ -42,67 +43,16 @@ export interface DatiReso {
   tracking_reso: string | null
 }
 
-/** Toglie i tag, normalizza gli spazi, decodifica le poche entità HTML che contano. */
-function testoPulito(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-/** Un campo scritto come `<b>Etichetta:</b> valore` nella lista riassuntiva. */
-function campoEtichettaGrassetto(html: string, etichetta: string): string | null {
-  const escaped = etichetta.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const re = new RegExp(`<b>\\s*${escaped}\\s*<\\/b>\\s*([^<]+)`, 'i')
-  const trovato = html.match(re)
-  return trovato?.[1] ? testoPulito(trovato[1]) : null
-}
-
-/** Un campo scritto come testo semplice `Etichetta: valore` (lista tracciamento). */
-function campoEtichettaSemplice(html: string, etichetta: string): string | null {
-  const escaped = etichetta.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const re = new RegExp(`${escaped}\\s*:\\s*([^<]+)`, 'i')
-  const trovato = html.match(re)
-  return trovato?.[1] ? testoPulito(trovato[1]) : null
-}
-
-/**
- * La tabella degli articoli da restituire. Riconosciuta da
- * `cellpadding="10"`: non elegante, ma è l'unico marcatore stabile senza
- * un secondo esemplare che confermi se cambia da un reso all'altro.
- * Tollerante: una tabella diversa da quella attesa produce un elenco
- * vuoto, non un'eccezione — l'email resta comunque in `raw`.
- */
+/** Le righe della tabella nella forma di questo formato: prodotto/asin/sku/quantità/motivo/commento. */
 function estraiRighe(html: string): RigaReso[] {
-  const tabella = html.match(/<table[^>]*cellpadding="10"[^>]*>([\s\S]*?)<\/table>/i)
-  if (!tabella?.[1]) return []
-
-  const righe: RigaReso[] = []
-  for (const rigaMatch of tabella[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
-    const rigaHtml = rigaMatch[1] ?? ''
-    if (/<th[\s>]/i.test(rigaHtml)) continue // riga di intestazione
-
-    const celle = [...rigaHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((m) =>
-      testoPulito(m[1] ?? ''),
-    )
-    if (celle.length === 0) continue
-
-    righe.push({
-      prodotto: celle[0] || null,
-      asin: celle[1] || null,
-      sku: celle[2] || null,
-      quantita: celle[3] || null,
-      motivo: celle[4] || null,
-      commento: celle[5] || null,
-    })
-  }
-  return righe
+  return estraiRigheTabella(html).map((celle) => ({
+    prodotto: celle[0] || null,
+    asin: celle[1] || null,
+    sku: celle[2] || null,
+    quantita: celle[3] || null,
+    motivo: celle[4] || null,
+    commento: celle[5] || null,
+  }))
 }
 
 export function estraiDatiReso(html: string | null): DatiReso {

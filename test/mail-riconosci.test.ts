@@ -396,3 +396,22 @@ describe('richieste di reso', () => {
     expect(classificaMittente(email, opz)).toBe('reso')
   })
 })
+
+describe('rimborsi emessi', () => {
+  const n = { rfc822_id: null, in_reply_to: null, references: [], to: [],
+    subject: null, date: null, body_text: null, body_html: null,
+    allegati: [], uid: null, reply_to: null }
+  const opz = { domini_esclusi: [], domini_notifica: ['amazon.com'], domini_avviso: [] }
+
+  it('REFUND_ISSUED è un rimborso, non una notifica di mancata consegna', () => {
+    expect(classificaMittente(
+      { ...n, from: 'x@amazon.com', notifica_tipo: 'REFUND_ISSUED' }, opz))
+      .toBe('rimborso')
+  })
+
+  it('sulla email reale l header è presente e riconosciuto', async () => {
+    const email = await analizza(eml('amazon-rimborso-emesso-reale.eml'), 210)
+    expect(email.notifica_tipo).toBe('REFUND_ISSUED')
+    expect(classificaMittente(email, opz)).toBe('rimborso')
+  })
+})

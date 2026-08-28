@@ -8,6 +8,7 @@ import { analizza } from './parse.js'
 import { caricaRegole } from './regole.js'
 import { registraAvviso, registraNotifica } from './notifica.js'
 import { registraReso } from './resi.js'
+import { registraRimborso } from './rimborsi.js'
 import { classificaMittente, riconosci } from './riconosci.js'
 import { upsertEmail } from './upsert.js'
 
@@ -36,6 +37,8 @@ export interface EsitoCiclo {
   avvisi: number
   /** Richieste di reso autorizzate da Amazon, annotate sull'ordine. */
   resi: number
+  /** Rimborsi emessi da Amazon, annotati sull'ordine. */
+  rimborsi: number
   errori: number
   ultimo_uid: number | null
 }
@@ -83,6 +86,7 @@ export async function leggiCasella(
     notifiche: 0,
     avvisi: 0,
     resi: 0,
+    rimborsi: 0,
     errori: 0,
     ultimo_uid: stato.imap_uid,
   }
@@ -128,6 +132,10 @@ export async function leggiCasella(
         //  - reso: richiesta di reso autorizzata da Amazon
         //    (RETURN_REQUEST). Si annota sulla conversazione dell'ordine,
         //    con corriere e tracking del rientro quando presenti.
+        //  - rimborso: rimborso emesso da Amazon (REFUND_ISSUED). Si
+        //    annota sulla conversazione dell'ordine; a differenza del
+        //    reso può ripetersi (rimborsi parziali), quindi l'importo
+        //    sull'ordine è una somma, non l'ultimo visto.
         //  - notifica: avvisi di mancata consegna. Non sono richieste,
         //    ma dicono che una nostra risposta non è arrivata: si
         //    annotano sulla conversazione di quell'ordine.
@@ -155,6 +163,15 @@ export async function leggiCasella(
             db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
           )
           esito.resi += 1
+          continue
+        }
+
+        if (genere === 'rimborso') {
+          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
+          await registraRimborso(
+            db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
+          )
+          esito.rimborsi += 1
           continue
         }
 

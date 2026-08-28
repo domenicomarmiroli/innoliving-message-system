@@ -404,6 +404,39 @@ da quale punto dell'interfaccia cambia lo stato. Serve alla vista "Chiusi",
 ordinata per data di chiusura discendente invece che per scadenza SLA
 (che per un ticket già chiuso non ha più senso): l'ultimo gestito in cima.
 
+### Rimborsi emessi Amazon (migrazione 0021)
+Stesso meccanismo dei resi, header diverso: `X-Space-Notification-Type:
+REFUND_ISSUED`. Riconosciuto in `classificaMittente()` con la stessa
+precedenza (prima delle liste per dominio, stesso motivo — condivide
+`amazon.com` con le notifiche di mancata consegna).
+
+`src/connectors/mail/rimborsi.ts` — **differenza importante rispetto a
+`resi.ts`**: un rimborso può ripetersi più volte sullo stesso ordine
+(rimborsi parziali su articoli diversi, in email diverse nel tempo), quindi
+non si può saltare l'elaborazione in base a un tag già presente sul thread
+come fa `registraReso`/`registraAvviso` — un secondo rimborso vero
+verrebbe scartato come "già visto". L'unica difesa contro il duplicato è
+il vincolo unique su `rfc822_id`: l'insert del messaggio avviene PRIMA
+dell'aggiornamento dell'ordine, e solo se l'insert ha davvero inserito una
+riga nuova (non un conflitto) si somma l'importo — così la stessa email
+rientrata due volte nel ciclo di lettura non conta due volte, ma due
+email di rimborso diverse per lo stesso ordine sommano entrambe.
+
+`order.rimborso_totale` è quindi una **somma cumulativa**, non l'ultimo
+importo visto; `order.rimborso_emesso_at` è la data dell'ultimo. Entrambe
+sull'ordine, non sul thread — stesso motivo di `reso_richiesto_at`:
+visibili su qualunque ticket collegato.
+
+`src/connectors/mail/html.ts` — le funzioni di estrazione HTML
+(`testoPulito`, `campoEtichettaGrassetto`, `campoEtichettaSemplice`,
+`estraiRigheTabella`) sono condivise fra `resi.ts` e `rimborsi.ts`:
+stessa impaginazione a lista + tabella in entrambi i formati Amazon.
+
+Verificato su un'email reale — vedi
+`test/fixtures/mail/amazon-rimborso-emesso-reale.eml`, ordine
+405-8567267-4113132 — non scritto sulla sola documentazione: qui la
+documentazione pubblica di Amazon non esiste nemmeno, come per i resi.
+
 ### Connettore Mirakl (passo 06)
 API vera, al contrario di Amazon: **M11** `GET /api/inbox/threads` per leggere
 (`updated_since` + paginazione a cursore), **M12**

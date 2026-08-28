@@ -94,6 +94,10 @@ create table "order" (
   -- Quando è stato notificato il reso, indipendente dalla presenza di
   -- un'etichetta: visibile su qualunque ticket collegato all'ordine.
   reso_richiesto_at     timestamptz,
+  -- Somma cumulativa dei rimborsi Amazon notificati (REFUND_ISSUED) e
+  -- data dell'ultimo: un ordine può avere più rimborsi parziali.
+  rimborso_totale       numeric(12,2),
+  rimborso_emesso_at    timestamptz,
   total              numeric(12,2),
   currency           text,
   raw                jsonb       not null default '{}'::jsonb,

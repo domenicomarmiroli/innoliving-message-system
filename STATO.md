@@ -483,6 +483,45 @@ funzionino su dati reali dopo che Domenico esegue la migrazione.
 
 ---
 
+## Rimborsi emessi Amazon — sessione del 28/08
+
+Domenico ha fornito un'email reale di conferma rimborso ("rimborso
+169.01 EUR avviato - ordine 405-8567267-4113132",
+`X-Space-Notification-Type: REFUND_ISSUED`) e ha chiesto lo stesso
+trattamento dei resi: memorizzare data e dettagli del rimborso
+sull'ordine, e una vista dedicata.
+
+**Differenza importante trovata leggendo l'esemplare**: un rimborso può
+ripetersi (rimborsi parziali su articoli diversi, email diverse nel
+tempo) — a differenza di un reso, che è un evento singolo per ordine. Il
+meccanismo "già visto" per tag usato da resi/avvisi qui avrebbe scartato
+un secondo rimborso vero. `rimborsi.ts` usa invece il vincolo unique su
+`rfc822_id` come unica difesa contro il duplicato: solo se l'insert del
+messaggio inserisce davvero una riga nuova si somma l'importo
+sull'ordine.
+
+**Fatto lato worker** (migrazione 0021): `order.rimborso_totale`
+(somma cumulativa) e `order.rimborso_emesso_at` (data ultimo rimborso),
+tag `rimborso-emesso` sul thread. Estrazione condivisa con `resi.ts`
+tramite il nuovo `src/connectors/mail/html.ts` (stessa impaginazione a
+lista + tabella). 152 test verdi, tra cui uno sull'email reale.
+
+**Fatto lato Lovable, stesso giro**: vista "Rimborsi" nella barra
+(scorciatoia `g b`), sezione "Rimborso" nel pannello di contesto (totale
+rimborsato, data ultimo rimborso), separata dalla sezione "Reso" — sono
+due informazioni diverse (richiesta del cliente vs rimborso emesso).
+
+**Da eseguire in Supabase**:
+```sql
+alter table "order"
+  add column if not exists rimborso_totale     numeric(12,2),
+  add column if not exists rimborso_emesso_at  timestamptz;
+```
+**Da verificare**: la vista "Rimborsi" e la sezione dedicata su dati
+reali dopo che Domenico esegue la migrazione.
+
+---
+
 ## Bug Mirakl: primo invio reale falliva con 502 — 28/08
 
 Domenico ha testato il primo invio di una risposta su un thread Leroy
