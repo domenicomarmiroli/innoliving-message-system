@@ -96,12 +96,17 @@ export async function generaBozza(
   // Priorità prima di tutto: una procedura ("se il danno è segnalato,
   // chiedi sempre le foto") deve prevalere su una nota generica con lo
   // stesso tag, non essere scartata perché più vecchia.
+  // Il filtro canali è lo stesso principio del reso Amazon-vs-Mirakl:
+  // una voce senza canali selezionati (null o vuoto) vale per tutti, una
+  // con canali valorizzati vale SOLO per quei kind di channel_account.
   const fonti = await db<
     { id: string; titolo: string; contenuto: string; fonte: string; url: string | null }[]
   >`
     select id, titolo, contenuto, fonte, url
     from knowledge
-    where attivo = true and tag && ${thread.tags}
+    where attivo = true
+      and tag && ${thread.tags}
+      and (canali is null or array_length(canali, 1) is null or ${thread.kind} = any(canali))
     order by priorita desc, created_at desc
     limit ${MAX_FONTI_KB}
   `

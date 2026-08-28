@@ -592,6 +592,38 @@ una colonna esistente.
 
 ---
 
+## Knowledge base per canale — 28/08
+
+Domenico ha chiesto di poter scegliere per quali canali vale una voce
+della knowledge base (una procedura può differire fra Amazon e Mirakl),
+con l'opzione predefinita "nessuna selezione = vale per tutti".
+
+**Fatto lato worker** (migrazione 0023): `knowledge.canali` (text[],
+nullable — NULL o vuoto = tutti i canali). `generaBozza()` in
+`core/ai/draft.ts` filtra il recupero anche su questo campo, oltre al
+tag overlap già esistente. 154 test verdi (nessun nuovo test: la query
+è DB-dipendente, stesso limite già noto per `generaBozza`, mai stata
+coperta da test automatici).
+
+**Fatto lato Lovable, stesso giro**: selettore a caselle (Shopify,
+Amazon, Mirakl, TikTok, Email, Contatto) nei tre form della pagina
+`/conoscenza` (documento, manuale, modifica), con "tutti i canali"
+mostrato a chiare lettere quando nessuna casella è spuntata; pastiglie
+di canale nell'elenco delle voci.
+
+**Da eseguire in Supabase**:
+```sql
+alter table knowledge add column if not exists canali text[];
+create index if not exists knowledge_canali_idx on knowledge using gin (canali);
+```
+**Nota a margine, non da questa sessione**: `db/schema.sql` non
+contiene la tabella `knowledge` da quando è stata introdotta (migrazione
+0010) — non l'ho aggiunta perché non potrei verificarla contro lo stato
+reale del database. Va riesportata al prossimo giro di sincronizzazione
+schema (passo 02 del runbook).
+
+---
+
 ## Bug Mirakl: primo invio reale falliva con 502 — 28/08
 
 Domenico ha testato il primo invio di una risposta su un thread Leroy

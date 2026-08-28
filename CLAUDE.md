@@ -631,6 +631,17 @@ link è incluso nel prompt come riferimento per il modello, con
 un'istruzione esplicita a non incollarlo nella risposta a meno che non
 serva davvero al cliente.
 
+**Canali** (`knowledge.canali`, migrazione 0023, 28/08): la stessa
+procedura può valere diversamente da un marketplace all'altro (le regole
+di reso di Amazon non sono quelle di Mirakl). `text[]`, stesso principio
+di `domini_esclusi` capovolto: qui NULL o vuoto è il caso comune e
+significa "vale per tutti i canali", non richiede di spuntare nulla; solo
+se valorizzato la voce si restringe a quei `kind` di `channel_account`.
+`generaBozza()` filtra `and (canali is null or array_length(canali, 1)
+is null or ${thread.kind} = any(canali))`, stessa query del tag overlap.
+Lato Lovable: selettore a caselle nei tre form (documento/manuale/
+modifica) e pastiglie di canale nell'elenco.
+
 **Esito della bozza** (`ai_draft.outcome`/`final_text`): `/threads/reply`
 accetta ora un `draft_id` facoltativo. Se presente, dopo l'invio confronta
 `draft_text` col testo davvero spedito (`core/ai/esito.ts`, uguaglianza
