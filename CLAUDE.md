@@ -450,6 +450,16 @@ riscrivere `draft.ts`.
    violazione si vede in anteprima e non al momento di premere Invia. Il
    risultato si salva in `ai_draft`, **mai spedito da questa funzione**.
 
+**`ai_draft.fonti` (migrazione 0017, 28/08)**: le fonti della knowledge
+base usate per la bozza si salvano sulla riga, non solo nella risposta
+HTTP di `POST /threads/draft`. Serve a Lovable per mostrare di nuovo
+l'ultima bozza già generata (testo, esito policy, fonti) quando si riapre
+un thread, invece di dover rigenerare — e consumare credito AI — solo per
+rivederla. `POST /threads/draft` resta l'unico modo di generarne una
+*nuova*: leggere l'ultima esistente è una lettura diretta di Lovable su
+`ai_draft` (già leggibile via RLS, vedi passo Dashboard), non passa dal
+worker.
+
 **Recupero dalla knowledge base**: per sovrapposizione fra `knowledge.tag` e
 `thread.tags` — gli stessi tag che in Lovable fanno già da "intento
 classificato" — ordinato per `priorita` (migrazione 0011) prima ancora che

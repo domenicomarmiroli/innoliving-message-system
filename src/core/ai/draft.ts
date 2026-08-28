@@ -152,10 +152,11 @@ export async function generaBozza(
   const policy = verificaPolicy(thread.kind, completamento.testo)
 
   const [riga] = await db<{ id: string }[]>`
-    insert into ai_draft (thread_id, model, prompt_version, draft_text, policy_check)
+    insert into ai_draft (thread_id, model, prompt_version, draft_text, policy_check, fonti)
     values (
       ${threadId}, ${completamento.modello}, 'v1', ${completamento.testo},
-      ${db.json({ ok: policy.ok, violazioni: policy.violazioni } as never)}
+      ${db.json({ ok: policy.ok, violazioni: policy.violazioni } as never)},
+      ${db.json(fonti.map((f) => ({ id: f.id, titolo: f.titolo, fonte: f.fonte })) as never)}
     )
     returning id
   `
