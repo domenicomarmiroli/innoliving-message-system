@@ -428,6 +428,29 @@ thread Mirakl — il worker accetta già `mirakl_destinatari` in
 
 ---
 
+## Bug Mirakl: primo invio reale falliva con 502 — 28/08
+
+Domenico ha testato il primo invio di una risposta su un thread Leroy
+Merlin (Mirakl) e ha visto "Invio non riuscito (errore 502)". Log di
+Render: `mirakl-lmfr: richiesta fallita (400): {"errors":[{"code":
+"message_input","message":"Required part 'message_input' is not
+present."}]}`.
+
+Causa: `invia.ts` mandava i campi del messaggio appiattiti
+(`message_input.body`, `message_input.to[0].type`) invece di un'unica
+parte multipart chiamata esattamente `message_input` col JSON intero —
+la forma che Mirakl documenta davvero
+(`-F "message_input=@message_input.json;type=application/json"`). I tre
+bug del connettore trovati il 27/08 erano tutti sulla LETTURA dei
+messaggi; questo è il primo collaudo reale della SCRITTURA, e ha trovato
+un problema diverso.
+
+Corretto (`costruisciMessageInput()` in `invia.ts`, con test di
+regressione). 144 test verdi, typecheck e build ok. **Da verificare**: che
+Domenico riprovi l'invio sullo stesso thread dopo il deploy.
+
+---
+
 ## Richieste di reso Amazon — sessione del 28/08
 
 Domenico ha segnalato che le richieste di reso autorizzate da Amazon (email

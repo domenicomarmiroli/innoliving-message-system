@@ -446,6 +446,20 @@ Tre cose scoperte proprio su questo primo collaudo, tutte corrette:
    tutti. **Lato Lovable**: manca ancora il selettore nell'editor di
    risposta per i thread Mirakl — prossimo passo.
 
+**✅ Quarto bug, trovato sul primo INVIO reale (28/08, non più solo
+lettura).** I tre punti sopra vengono dalla lettura dei messaggi in
+arrivo; il primo tentativo di rispondere a un thread Leroy Merlin ha
+fallito con `502` e, nei log, `400 - Required part 'message_input' is
+not present`. Il codice mandava campi appiattiti
+(`message_input.body`, `message_input.to[0].type`), ma M12 cerca una
+SINGOLA parte multipart chiamata esattamente `message_input`, con
+dentro il JSON intero — la stessa forma della sintassi documentata da
+Mirakl (`-F "message_input=@message_input.json;type=application/json"`).
+Corretto con `costruisciMessageInput()` in `invia.ts`, che costruisce
+l'oggetto `{ body, to }` come una parte unica. Il debito "verificato
+sulla documentazione, non su un invio reale" era già ridotto dalla
+lettura; ora anche la scrittura è passata da un tentativo vero.
+
 Per un nuovo operatore, lo stesso collaudo:
 ```
 npm run mirakl:check -- --forma

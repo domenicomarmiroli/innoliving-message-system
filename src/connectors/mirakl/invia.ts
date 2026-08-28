@@ -19,9 +19,17 @@ import { ClientMirakl, costruisciOperatori } from './client.js'
  * di M12 non elenca `application/json` come content-type accettato, solo
  * multipart — verificato leggendo lo schema pubblico dopo aver scoperto
  * che il ramo JSON di prima (usato quando non c'erano allegati) non
- * sarebbe mai potuto funzionare. `message_input.body` e `files[]` restano
- * comunque non verificati su un invio reale — nessun cliente Mirakl ha
- * ancora scritto quando questo file è stato costruito.
+ * sarebbe mai potuto funzionare.
+ *
+ * **La parte si chiama "message_input" e basta, non campi appiattiti.**
+ * Il primo invio reale (Leroy Merlin France, 28/08) ha fallito con
+ * `400 - Required part 'message_input' is not present`: il codice mandava
+ * `message_input.body` e `message_input.to[0].type` come campi separati,
+ * ma Mirakl cerca una SINGOLA parte multipart chiamata esattamente
+ * `message_input`, contenente il JSON intero — la stessa forma della
+ * sintassi documentata da Mirakl
+ * (`-F "message_input=@message_input.json;type=application/json"`).
+ * Corretto con `costruisciMessageInput()`.
  *
  * **`message_input.to` è obbligatorio**, non un dettaglio facoltativo:
  * senza, l'API rifiuta la richiesta. Un thread Mirakl può avere due
@@ -40,6 +48,14 @@ import { ClientMirakl, costruisciOperatori } from './client.js'
 export type DestinatarioMirakl = 'CUSTOMER' | 'OPERATOR'
 
 const DESTINATARI_DEFAULT: DestinatarioMirakl[] = ['CUSTOMER']
+
+/** Il corpo JSON della parte multipart "message_input". Funzione pura, testabile senza rete. */
+export function costruisciMessageInput(
+  testo: string,
+  destinatari: DestinatarioMirakl[],
+): { body: string; to: Array<{ type: DestinatarioMirakl }> } {
+  return { body: testo, to: destinatari.map((tipo) => ({ type: tipo })) }
+}
 
 export interface RichiestaInvioMirakl {
   thread_id: string
@@ -117,10 +133,20 @@ export async function inviaMessaggioMirakl(
       : DESTINATARI_DEFAULT
 
   const form = new FormData()
-  form.append('message_input.body', richiesta.testo)
-  destinatari.forEach((tipo, i) => {
-    form.append(`message_input.to[${i}].type`, tipo)
-  })
+  // Non campi appiattiti (message_input.body, message_input.to[0].type):
+  // verificato su un invio reale che l'API cerca una PARTE multipart
+  // chiamata esattamente "message_input", con dentro il JSON intero —
+  // stessa forma della sintassi documentata da Mirakl
+  // (`-F "message_input=@message_input.json;type=application/json"`).
+  // Coi campi appiattiti l'errore è letterale: "Required part
+  // 'message_input' is not present", perché nessuna parte si chiama così.
+  form.append(
+    'message_input',
+    new Blob([JSON.stringify(costruisciMessageInput(richiesta.testo, destinatari))], {
+      type: 'application/json',
+    }),
+    'message_input.json',
+  )
   for (const a of richiesta.allegati ?? []) {
     form.append('files', new Blob([new Uint8Array(a.contenuto)], { type: a.mime }), a.nome_file)
   }
