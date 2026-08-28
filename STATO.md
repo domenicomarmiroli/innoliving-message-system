@@ -475,10 +475,21 @@ alter table "order"
   add column if not exists reso_tracking_number   text;
 ```
 
-**Resta da fare, lato Lovable**: una sezione "Reso" nel pannello contesto
-dell'ordine/thread, distinta dalla spedizione normale, che mostri
-`reso_carrier`/`reso_tracking_number` quando presenti e renda visibile il
-tag `reso-richiesto` sulla conversazione.
+**✅ Fatto lato Lovable (28/08, stesso giorno)**: sezione "Reso" nel
+pannello di contesto, separata dalla spedizione in uscita, visibile solo
+quando `reso_carrier`/`reso_tracking_number` sono valorizzati. Il tag
+`reso-richiesto` non era filtrato da nessuna whitelist, compare già dove
+compaiono gli altri tag.
+
+**Dettaglio da annotare**: il tracking di reso è cliccabile solo se
+`channel_account.config` ha una chiave `return_tracking_url` (o
+`reso_tracking_url`) con segnaposto `{tracking_number}` — decisione
+dell'agente Lovable, coerente col principio "i modelli di URL verso i
+corrieri arrivano dalla configurazione del canale", non dettata da me.
+Senza quella chiave il numero resta visibile come testo, non come link.
+**Limite non risolto**: un solo modello di URL per canale non distingue
+fra corrieri diversi (es. POSTE_ITALIANE vs altri) se un giorno servisse
+— per ora non è un problema, un solo esemplare reale visto finora.
 
 ---
 
