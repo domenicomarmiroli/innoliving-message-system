@@ -163,6 +163,9 @@ create table message (
   sent_at         timestamptz not null default now(),
   delivery_state  text,
   match_strategy  text,
+  -- Solo messaggi in uscita su thread Mirakl: a chi è andata la
+  -- risposta (CUSTOMER, OPERATOR, o entrambi). Null altrove.
+  mirakl_destinatari text[],
   raw             jsonb       not null default '{}'::jsonb,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),

@@ -446,8 +446,25 @@ messaggi; questo è il primo collaudo reale della SCRITTURA, e ha trovato
 un problema diverso.
 
 Corretto (`costruisciMessageInput()` in `invia.ts`, con test di
-regressione). 144 test verdi, typecheck e build ok. **Da verificare**: che
-Domenico riprovi l'invio sullo stesso thread dopo il deploy.
+regressione). 144 test verdi, typecheck e build ok.
+
+**✅ VERIFICATO END-TO-END (28/08, 11:52).** Log worker: `risposta Mirakl
+inviata`, `operatore: mirakl-lmfr`, `200`. Confermato anche visivamente sul
+portale Leroy Merlin: il messaggio compare nel thread giusto, indirizzato a
+"Operator" e marcato "Invisibile al cliente" — conferma che anche la
+scelta del destinatario (`mirakl_destinatari`, il selettore
+Cliente/Operatore) funziona, non solo l'invio di default al cliente. Primo
+invio Mirakl riuscito su questo sistema.
+
+**Lacuna trovata dallo stesso test**: Domenico aveva scelto
+"Cliente e Operatore" ma dalla nostra cronologia non si vedeva a chi fosse
+andato davvero il messaggio — dato solo nella richiesta, mai salvato.
+Aggiunta `message.mirakl_destinatari` (migrazione 0019) e, lato Lovable,
+un'etichetta "A: Cliente" / "A: Operatore" / "A: Cliente e Operatore" sotto
+ogni bolla in uscita che la valorizza. **Da eseguire in Supabase**:
+```sql
+alter table message add column if not exists mirakl_destinatari text[];
+```
 
 ---
 

@@ -460,6 +460,15 @@ l'oggetto `{ body, to }` come una parte unica. Il debito "verificato
 sulla documentazione, non su un invio reale" era già ridotto dalla
 lettura; ora anche la scrittura è passata da un tentativo vero.
 
+**`message.mirakl_destinatari` (migrazione 0019, 28/08)**: a chi è
+andata davvero una risposta Mirakl (`CUSTOMER`, `OPERATOR`, o entrambi),
+salvato sulla riga a ogni invio — scoperto mancante quando Domenico ha
+mandato una risposta a cliente+operatore insieme e non c'era modo, dalla
+cronologia, di sapere a chi fosse andata. Lato Lovable, ogni bolla in
+uscita che valorizza il campo mostra "A: Cliente" / "A: Operatore" / "A:
+Cliente e Operatore"; null (canali non-Mirakl, o messaggi Mirakl spediti
+prima di questa migrazione) non mostra etichetta.
+
 Per un nuovo operatore, lo stesso collaudo:
 ```
 npm run mirakl:check -- --forma
