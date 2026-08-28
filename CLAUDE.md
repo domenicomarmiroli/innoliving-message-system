@@ -216,8 +216,8 @@ password per app non ha scadenza.
   singolo account: su Amazon niente URL, contatti, richieste di recensione
   o inviti a contattare fuori piattaforma (in 5 lingue); su Mirakl niente
   contatti diretti; Shopify ed email restano senza restrizioni. Una
-  violazione torna 422 con la porzione di testo incriminata, mai un
-  rifiuto silenzioso.
+  violazione **bloccante** torna 422 con la porzione di testo incriminata,
+  mai un rifiuto silenzioso.
   **Eccezione**: i link di tracciamento dei corrieri sono ammessi anche su
   Amazon — rispondono a "dov'è il mio pacco", non portano il cliente fuori
   piattaforma per altri scopi. Riconosciuti per dominio (`DOMINI_CORRIERE`,
@@ -229,8 +229,19 @@ password per app non ha scadenza.
   cifre-sette cifre-sette cifre, es. `405-0668977-2033157`) per un
   contatto — trovato quando una bozza AI l'ha citato per chiedere
   conferma di un ordine non ancora in archivio e la policy l'ha bloccata
-  per errore. Un telefono vero accanto a un numero d'ordine nello stesso
-  messaggio resta comunque bloccato.
+  per errore.
+  **Ogni `Violazione` ha `bloccante: boolean` (27/08).** Il telefono è
+  l'unica non bloccante oggi: verificato da Domenico che Amazon non lo
+  rifiuta davvero lato suo, la nostra regola era più prudente della
+  piattaforma al punto da impedire un caso legittimo (es. "chiami il
+  centro assistenza per la sostituzione"). `EsitoPolicy.ok` è `false`
+  solo se c'è almeno una violazione bloccante — un telefono da solo non
+  impedisce più l'invio. `POST /threads/reply`, quando l'invio riesce,
+  restituisce comunque le violazioni non bloccanti in `avvisi`: l'agente
+  deve vederle lo stesso, un avviso silenzioso sarebbe lo stesso errore di
+  un rifiuto silenzioso. **Lato Lovable**: manca ancora mostrare
+  `avvisi` come avviso non bloccante dopo un invio riuscito (oggi la 200
+  è trattata come successo senza guardare il campo) — prossimo passo.
 
 - `ripulisci.ts` — riduce il corpo a ciò che ha scritto il cliente, togliendo
   l'impalcatura del relay. **Non restituisce mai il vuoto**: se non riconosce

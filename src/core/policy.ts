@@ -13,9 +13,19 @@ export interface Violazione {
   messaggio: string
   /** La porzione di testo incriminata, così l'agente sa cosa togliere. */
   porzione: string
+  /**
+   * true = impedisce l'invio (422). false = solo un avviso: il messaggio
+   * parte comunque, l'agente decide con gli occhi aperti. Il telefono è
+   * l'unico caso oggi: Amazon non lo blocca davvero lato suo (verificato
+   * da Domenico su un invio reale), è una policy nostra più prudente
+   * della piattaforma — prudente ma non al punto da impedire un caso
+   * legittimo come "chiami il centro assistenza per la sostituzione".
+   */
+  bloccante: boolean
 }
 
 export interface EsitoPolicy {
+  /** false solo se c'è almeno una violazione bloccante. */
   ok: boolean
   violazioni: Violazione[]
 }
@@ -172,6 +182,7 @@ export function check(kind: string, testo: string): EsitoPolicy {
         codice: 'url_non_ammesso',
         messaggio: 'Il messaggio contiene un link: non ammesso su questo canale.',
         porzione,
+        bloccante: true,
       })
     }
   }
@@ -182,14 +193,16 @@ export function check(kind: string, testo: string): EsitoPolicy {
         codice: 'email_non_ammessa',
         messaggio: "Il messaggio contiene un indirizzo email: non ammesso su questo canale.",
         porzione,
+        bloccante: true,
       })
     }
     for (const porzione of trovaTutte(testo, TELEFONO_RE)) {
       if (NUMERO_ORDINE_AMAZON_RE.test(porzione)) continue
       violazioni.push({
         codice: 'telefono_non_ammesso',
-        messaggio: 'Il messaggio contiene un numero di telefono: non ammesso su questo canale.',
+        messaggio: 'Il messaggio contiene un numero di telefono: non è tecnicamente bloccato dal canale, ma valuta se serve davvero.',
         porzione,
+        bloccante: false,
       })
     }
   }
@@ -201,6 +214,7 @@ export function check(kind: string, testo: string): EsitoPolicy {
         codice: 'richiesta_recensione',
         messaggio: 'Il messaggio sembra chiedere una recensione o un feedback: non ammesso su questo canale.',
         porzione: trovato,
+        bloccante: true,
       })
     }
   }
@@ -212,6 +226,7 @@ export function check(kind: string, testo: string): EsitoPolicy {
         codice: 'contatto_esterno',
         messaggio: 'Il messaggio invita a contattare fuori dalla piattaforma: non ammesso su questo canale.',
         porzione: trovato,
+        bloccante: true,
       })
     }
   }
@@ -221,8 +236,9 @@ export function check(kind: string, testo: string): EsitoPolicy {
       codice: 'lunghezza_eccessiva',
       messaggio: `Il messaggio supera i ${regole.lunghezza_massima} caratteri ammessi su questo canale.`,
       porzione: testo.slice(regole.lunghezza_massima, regole.lunghezza_massima + 40) + '…',
+      bloccante: true,
     })
   }
 
-  return { ok: violazioni.length === 0, violazioni }
+  return { ok: !violazioni.some((v) => v.bloccante), violazioni }
 }

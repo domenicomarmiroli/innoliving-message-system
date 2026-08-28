@@ -208,9 +208,13 @@ export async function replyRoutes(
 
       // Il destinatario è un alias del relay: non lo rimandiamo indietro,
       // non serve all'interfaccia e non ha motivo di girare.
+      // Le violazioni non bloccanti (es. un telefono) non hanno fermato
+      // l'invio, ma l'agente deve comunque vederle: non un rifiuto
+      // silenzioso, un avviso silenzioso sarebbe lo stesso errore.
       return reply.code(200).send({
         message_id: esito.message_id,
         rfc822_id: esito.rfc822_id,
+        avvisi: policy.violazioni.filter((v) => !v.bloccante),
       })
     } catch (errore) {
       req.log.error(

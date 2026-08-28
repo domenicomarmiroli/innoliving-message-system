@@ -33,10 +33,12 @@ describe('policy — amazon', () => {
     expect(esito.violazioni.map((v) => v.codice)).toContain('email_non_ammessa')
   })
 
-  it('blocca un numero di telefono', () => {
+  it('segnala un numero di telefono ma non blocca l\'invio (Amazon non lo blocca davvero)', () => {
     const esito = check('amazon', 'Chiamaci al 333 1234567 per assistenza')
-    expect(esito.ok).toBe(false)
-    expect(esito.violazioni.map((v) => v.codice)).toContain('telefono_non_ammesso')
+    expect(esito.ok).toBe(true)
+    const violazione = esito.violazioni.find((v) => v.codice === 'telefono_non_ammesso')
+    expect(violazione).toBeDefined()
+    expect(violazione?.bloccante).toBe(false)
   })
 
   it('non scambia un numero d\'ordine Amazon per un telefono', () => {
@@ -48,14 +50,15 @@ describe('policy — amazon', () => {
     expect(esito.violazioni).toEqual([])
   })
 
-  it('blocca comunque un telefono vero anche accanto a un numero d\'ordine Amazon', () => {
+  it('segnala comunque un telefono vero anche accanto a un numero d\'ordine Amazon, senza bloccare', () => {
     const esito = check(
       'amazon',
       'Il suo ordine 405-0668977-2033157 è confermato. Ci chiami al 333 1234567 per urgenze.',
     )
-    expect(esito.ok).toBe(false)
-    expect(esito.violazioni.map((v) => v.codice)).toContain('telefono_non_ammesso')
-    expect(esito.violazioni[0]?.porzione).not.toContain('405-0668977-2033157')
+    expect(esito.ok).toBe(true)
+    const violazione = esito.violazioni.find((v) => v.codice === 'telefono_non_ammesso')
+    expect(violazione).toBeDefined()
+    expect(violazione?.porzione).not.toContain('405-0668977-2033157')
   })
 
   it('blocca una richiesta di recensione, in più lingue', () => {
