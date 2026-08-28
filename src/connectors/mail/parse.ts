@@ -44,7 +44,13 @@ export async function analizza(sorgente: Buffer, uid: number | null): Promise<Em
     body_html: typeof m.html === 'string' ? m.html : null,
     allegati,
     uid,
+    notifica_tipo: testoHeader(m.headers.get('x-space-notification-type')),
   }
+}
+
+/** Un header custom può mancare, essere una stringa, o (raro) altro: solo la stringa ci serve. */
+function testoHeader(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() !== '' ? v.trim() : null
 }
 
 /**
@@ -90,5 +96,6 @@ export function perArchivio(email: EmailGrezza): Record<string, unknown> {
     // Storage, non nel JSONB — gonfierebbero il database senza motivo.
     allegati: email.allegati.map(({ contenuto: _contenuto, ...resto }) => resto),
     uid: email.uid,
+    notifica_tipo: email.notifica_tipo,
   }
 }

@@ -71,10 +71,17 @@ export function daEscludere(
 }
 
 /** Che genere di posta è, prima ancora di chiedersi da quale canale viene. */
-export type GenereMittente = 'escluso' | 'notifica' | 'avviso' | 'messaggio'
+export type GenereMittente = 'escluso' | 'reso' | 'notifica' | 'avviso' | 'messaggio'
+
+/**
+ * Valori noti di `X-Space-Notification-Type` che sono richieste di reso.
+ * Non è un dato specifico di questa azienda: è la tassonomia di Amazon,
+ * uguale per chiunque venda su Amazon con questo sistema.
+ */
+const TIPI_RESO = ['RETURN_REQUEST']
 
 export function classificaMittente(
-  email: Pick<EmailGrezza, 'from' | 'reply_to'>,
+  email: Pick<EmailGrezza, 'from' | 'reply_to' | 'notifica_tipo'>,
   opzioni: {
     domini_esclusi: string[]
     domini_notifica: string[]
@@ -98,7 +105,15 @@ export function classificaMittente(
   const domini = regole.flatMap((r) => r.sender_domains)
   if (daEscludere(email, domini)) return 'messaggio'
 
-  // 3. Solo ora le liste per genere.
+  // 3. Le richieste di reso PRIMA delle liste per dominio: condividono
+  //    `amazon.com` con le notifiche di mancata consegna (domini_notifica),
+  //    ma l'header dice esattamente di cosa si tratta — senza questo
+  //    controllo qui, una richiesta di reso verrebbe scambiata per una
+  //    notifica di mancata consegna e riaprirebbe il thread sbagliato,
+  //    con il messaggio sbagliato.
+  if (email.notifica_tipo && TIPI_RESO.includes(email.notifica_tipo)) return 'reso'
+
+  // 4. Solo ora le liste per genere.
   if (daEscludere(email, opzioni.domini_avviso)) return 'avviso'
   if (daEscludere(email, opzioni.domini_notifica)) return 'notifica'
   return 'messaggio'

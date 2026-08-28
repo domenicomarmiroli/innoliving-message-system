@@ -428,6 +428,60 @@ thread Mirakl — il worker accetta già `mirakl_destinatari` in
 
 ---
 
+## Richieste di reso Amazon — sessione del 28/08
+
+Domenico ha segnalato che le richieste di reso autorizzate da Amazon (email
+"Notifica di autorizzazione del reso") non venivano lette: il cliente apre
+un reso, e nessuno se ne accorge finché non scrive di nuovo. Fornito un
+esemplare reale (ordine 403-1049451-9270721,
+`test/fixtures/mail/amazon-richiesta-reso-reale.eml`), rispettando la
+regola 6 di CLAUDE.md — nessun parser costruito sulla sola descrizione o
+sullo screenshot.
+
+**Scoperta che ha semplificato il progetto iniziale**: l'ipotesi di partenza
+era che la notifica di reso e l'etichetta di spedizione (corriere +
+tracking) arrivassero in due email separate. Il file reale mostra che sono
+la STESSA email: un solo riconoscitore, un solo parser, nessuna
+correlazione fra email diverse da gestire.
+
+**Fatto**:
+- Header `X-Space-Notification-Type: RETURN_REQUEST` come segnale di
+  riconoscimento (`parse.ts`, `tipi.ts`) — più affidabile del dominio, che
+  Amazon condivide fra più tipi di notifica (`amazon.com`).
+- Nuovo genere `'reso'` in `classificaMittente()` (`riconosci.ts`), inserito
+  PRIMA delle liste per dominio: senza, una richiesta di reso verrebbe
+  scambiata per una notifica di mancata consegna (stesso dominio
+  `amazon.com`) e riaprirebbe il thread con il messaggio sbagliato.
+- `src/connectors/mail/resi.ts` (nuovo): `estraiDatiReso()` legge dalla
+  tabella HTML (articolo/ASIN/SKU/quantità/motivo/commento) e dai campi
+  riassuntivi (data richiesta, verifica politiche, autorizzazione, corriere
+  e tracking del reso); `registraReso()` — stesso schema di
+  `registraAvviso()` — annota la conversazione dell'ordine esistente (non
+  ne crea una parallela), tag `reso-richiesto`.
+- Migrazione 0018: `order.reso_carrier` / `order.reso_tracking_number`,
+  distinte da `carrier`/`tracking_number` (che tracciano la spedizione IN
+  USCITA verso il cliente, non quella di rientro).
+- `imap.ts` — nuovo ramo nel ciclo di lettura, contatore `resi` in
+  `EsitoCiclo`.
+- Test sull'esemplare reale (`test/mail-resi.test.ts`,
+  `test/mail-riconosci.test.ts`): estrazione dei campi, formattazione del
+  riassunto, e la precedenza reso/notifica sullo stesso dominio. 149 test
+  verdi.
+
+**Da eseguire in Supabase** (fornita a Domenico):
+```sql
+alter table "order"
+  add column if not exists reso_carrier          text,
+  add column if not exists reso_tracking_number   text;
+```
+
+**Resta da fare, lato Lovable**: una sezione "Reso" nel pannello contesto
+dell'ordine/thread, distinta dalla spedizione normale, che mostri
+`reso_carrier`/`reso_tracking_number` quando presenti e renda visibile il
+tag `reso-richiesto` sulla conversazione.
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge

@@ -363,6 +363,31 @@ gli altri file in `test/fixtures/mail/` sono sintetici — vedi il LEGGIMI lì
 dentro. Per questo il codice non interpreta la semantica del corpo: si aggancia
 all'alias e, come ripiego, al numero d'ordine, che ha una forma fissa.
 
+### Richieste di reso Amazon (migrazione 0018)
+Amazon manda una notifica quando un cliente apre una richiesta di reso, con
+header `X-Space-Notification-Type: RETURN_REQUEST` — segnale più affidabile
+del dominio del mittente, che Amazon condivide fra più tipi di notifica
+(`amazon.com` porta sia queste sia gli avvisi di mancata consegna).
+`classificaMittente()` (`riconosci.ts`) restituisce il genere `'reso'`
+guardando questo header PRIMA delle liste per dominio: senza, una richiesta
+di reso verrebbe scambiata per una notifica di mancata consegna e
+riaprirebbe il thread sbagliato con il messaggio sbagliato.
+
+`src/connectors/mail/resi.ts` — stesso schema di `registraAvviso()` in
+`notifica.ts`: annota la conversazione dell'ordine esistente (non ne apre
+una parallela), tag `reso-richiesto`. `estraiDatiReso()` legge dalla stessa
+email sia i dettagli del reso (prodotto/ASIN/SKU/quantità/motivo/commento
+del cliente, dalla tabella HTML) sia — se Amazon l'ha già emessa —
+l'etichetta di spedizione di rientro (corriere e numero di tracciamento):
+sono la STESSA email, non due separate, verificato sull'esemplare reale
+(`test/fixtures/mail/amazon-richiesta-reso-reale.eml`, per l'ordine
+403-1049451-9270721) prima di assumere il contrario.
+
+Corriere e tracking del reso finiscono in `order.reso_carrier` /
+`order.reso_tracking_number` — colonne distinte da `carrier`/
+`tracking_number`, che tracciano la spedizione IN USCITA verso il cliente,
+non quella di rientro: nel frontend sono due sezioni diverse.
+
 ### Connettore Mirakl (passo 06)
 API vera, al contrario di Amazon: **M11** `GET /api/inbox/threads` per leggere
 (`updated_since` + paginazione a cursore), **M12**

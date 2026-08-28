@@ -71,7 +71,7 @@ export async function riaggancia(
         // il resto non serve all'estrazione
         rfc822_id: null, in_reply_to: null, references: [], from: null,
         reply_to: null, to: [], date: null, body_html: null,
-        allegati: [], uid: null,
+        allegati: [], uid: null, notifica_tipo: null,
       },
       patternPerAccount.get(r.account_id) ?? null,
     )

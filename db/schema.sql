@@ -87,6 +87,10 @@ create table "order" (
   tracking_number    text,
   tracking_url       text,
   carrier            text,
+  -- Spedizione di RESO (dal cliente a noi), da Amazon RETURN_REQUEST:
+  -- distinta dalla spedizione in uscita qui sopra.
+  reso_carrier          text,
+  reso_tracking_number  text,
   total              numeric(12,2),
   currency           text,
   raw                jsonb       not null default '{}'::jsonb,

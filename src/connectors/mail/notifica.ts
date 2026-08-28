@@ -93,7 +93,8 @@ export async function registraNotifica(
   })
 }
 
-async function anomalia(
+/** Condivisa con resi.ts: stessa forma per ogni email di sistema non agganciata. */
+export async function anomalia(
   db: Db,
   accountId: string,
   tipo: string,

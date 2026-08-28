@@ -22,6 +22,14 @@ export interface EmailGrezza {
   allegati: AllegatoGrezzo[]
   /** UID IMAP: serve solo a riprendere da dove eravamo rimasti. */
   uid: number | null
+  /**
+   * Header `X-Space-Notification-Type` di Amazon: dice cosa è davvero
+   * questa email (es. `RETURN_REQUEST`) senza dover indovinare dal
+   * dominio del mittente, che per più tipi di notifica è lo stesso
+   * (`amazon.com`). Null per qualunque altra email — non è un header
+   * che manda un cliente o un altro marketplace.
+   */
+  notifica_tipo: string | null
 }
 
 export interface AllegatoGrezzo {

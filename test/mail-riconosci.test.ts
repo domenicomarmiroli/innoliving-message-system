@@ -143,7 +143,7 @@ describe('catena della conversazione', () => {
 describe('numero d ordine', () => {
   const base = {
     rfc822_id: null, in_reply_to: null, references: [], from: null, reply_to: null,
-    to: [], date: null, body_html: null, allegati: [], uid: null,
+    to: [], date: null, body_html: null, allegati: [], uid: null, notifica_tipo: null,
   }
 
   it('preferisce l oggetto al corpo: il corpo puo citare altri ordini', () => {
@@ -277,7 +277,7 @@ describe('lista di esclusi', () => {
 describe('generi di posta', () => {
   const nulla = { rfc822_id: null, in_reply_to: null, references: [], to: [],
     subject: null, date: null, body_text: null, body_html: null,
-    allegati: [], uid: null }
+    allegati: [], uid: null, notifica_tipo: null }
   const opz = { domini_esclusi: ['google.com'], domini_notifica: ['amazon.com'],
                 domini_avviso: [] }
 
@@ -340,7 +340,7 @@ describe('avvisi su un ordine', () => {
   it('il numero d ordine si legge da questi oggetti veri', () => {
     const base = { rfc822_id: null, in_reply_to: null, references: [],
       from: null, reply_to: null, to: [], date: null, body_html: null,
-      body_text: null, allegati: [], uid: null }
+      body_text: null, allegati: [], uid: null, notifica_tipo: null }
     expect(estraiNumeroOrdine({ ...base,
       subject: "La tua richiesta di garanzia Amazon dalla A alla Z per l'ordine 406-7088663-0211913" },
       null)).toBe('406-7088663-0211913')
@@ -351,7 +351,7 @@ describe('avvisi su un ordine', () => {
                   domini_notifica: ['amazon.com'], domini_avviso: ['amazon.it'] }
     const n = { rfc822_id: null, in_reply_to: null, references: [], to: [],
       subject: null, date: null, body_text: null, body_html: null,
-      allegati: [], uid: null, reply_to: null }
+      allegati: [], uid: null, reply_to: null, notifica_tipo: null }
     // marketplace.amazon.it e' sottodominio di amazon.it: senza le
     // regole dei canali finirebbe fra gli avvisi, e il canale
     // principale si spegnerebbe in silenzio.
@@ -362,5 +362,37 @@ describe('avvisi su un ordine', () => {
     // L'esclusione vince, nonostante il suffisso amazon.com
     expect(classificaMittente({ ...n, from: 'x@sell.amazon.com' }, opz, REGOLE))
       .toBe('escluso')
+  })
+})
+
+describe('richieste di reso', () => {
+  const n = { rfc822_id: null, in_reply_to: null, references: [], to: [],
+    subject: null, date: null, body_text: null, body_html: null,
+    allegati: [], uid: null, reply_to: null }
+  const opz = { domini_esclusi: [], domini_notifica: ['amazon.com'], domini_avviso: [] }
+
+  it('l header X-Space-Notification-Type vince sul dominio condiviso con le notifiche', () => {
+    // amazon.com porta sia le notifiche di mancata consegna sia le
+    // richieste di reso: senza guardare l'header finirebbero tutte
+    // classificate come notifica, e riaprirebbero il thread sbagliato
+    // con il messaggio sbagliato.
+    expect(classificaMittente(
+      { ...n, from: 'x@amazon.com', notifica_tipo: 'RETURN_REQUEST' }, opz))
+      .toBe('reso')
+    expect(classificaMittente(
+      { ...n, from: 'x@amazon.com', notifica_tipo: null }, opz))
+      .toBe('notifica')
+  })
+
+  it('un tipo di notifica sconosciuto non diventa un reso', () => {
+    expect(classificaMittente(
+      { ...n, from: 'x@amazon.com', notifica_tipo: 'ORDER_SHIPPED' }, opz))
+      .toBe('notifica')
+  })
+
+  it('sulla email reale l header è presente e riconosciuto', async () => {
+    const email = await analizza(eml('amazon-richiesta-reso-reale.eml'), 200)
+    expect(email.notifica_tipo).toBe('RETURN_REQUEST')
+    expect(classificaMittente(email, opz)).toBe('reso')
   })
 })
