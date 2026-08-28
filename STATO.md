@@ -568,6 +568,30 @@ in produzione c'è già almeno un reso e un rimborso reali da mostrare.
 
 ---
 
+## Messaggi Mirakl in HTML mostravano i tag grezzi — 28/08
+
+Domenico ha segnalato una bolla con `<b>`, `<ul>`, `<a>` visibili così
+come sono su una notifica di sistema Leroy Merlin/Adeo ("richiesta di
+fattura"). Causa: Mirakl manda `body` in HTML per i messaggi di sistema,
+ma finiva tutto in `message.body_text`, mostrato come testo semplice.
+
+**Fatto lato worker** (nessuna migrazione, solo codice — `body_html`
+esisteva già in schema): `normalize.ts` rileva quando il corpo Mirakl
+contiene un tag HTML vero e lo separa — testo pulito in `body_text`,
+markup originale in `body_html`. `core/html.ts` spostato da
+`connectors/mail/` a `core/`, ora condiviso anche dal connettore Mirakl.
+154 test verdi, incluso uno sul testo reale fornito da Domenico.
+
+**Fatto lato Lovable, stesso giro**: la bolla mostra `body_html`
+sanificato (DOMPurify, lista tag ristretta, link solo http/https con
+target="_blank" e rel="noopener noreferrer") al posto di `body_text`
+SOLO per i thread Mirakl — email e Shopify non cambiano.
+
+Nessuna azione richiesta in Supabase: solo codice, `body_html` era già
+una colonna esistente.
+
+---
+
 ## Bug Mirakl: primo invio reale falliva con 502 — 28/08
 
 Domenico ha testato il primo invio di una risposta su un thread Leroy

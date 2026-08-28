@@ -534,6 +534,32 @@ uscita che valorizza il campo mostra "A: Cliente" / "A: Operatore" / "A:
 Cliente e Operatore"; null (canali non-Mirakl, o messaggi Mirakl spediti
 prima di questa migrazione) non mostra etichetta.
 
+**Corpo HTML dei messaggi (28/08)**: Domenico ha segnalato una bolla con
+i tag grezzi in vista (`<b>`, `<ul>`, `<a>`...) su una notifica di
+sistema Leroy Merlin/Adeo ("richiesta di fattura", mittente
+`OPERATOR_USER`). Causa: Mirakl manda `body` in HTML per questi
+messaggi, ma finiva intero in `message.body_text`. `normalize.ts`
+(`separaCorpo()`) ora rileva quando il corpo contiene un tag vero
+(non solo un carattere `<` isolato — un messaggio scritto a mano da un
+cliente non deve vedersi comprimere gli a-capo da `testoPulito` per
+errore) e lo divide: `corpo_testo` (sempre, con `testoPulito` di
+`core/html.ts` se il corpo era HTML) va in `body_text`; `corpo_html`
+(solo quando c'era markup, altrimenti null) va in `body_html`.
+**Beneficio collaterale**: i messaggi di sistema Mirakl con HTML non
+inquinano più il contesto delle bozze AI con tag grezzi, visto che
+`generaBozza` legge da `body_text`.
+
+`core/html.ts` (spostato da `connectors/mail/`, ora condiviso anche dal
+connettore Mirakl) — solo `testoPulito()` serve qui; le altre funzioni
+restano specifiche del formato a lista + tabella delle notifiche Amazon.
+
+Lato Lovable: la bolla mostra `body_html` (sanificato con DOMPurify,
+lista di tag ristretta, link solo `http`/`https` con `target="_blank"
+rel="noopener noreferrer"`) al posto di `body_text` SOLO quando il
+canale è Mirakl e il campo è valorizzato — email e Shopify continuano a
+mostrare solo `body_text` come sempre (il loro `body_html` è l'HTML
+grezzo dell'email intera, mai da mostrare direttamente).
+
 Per un nuovo operatore, lo stesso collaudo:
 ```
 npm run mirakl:check -- --forma
