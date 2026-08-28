@@ -65,6 +65,45 @@ describe('normalizzazione M11', () => {
   })
 })
 
+describe('corpo HTML dei messaggi — verificato su Leroy Merlin/Adeo reale', () => {
+  // Testo reale di una notifica "richiesta di fattura" OPERATOR_USER,
+  // fornito da Domenico (27/08): Mirakl manda HTML formattato
+  // (<b>, <ul>, <a>) per i messaggi di sistema, non solo testo semplice.
+  const corpoReale =
+    'Ciao,<br><br>Ti ricordiamo che hai ricevuto una richiesta di fattura per l\'ordine ' +
+    '<b>005-26171L37613-B</b>.<br><br>Per rendere disponibile la fattura al cliente:' +
+    '<ul><li>Accedi all\'ordine del cliente su Mirakl: ' +
+    '<a href="https://adeo-marketplace.mirakl.net/mmp/shop/order/005-26171L37613-B/document">' +
+    'https://adeo-marketplace.mirakl.net/mmp/shop/order/005-26171L37613-B/document</a></li>' +
+    '<li>Clicca su "Documenti".</li></ul>Grazie per la tua collaborazione e a presto!'
+
+  const threadConCorpo = (body: string) => ({
+    data: [{ id: 't1', messages: [{ id: 'm1', from: { type: 'OPERATOR_USER' }, body }] }],
+  })
+
+  it('un corpo con markup finisce sia in corpo_html (intatto) sia in corpo_testo (ripulito)', () => {
+    const { threads } = normalizzaRisposta(threadConCorpo(corpoReale))
+    const m = threads[0]!.messaggi[0]!
+
+    expect(m.corpo_html).toBe(corpoReale)
+    expect(m.corpo_testo).not.toContain('<b>')
+    expect(m.corpo_testo).not.toContain('<ul>')
+    expect(m.corpo_testo).toContain("richiesta di fattura per l'ordine 005-26171L37613-B")
+    expect(m.corpo_testo).toContain('Grazie per la tua collaborazione')
+  })
+
+  it('un corpo senza markup resta testo semplice: nessun corpo_html, a-capo non toccati', () => {
+    const semplice = 'Buongiorno,\nquando arriva il pacco?\nGrazie'
+    const { threads } = normalizzaRisposta(threadConCorpo(semplice))
+    const m = threads[0]!.messaggi[0]!
+
+    expect(m.corpo_html).toBeNull()
+    // Non testoPulito: gli a-capo scritti a mano dal cliente non vanno
+    // compressi in uno spazio solo, sarebbe un falso positivo pericoloso.
+    expect(m.corpo_testo).toBe(semplice)
+  })
+})
+
 describe('classificazione del mittente — verificata su Leroy Merlin/Adeo reale', () => {
   const threadCon = (tipoMittente: string) => ({
     data: [

@@ -1,3 +1,5 @@
+import { testoPulito } from '../../core/html.js'
+
 /**
  * Da risposta M11 a modello canonico.
  *
@@ -32,7 +34,14 @@ export interface MessaggioMirakl {
   autore: string | null
   /** Il valore grezzo di from.type: serve per capire i casi non previsti. */
   tipo_mittente: string | null
-  corpo: string | null
+  /**
+   * Testo semplice, sempre presente quando c'è un corpo — se Mirakl manda
+   * HTML (i messaggi di sistema lo fanno: <b>, <ul>, <a>) è la versione
+   * ridotta a testo, non il markup grezzo.
+   */
+  corpo_testo: string | null
+  /** Il corpo originale, SOLO quando conteneva markup HTML. Altrimenti null. */
+  corpo_html: string | null
   inviato_il: string | null
   allegati: AllegatoMirakl[]
   raw: unknown
@@ -79,6 +88,23 @@ const ENTITA_ORDINE = ['MMP_ORDER', 'MPS_ORDER']
 
 function testo(v: unknown): string | null {
   return typeof v === 'string' && v.trim() !== '' ? v : null
+}
+
+/**
+ * Il corpo di un messaggio Mirakl può essere testo semplice o HTML — non
+ * c'è un campo separato che lo dica, va dedotto dal contenuto stesso.
+ * Un falso negativo (HTML scambiato per testo) non è pericoloso: al
+ * peggio si vedono i tag grezzi, come succedeva prima di questa
+ * distinzione. Un falso positivo (testo scambiato per HTML) sarebbe
+ * peggio — testoPulito comprimerebbe a torto gli a-capo di un messaggio
+ * scritto a mano — quindi il controllo cerca proprio un tag, non solo un
+ * carattere `<` isolato.
+ */
+function separaCorpo(v: unknown): { testo: string | null; html: string | null } {
+  const grezzo = testo(v)
+  if (!grezzo) return { testo: null, html: null }
+  const contieneTag = /<[a-z][^>]*>/i.test(grezzo)
+  return contieneTag ? { testo: testoPulito(grezzo), html: grezzo } : { testo: grezzo, html: null }
 }
 
 function numero(v: unknown): number | null {
@@ -213,6 +239,8 @@ function messaggiDa(
       }
     }
 
+    const corpo = separaCorpo(msg?.body)
+
     fuori.push({
       external_id: testo(msg?.id),
       // Il marketplace non l'abbiamo scritto noi: 'in' è corretto anche
@@ -221,7 +249,8 @@ function messaggiDa(
       autore_kind: autoreKind,
       autore: testo(from?.display_name),
       tipo_mittente: tipoMittente,
-      corpo: testo(msg?.body),
+      corpo_testo: corpo.testo,
+      corpo_html: corpo.html,
       inviato_il: testo(msg?.date_created),
       allegati: allegatiDa(msg?.attachments),
       raw: m,

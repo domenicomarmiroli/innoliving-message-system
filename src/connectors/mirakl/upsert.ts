@@ -184,11 +184,11 @@ export async function upsertThread(
 
       const [scritto] = await tx<{ id: string }[]>`
         insert into message (
-          thread_id, direction, author_kind, external_id, body_text,
+          thread_id, direction, author_kind, external_id, body_text, body_html,
           sent_at, match_strategy, raw
         ) values (
           ${threadId}, ${m.direzione}, ${m.autore_kind},
-          ${m.external_id}, ${m.corpo},
+          ${m.external_id}, ${m.corpo_testo}, ${m.corpo_html},
           ${m.inviato_il ? new Date(m.inviato_il) : aggiornato},
           'api', ${tx.json(m.raw as never)}
         )

@@ -1,10 +1,14 @@
 /**
- * Estrazione di campi da un HTML di notifica Amazon (reso, rimborso, e
- * qualunque altro formato con la stessa impaginazione a lista + tabella).
+ * Estrazione di campi da HTML, e riduzione a testo semplice.
  *
- * Condiviso fra resi.ts e rimborsi.ts: stessa forma di email, stesso
- * bisogno di leggerla senza un parser HTML vero — troppo per due campate
- * di testo e una tabella.
+ * `testoPulito` la usano sia resi.ts/rimborsi.ts (per leggere una email
+ * di notifica Amazon) sia mirakl/normalize.ts (per ricavare un
+ * body_text leggibile quando il corpo di un messaggio Mirakl è HTML,
+ * non testo semplice — un caso reale, non ipotetico: i messaggi di
+ * sistema Mirakl arrivano formattati con <b>/<ul>/<a>). Le altre
+ * funzioni (`campoEtichettaGrassetto`, `campoEtichettaSemplice`,
+ * `estraiRigheTabella`) restano specifiche del formato a lista + tabella
+ * delle notifiche Amazon.
  */
 
 /** Toglie i tag, normalizza gli spazi, decodifica le poche entità HTML che contano. */

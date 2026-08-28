@@ -1,6 +1,6 @@
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
-import { campoEtichettaGrassetto, campoEtichettaSemplice, estraiRigheTabella } from './html.js'
+import { campoEtichettaGrassetto, campoEtichettaSemplice, estraiRigheTabella } from '../../core/html.js'
 import { anomalia } from './notifica.js'
 import { perArchivio } from './parse.js'
 import { estraiNumeroOrdine } from './riconosci.js'
