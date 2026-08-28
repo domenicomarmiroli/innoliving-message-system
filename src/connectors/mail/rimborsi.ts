@@ -207,9 +207,13 @@ export async function registraRimborso(
         `
       }
 
+      // Cast esplicito su ::numeric: senza, il letterale "0" fa dedurre a
+      // Postgres che il parametro sia integer, e un importo con decimali
+      // (es. 56.95) fallisce con "invalid input syntax for type integer"
+      // — trovato su un rimborso reale, non su quelli con importo intero.
       await tx`
         update "order" set
-          rimborso_totale    = coalesce(rimborso_totale, 0) + coalesce(${dati.importo_totale}, 0),
+          rimborso_totale    = coalesce(rimborso_totale, 0) + coalesce(${dati.importo_totale}::numeric, 0),
           rimborso_emesso_at = ${arrivato},
           updated_at         = now()
         where id = ${ordineId}

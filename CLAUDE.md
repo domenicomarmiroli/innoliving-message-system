@@ -442,6 +442,12 @@ riga nuova (non un conflitto) si somma l'importo — così la stessa email
 rientrata due volte nel ciclo di lettura non conta due volte, ma due
 email di rimborso diverse per lo stesso ordine sommano entrambe.
 
+**Bug corretto (28/08, su un rimborso reale)**: `coalesce(importo, 0)` falliva con `invalid input
+syntax for type integer` su qualunque importo con decimali (es. 56,95€) — il letterale `0` senza
+virgola fa dedurre a Postgres che il parametro sia `integer`, non `numeric`. I rimborsi con importo
+intero (es. 169€) erano passati per caso, mascherando il problema. Corretto con un cast esplicito
+sul parametro (`::numeric`) prima del `coalesce`.
+
 `order.rimborso_totale` è quindi una **somma cumulativa**, non l'ultimo
 importo visto; `order.rimborso_emesso_at` è la data dell'ultimo. Entrambe
 sull'ordine, non sul thread — stesso motivo di `reso_richiesto_at`:

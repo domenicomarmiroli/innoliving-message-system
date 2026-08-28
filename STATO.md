@@ -646,7 +646,22 @@ duplicare il thread. 154 test verdi.
 questo fix restano lì — andrebbero recuperati rileggendo da IMAP i loro
 `rfc822_id` salvati nel payload. Non fatto in automatico; da valutare se
 vale la pena costruire un piccolo script di recupero, oppure lasciarli
-perdere visto che sono solo tre casi.
+perdere visto che sono solo tre casi. Domenico ha scelto di lasciarli
+perdere.
+
+**✅ Bug corretto lo stesso giorno, trovato sul primo rimborso reale DOPO
+il fix del segnaposto**: `coalesce(importo, 0)` in `rimborsi.ts`
+falliva con `invalid input syntax for type integer` non
+appena l'importo aveva decimali (56,95€) — il letterale `0` senza
+virgola fa dedurre a Postgres che il parametro sia `integer`. I test
+precedenti (169,01€, importi interi) erano passati per caso e avevano
+mascherato il problema. La transazione falliva e faceva rollback anche
+dell'ordine segnaposto appena creato, quindi in Lovable non compariva
+nulla — stesso sintomo del problema precedente ma causa diversa.
+Corretto con un cast esplicito (`::numeric`) sul parametro. 154 test
+verdi (nessun nuovo test: è un comportamento di inferenza di tipo di
+Postgres a tempo di query preparata, non riproducibile senza una
+connessione reale al database).
 
 ---
 
