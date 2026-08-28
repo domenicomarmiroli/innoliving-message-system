@@ -21,6 +21,18 @@ import type { EmailGrezza } from './tipi.js'
  * test/fixtures/mail/amazon-richiesta-reso-reale.eml — non scritto sulla
  * documentazione: qui la documentazione pubblica di Amazon non esiste
  * nemmeno, il formato si impara solo da un esemplare vero.
+ *
+ * **Ordine non ancora in archivio (28/08, caso reale)**: con gli ordini
+ * Amazon che non passano da Shopify, un reso può arrivare per un ordine
+ * mai sincronizzato — verificato su tre casi veri lo stesso giorno,
+ * finiti in `ingest_anomaly` prima di questo fix. Invece di buttare il
+ * reso, creiamo un ordine segnaposto (solo `channel`+`external_order_id`)
+ * sulla stessa chiave unique che userà `upsertOrdine()` quando l'ordine
+ * vero arriverà da Shopify: quella scrittura fa `ON CONFLICT` sulla
+ * STESSA riga e ne completa i campi, senza toccare `reso_carrier`/
+ * `reso_richiesto_at` (non fanno parte della sua SET clause) e senza
+ * duplicare il thread, perché la chiave del thread usa `order.id`, che
+ * resta lo stesso prima e dopo.
  */
 
 export const TAG_RESO_RICHIESTO = 'reso-richiesto'
@@ -132,15 +144,27 @@ export async function registraReso(
   const scadenza = new Date(arrivato.getTime() + opzioni.avviso_sla_minuti * 60_000)
 
   return db.begin(async (tx) => {
-    const [ordine] = await tx<{ id: string }[]>`
-      select id from "order" where external_order_id = ${numero} limit 1
+    // Se l'ordine non è ancora in archivio (caso reale e frequente: gli
+    // ordini Amazon non passano da Shopify, e un reso può riguardare un
+    // ordine di mesi fa mai sincronizzato) non buttiamo via il reso — lo
+    // agganciamo comunque a un ordine segnaposto, con solo channel ed
+    // external_order_id. Quando l'ordine vero arriverà da Shopify,
+    // upsertOrdine() farà ON CONFLICT (channel, external_order_id) sulla
+    // STESSA riga e ne completerà i campi, senza toccare reso_carrier/
+    // reso_richiesto_at (non fanno parte della sua SET clause) e senza
+    // duplicare thread: chiaveThread() usa order.id, che resta lo stesso.
+    const [ordine] = await tx<{ id: string; created: boolean }[]>`
+      insert into "order" (channel, external_order_id)
+      values ('amazon', ${numero})
+      on conflict (channel, external_order_id) do update set updated_at = now()
+      returning id, (xmax = 0) as created
     `
-    // Come per gli avvisi: se l'ordine non è (ancora) in archivio, la
-    // richiesta finisce in ingest_anomaly e non in coda — stesso limite
-    // già noto (ordini Amazon non sincronizzati), non specifico dei resi.
-    if (!ordine) {
-      await anomalia(db, accountId, 'reso_ordine_sconosciuto', email, numero)
-      return { esito: 'orfano' as const, thread_id: null }
+    const ordineId = ordine!.id
+    if (ordine!.created) {
+      log.info(
+        { ordine: numero },
+        'ordine creato come segnaposto: reso arrivato prima della sincronizzazione da Shopify',
+      )
     }
 
     // reso_richiesto_at sempre, indipendentemente dal corriere: un
@@ -155,19 +179,19 @@ export async function registraReso(
         reso_carrier          = coalesce(${dati.corriere_reso}, reso_carrier),
         reso_tracking_number  = coalesce(${dati.tracking_reso}, reso_tracking_number),
         updated_at            = now()
-      where id = ${ordine.id}
+      where id = ${ordineId}
     `
 
     // Stessa chiave di registraAvviso: se il cliente scrive di questo
     // ordine, finisce nella stessa conversazione, non in una parallela.
-    const chiave = `ordine:${ordine.id}`
+    const chiave = `ordine:${ordineId}`
 
     const [thread] = await tx<{ id: string; tags: string[]; created: boolean }[]>`
       insert into thread (
         account_id, external_thread_id, order_id, subject, state,
         first_inbound_at, last_inbound_at, due_at, tags
       ) values (
-        ${accountId}, ${chiave}, ${ordine.id}, ${email.subject},
+        ${accountId}, ${chiave}, ${ordineId}, ${email.subject},
         ${vecchio ? 'closed' : 'open'}, ${arrivato}, ${arrivato}, ${scadenza},
         ${[TAG_RESO_RICHIESTO]}
       )

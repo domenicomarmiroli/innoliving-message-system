@@ -22,6 +22,12 @@ import type { EmailGrezza } from './tipi.js'
  * test/fixtures/mail/amazon-rimborso-emesso-reale.eml — stessa
  * impaginazione a lista + tabella dei resi, stesso motivo per non fidarsi
  * della sola documentazione (qui non esiste nemmeno).
+ *
+ * **Ordine non ancora in archivio (28/08, caso reale)**: stessa scelta di
+ * `resi.ts`, stesso giorno — tre rimborsi veri per ordini Amazon mai
+ * sincronizzati da Shopify erano finiti in `ingest_anomaly`, persi. Ora
+ * si crea un ordine segnaposto invece di arrendersi; vedi il commento in
+ * `resi.ts` per il perché è sicuro rispetto a `upsertOrdine()`.
  */
 
 export const TAG_RIMBORSO_EMESSO = 'rimborso-emesso'
@@ -130,24 +136,34 @@ export async function registraRimborso(
   const scadenza = new Date(arrivato.getTime() + opzioni.avviso_sla_minuti * 60_000)
 
   return db.begin(async (tx) => {
-    const [ordine] = await tx<{ id: string }[]>`
-      select id from "order" where external_order_id = ${numero} limit 1
+    // Se l'ordine non è ancora in archivio (gli ordini Amazon non passano
+    // da Shopify, e un rimborso può riguardare un ordine mai
+    // sincronizzato) lo agganciamo comunque a un ordine segnaposto —
+    // stessa scelta di registraReso, stessa spiegazione lì.
+    const [ordine] = await tx<{ id: string; created: boolean }[]>`
+      insert into "order" (channel, external_order_id)
+      values ('amazon', ${numero})
+      on conflict (channel, external_order_id) do update set updated_at = now()
+      returning id, (xmax = 0) as created
     `
-    if (!ordine) {
-      await anomalia(db, accountId, 'rimborso_ordine_sconosciuto', email, numero)
-      return { esito: 'orfano' as const, thread_id: null }
+    const ordineId = ordine!.id
+    if (ordine!.created) {
+      log.info(
+        { ordine: numero },
+        'ordine creato come segnaposto: rimborso arrivato prima della sincronizzazione da Shopify',
+      )
     }
 
     // Stessa chiave di registraReso/registraAvviso: un rimborso sullo
     // stesso ordine finisce nella stessa conversazione.
-    const chiave = `ordine:${ordine.id}`
+    const chiave = `ordine:${ordineId}`
 
     const [thread] = await tx<{ id: string; tags: string[] }[]>`
       insert into thread (
         account_id, external_thread_id, order_id, subject, state,
         first_inbound_at, last_inbound_at, due_at, tags
       ) values (
-        ${accountId}, ${chiave}, ${ordine.id}, ${email.subject},
+        ${accountId}, ${chiave}, ${ordineId}, ${email.subject},
         ${vecchio ? 'closed' : 'open'}, ${arrivato}, ${arrivato}, ${scadenza},
         ${[TAG_RIMBORSO_EMESSO]}
       )
@@ -196,7 +212,7 @@ export async function registraRimborso(
           rimborso_totale    = coalesce(rimborso_totale, 0) + coalesce(${dati.importo_totale}, 0),
           rimborso_emesso_at = ${arrivato},
           updated_at         = now()
-        where id = ${ordine.id}
+        where id = ${ordineId}
       `
 
       if (!vecchio) {

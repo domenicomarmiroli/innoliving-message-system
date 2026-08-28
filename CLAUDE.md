@@ -388,6 +388,26 @@ Corriere e tracking del reso finiscono in `order.reso_carrier` /
 `tracking_number`, che tracciano la spedizione IN USCITA verso il cliente,
 non quella di rientro: nel frontend sono due sezioni diverse.
 
+**Ordine non ancora in archivio (28/08, sulla scorta di un caso reale)**:
+tre rimborsi veri arrivati lo stesso giorno per ordini Amazon non ancora
+sincronizzati da Shopify finivano in `ingest_anomaly`, persi — e persi
+per sempre, perché un reso/rimborso "orfano" non crea un thread da
+riagganciare più tardi (a differenza di un messaggio cliente, che resta
+`unmatched` e viene riprovato ad ogni giro da `riaggancia.ts`).
+`resi.ts`/`rimborsi.ts` ora creano un ordine SEGNAPOSTO (solo `channel`
+e `external_order_id`, `insert ... on conflict (channel,
+external_order_id) do update`) invece di arrendersi: quando l'ordine
+vero arriva da Shopify, `upsertOrdine()` fa `ON CONFLICT` sulla STESSA
+riga (stesso vincolo unique) e ne completa i campi — senza toccare
+`reso_carrier`/`reso_richiesto_at`/`rimborso_totale`/`rimborso_emesso_at`
+(non fanno parte della sua `SET`) e senza duplicare il thread, perché
+la sua chiave usa `order.id`, che resta lo stesso prima e dopo. Se in
+seguito un cliente scrive di quell'ordine, `aggancia()` lo trova per
+`external_order_id` e finisce nello STESSO thread già annotato.
+**Non risolve i tre casi già finiti in `ingest_anomaly` prima di questo
+fix** — quelli restano lì, servirebbe rileggerli da IMAP per il loro
+`rfc822_id` salvato nel payload, non fatto in automatico.
+
 **`order.reso_richiesto_at` (migrazione 0020, 28/08)**: quando è arrivata
 la notifica di reso, indipendente da corriere/tracking — un cliente può
 aprire un reso prima che Amazon emetta l'etichetta, e senza questa colonna

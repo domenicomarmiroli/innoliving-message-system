@@ -616,6 +616,40 @@ di canale nell'elenco delle voci.
 alter table knowledge add column if not exists canali text[];
 create index if not exists knowledge_canali_idx on knowledge using gin (canali);
 ```
+---
+
+## Resi e rimborsi per ordini non ancora sincronizzati — 28/08
+
+Stesso giorno, tre rimborsi Amazon veri sono arrivati per ordini che non
+esistevano ancora in `order` — verificato in `ingest_anomaly`, tipo
+`rimborso_ordine_sconosciuto`, tre righe. Confermato da Domenico: gli
+ordini Amazon vengono importati da Shopify solo da pochi giorni, quindi
+un ordine più vecchio (necessariamente, se è già arrivato un rimborso)
+può non esserci ancora.
+
+**Peggio della perdita in sé**: un reso/rimborso "orfano" non crea nessun
+thread — a differenza di un messaggio cliente normale, che resta
+`unmatched` e viene riagganciato ad ogni giro da `riaggancia.ts`, un
+reso/rimborso senza ordine finiva SOLO in `ingest_anomaly` con oggetto e
+`rfc822_id`, niente altro, e lì restava per sempre anche quando l'ordine
+fosse arrivato più tardi.
+
+**Fatto** (nessuna migrazione, solo codice): `resi.ts`/`rimborsi.ts` ora
+creano un ordine segnaposto (`channel='amazon'`, `external_order_id`)
+quando non lo trovano, sulla stessa chiave unique `(channel,
+external_order_id)` che usa `upsertOrdine()` di Shopify. Quando l'ordine
+vero arriva, l'upsert Shopify aggiorna la STESSA riga senza cancellare
+`reso_carrier`/`rimborso_totale` (non sono nella sua `SET`) e senza
+duplicare il thread. 154 test verdi.
+
+**Non risolto**: i tre rimborsi già finiti in `ingest_anomaly` prima di
+questo fix restano lì — andrebbero recuperati rileggendo da IMAP i loro
+`rfc822_id` salvati nel payload. Non fatto in automatico; da valutare se
+vale la pena costruire un piccolo script di recupero, oppure lasciarli
+perdere visto che sono solo tre casi.
+
+---
+
 **Nota a margine, non da questa sessione**: `db/schema.sql` non
 contiene la tabella `knowledge` da quando è stata introdotta (migrazione
 0010) — non l'ho aggiunta perché non potrei verificarla contro lo stato
