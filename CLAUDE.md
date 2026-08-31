@@ -694,12 +694,25 @@ serva davvero al cliente.
 procedura può valere diversamente da un marketplace all'altro (le regole
 di reso di Amazon non sono quelle di Mirakl). `text[]`, stesso principio
 di `domini_esclusi` capovolto: qui NULL o vuoto è il caso comune e
-significa "vale per tutti i canali", non richiede di spuntare nulla; solo
-se valorizzato la voce si restringe a quei `kind` di `channel_account`.
+significa "vale per tutti i canali", non richiede di spuntare nulla.
+
+**Per operatore, non per kind (migrazione 0025, 29/08)**: inizialmente
+`canali` conteneva il `kind` di `channel_account` ('shopify', 'mirakl',
+...), ma Domenico ha segnalato che due operatori Mirakl diversi hanno
+logiche di comunicazione diverse — una voce pensata per l'uno non deve
+valere per l'altro solo perché condividono la piattaforma. Nessuna
+modifica di schema: cambia solo cosa contiene la colonna, ora
+`channel_account.code` (es. `mirakl-lmfr`), non più il `kind`.
 `generaBozza()` filtra `and (canali is null or array_length(canali, 1)
-is null or ${thread.kind} = any(canali))`, stessa query del tag overlap.
-Lato Lovable: selettore a caselle nei tre form (documento/manuale/
-modifica) e pastiglie di canale nell'elenco.
+is null or ${thread.account_code} = any(canali))` — la query seleziona
+ora anche `ca.code as account_code`, non solo `ca.kind` (quello resta
+per `verificaPolicy()`, che è correttamente per genere di canale, non
+per operatore). Lato Lovable: il selettore nei tre form legge
+dinamicamente gli operatori attivi da `channel_account` invece di una
+lista fissa di kind, raggruppati per piattaforma; l'elenco mostra un
+banner quando una voce ha un codice che non corrisponde più a un
+operatore attivo (es. una voce salvata prima di questa migrazione con
+un kind generico), da riaprire e correggere a mano.
 
 **Esito della bozza** (`ai_draft.outcome`/`final_text`): `/threads/reply`
 accetta ora un `draft_id` facoltativo. Se presente, dopo l'invio confronta

@@ -825,6 +825,34 @@ alter table "order"
 
 ---
 
+## Knowledge base: canali per operatore, non per piattaforma — 29/08
+
+Domenico ha segnalato che il selettore canali (appena fatto) metteva
+insieme due operatori Mirakl diversi sotto un'unica casella "Mirakl" —
+ma hanno logiche di comunicazione diverse, una voce per l'uno non deve
+valere per l'altro.
+
+**Fatto lato worker** (migrazione 0025, solo un commento — nessuna
+modifica di schema): `knowledge.canali` ora contiene
+`channel_account.code` (l'operatore specifico) invece del `kind`
+(la piattaforma). `generaBozza()` filtra di conseguenza. 163 test verdi.
+
+**Fatto lato Lovable, stesso giro**: il selettore nei tre form legge
+ora dinamicamente gli operatori attivi da `channel_account` invece di
+una lista fissa, raggruppati per piattaforma per leggibilità. **Aggiunta
+non richiesta ma sensata**: un banner nell'elenco segnala le voci il
+cui codice non corrisponde più a nessun operatore attivo (l'unica voce
+esistente, salvata con "mirakl" generico prima di questa correzione,
+comparirà lì) — da riaprire e riselezionare l'operatore giusto.
+
+**Da eseguire in Supabase**:
+```sql
+comment on column knowledge.canali is
+  'Codici di channel_account (channel_account.code, es. mirakl-lmfr — non il kind) a cui si applica questa voce. NULL o vuoto = vale per tutti gli operatori/canali.';
+```
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge
