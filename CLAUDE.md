@@ -224,6 +224,12 @@ password per app non ha scadenza.
   i più comuni in Italia e internazionali): un link che non corrisponde a
   nessuno di questi resta bloccato, anche mescolato a uno di tracciamento
   vero nello stesso messaggio.
+  **Stessa eccezione per i link ad Amazon stessa (29/08, su un caso
+  reale)**: Domenico ha segnalato un link a una pagina di aiuto Amazon
+  (`amazon.it/gp/help/...`) bloccato come fuori piattaforma — ma è
+  Amazon stessa, la regola vieta di portare il cliente FUORI da Amazon,
+  non di linkare pagine di Amazon. `DOMINI_AMAZON` (i domini principali
+  per paese) segue lo stesso schema di `DOMINI_CORRIERE`.
   **Altra eccezione, stessa logica di `core/ai/redazione.ts`**: il
   controllo sul telefono non scambia più un numero d'ordine Amazon (tre
   cifre-sette cifre-sette cifre, es. `405-0668977-2033157`) per un

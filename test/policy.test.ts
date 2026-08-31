@@ -17,6 +17,28 @@ describe('policy — amazon', () => {
     expect(esito.violazioni).toEqual([])
   })
 
+  it('ammette un link ad Amazon stessa (una pagina di aiuto)', () => {
+    // Caso reale segnalato da Domenico: un link alle politiche di reso
+    // di Amazon veniva bloccato come se portasse il cliente fuori
+    // piattaforma — ma è Amazon stessa, non un sito esterno.
+    const esito = check(
+      'amazon',
+      'Trova tutte le informazioni qui: https://www.amazon.it/gp/help/customer/display.html?nodeId=GV38326YW5JX9V9X',
+    )
+    expect(esito.ok).toBe(true)
+    expect(esito.violazioni).toEqual([])
+  })
+
+  it('blocca comunque un link che non è né di un corriere né di Amazon, mescolato a uno ammesso', () => {
+    const esito = check(
+      'amazon',
+      'Info qui https://www.amazon.it/gp/help/x e scrivici anche su https://esempio.it/altro',
+    )
+    expect(esito.ok).toBe(false)
+    expect(esito.violazioni).toHaveLength(1)
+    expect(esito.violazioni[0]?.porzione).toContain('esempio.it')
+  })
+
   it('blocca comunque un link che non è di un corriere, mescolato a uno di tracciamento', () => {
     const esito = check(
       'amazon',

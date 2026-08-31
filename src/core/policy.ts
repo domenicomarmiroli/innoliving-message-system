@@ -111,6 +111,34 @@ function dominioDiCorriere(url: string): boolean {
   }
 }
 
+// Un link ad Amazon stesso è la stessa eccezione dei corrieri, stessa
+// logica: la regola vieta di portare il cliente FUORI da Amazon, non di
+// linkare pagine di Amazon (es. una pagina di aiuto sulle politiche di
+// reso) — non è un modo di aggirarla. Domini principali per paese, non
+// specifici di questa azienda: valgono per chiunque venda su Amazon con
+// questo sistema.
+const DOMINI_AMAZON = [
+  'amazon.it',
+  'amazon.com',
+  'amazon.de',
+  'amazon.fr',
+  'amazon.es',
+  'amazon.co.uk',
+  'amazon.nl',
+  'amazon.se',
+  'amazon.pl',
+  'amazon.com.be',
+]
+
+function dominioAmazon(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return DOMINI_AMAZON.some((d) => host === d || host.endsWith(`.${d}`))
+  } catch {
+    return false
+  }
+}
+
 const CONTATTA_FUORI_TERMINI = [
   'scrivici direttamente a',
   'contattaci fuori da',
@@ -175,9 +203,10 @@ export function check(kind: string, testo: string): EsitoPolicy {
 
   if (regole.vieta_url) {
     for (const porzione of trovaTutte(testo, URL_RE)) {
-      // Un link di tracciamento risponde a "dov'è il mio pacco": è
-      // un'eccezione nota, non un modo di aggirare la regola.
-      if (dominioDiCorriere(porzione)) continue
+      // Un link di tracciamento risponde a "dov'è il mio pacco", un
+      // link ad Amazon stessa non porta il cliente fuori piattaforma:
+      // due eccezioni note, non un modo di aggirare la regola.
+      if (dominioDiCorriere(porzione) || dominioAmazon(porzione)) continue
       violazioni.push({
         codice: 'url_non_ammesso',
         messaggio: 'Il messaggio contiene un link: non ammesso su questo canale.',

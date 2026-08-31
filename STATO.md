@@ -917,6 +917,40 @@ correttamente.
 
 ---
 
+## Tutti i ticket: le notifiche di rimborso non sono ticket — 29/08
+
+Domenico ha segnalato che un thread con solo la notifica di rimborso
+(nessun messaggio vero del cliente) compariva anche in "Tutti i
+ticket" — a quelle email non si risponde mai, non dovrebbero essere in
+coda insieme ai ticket reali.
+
+**Fatto lato Lovable** (nessuna modifica al worker): la vista "Tutti i
+ticket" ora esclude i thread col tag `rimborso-emesso` che NON hanno
+nessun messaggio con `direction='in'` e `author_kind='customer'` —
+verificato sulla tabella dei messaggi, non sull'anteprima (limitata
+agli ultimi 4), per non escludere per errore un thread che ha davvero
+una conversazione col cliente più vecchia di 4 messaggi. Un ordine con
+sia una conversazione reale sia, sullo stesso thread, una notifica di
+rimborso arrivata dopo resta visibile. Contatore del rail allineato.
+Le altre viste (Resi, Rimborsi, Reclami A-Z, ecc.) non toccate.
+
+---
+
+## Link ad Amazon bloccati dalla policy — 29/08
+
+Domenico ha segnalato un link a una pagina di aiuto Amazon
+(`amazon.it/gp/help/...`) bloccato dalla policy di contenuto come se
+portasse il cliente fuori piattaforma — ma è Amazon stessa.
+
+**Fatto lato worker** (nessuna migrazione, solo codice): stessa
+eccezione già in uso per i link di tracciamento dei corrieri —
+`DOMINI_AMAZON` (i domini amazon.it/.com/.de/.fr/.es/.co.uk/ecc.) in
+`core/policy.ts`. Un link a un dominio Amazon non blocca più l'invio;
+un link a un dominio esterno resta bloccato come prima, anche mescolato
+a uno ammesso nello stesso messaggio. 168 test verdi.
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge
