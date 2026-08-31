@@ -98,6 +98,10 @@ create table "order" (
   -- data dell'ultimo: un ordine può avere più rimborsi parziali.
   rimborso_totale       numeric(12,2),
   rimborso_emesso_at    timestamptz,
+  -- Reclamo di Garanzia dalla A alla Z (A_Z_CLAIM_RESPONDENT_NOTIFY):
+  -- un evento per ordine, non cumulativo come i rimborsi.
+  reclamo_az_importo       numeric(12,2),
+  reclamo_az_ricevuto_at   timestamptz,
   total              numeric(12,2),
   currency           text,
   raw                jsonb       not null default '{}'::jsonb,

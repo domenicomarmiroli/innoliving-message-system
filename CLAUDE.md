@@ -594,6 +594,39 @@ Non scrive nulla: stampa i nomi dei campi che l'API restituisce davvero, li
 confronta con quelli attesi e non mostra il contenuto dei messaggi.
 Ma il vero collaudo, come dimostrato qui, è il primo cliente che scrive.
 
+### Reclami di Garanzia dalla A alla Z (migrazione 0024)
+Stesso meccanismo di resi e rimborsi, header `X-Space-Notification-Type:
+A_Z_CLAIM_RESPONDENT_NOTIFY`. **Qui l'header non è solo più affidabile del
+dominio — è l'unico modo corretto**: verificato su un esemplare reale che
+l'oggetto di questa email ("Richiesta di rimborso ricevuta per l'ordine
+...") non contiene "dalla A alla Z" da nessuna parte, solo il corpo lo
+dice. Il vecchio meccanismo `avviso` (migrazione 0007, per testo
+nell'oggetto) avrebbe classificato questa email col tag generico
+`avviso-piattaforma`, perdendo l'urgenza specifica — un reclamo A-to-Z
+pesa sulla salute dell'account venditore, non è un avviso qualunque.
+
+`src/connectors/mail/reclami.ts` — stesso schema di `resi.ts`, incluso
+l'ordine segnaposto quando non ancora in archivio. `estraiDatiReclamo()`
+legge importo e termine di risposta dal corpo: **l'importo è in formato
+italiano** (virgola come separatore decimale, es. "119,00"), a
+differenza dei rimborsi che usano il formato americano ("169.01") — non
+sono la stessa convenzione, verificato sui due esemplari reali, non
+assunto uguale.
+
+`order.reclamo_az_importo` / `order.reclamo_az_ricevuto_at`: un evento
+per ordine (coalesce mantiene la prima data), non cumulativo come i
+rimborsi — un reclamo non si ripete nello stesso modo di un rimborso
+parziale.
+
+**DEBITO dichiarato**: verificato solo l'esemplare della notifica
+iniziale del reclamo. Amazon promette una seconda email quando prende
+una decisione ("Non appena prenderemo una decisione, invieremo...");
+probabilmente con lo stesso header, ma il formato non è stato ancora
+visto. Oggi ogni notifica con questo header viene trattata come un
+evento indipendente (stesso dedup per `rfc822_id` di tutti gli altri
+moduli) — non perde niente, ma non distingue ancora "reclamo aperto" da
+"decisione presa".
+
 ### Bozze AI e knowledge base (passo 07, migrazione 0010)
 `core/ai/` — un provider dietro un'interfaccia (`provider.ts`), un'implementazione
 oggi (`anthropic.ts`, Claude via REST diretto, non l'SDK — coerente con Storage

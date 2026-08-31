@@ -778,6 +778,53 @@ fra corrieri diversi (es. POSTE_ITALIANE vs altri) se un giorno servisse
 
 ---
 
+## Reclami di Garanzia dalla A alla Z — 29/08
+
+Domenico ha fornito un'email reale di reclamo A-to-Z (ordine
+402-3427577-1965903, header `X-Space-Notification-Type:
+A_Z_CLAIM_RESPONDENT_NOTIFY`) e ha chiesto lo stesso trattamento di resi
+e rimborsi: vista dedicata + indicazione nel pannello contesto.
+
+**Scoperta importante leggendo l'esemplare**: l'oggetto di questa email
+è "Richiesta di rimborso ricevuta per l'ordine..." — non contiene
+"dalla A alla Z" da nessuna parte, solo il corpo lo dice. Il vecchio
+meccanismo `avviso` (basato sul testo dell'oggetto, migrazione 0007)
+avrebbe classificato questo reclamo col tag generico
+"avviso-piattaforma", non "garanzia-a-z" — perdendo l'urgenza specifica
+su un caso che pesa sulla salute dell'account venditore. Motivo in più
+per usare l'header, stessa scelta già fatta per resi e rimborsi.
+
+**Altra scoperta**: l'importo qui è in formato ITALIANO (virgola
+decimale, "119,00"), diverso dal formato AMERICANO usato nelle email di
+rimborso ("169.01") — non la stessa convenzione, verificato sui due
+esemplari reali prima di assumere che fosse uguale.
+
+**Fatto lato worker** (migrazione 0024): `order.reclamo_az_importo` /
+`order.reclamo_az_ricevuto_at` (un evento per ordine, non cumulativo),
+tag `reclamo-az`, ordine segnaposto se non ancora sincronizzato (stessa
+scelta di resi/rimborsi). 163 test verdi, incluso uno sull'email reale.
+
+**Fatto lato Lovable, stesso giro**: vista "Reclami A-Z" nella barra —
+con un tocco in più non richiesto esplicitamente ma sensato: icona a
+scudo in colore critico, per farla risaltare come la più urgente delle
+tre viste per canale — e sezione "Reclamo A-Z" nel pannello di
+contesto, separata da Reso e Rimborso.
+
+**DEBITO dichiarato**: verificato solo l'esemplare della notifica
+iniziale. Amazon promette una seconda email con la decisione finale, di
+cui non abbiamo ancora un esemplare — oggi trattata come un evento
+indipendente sullo stesso ordine, non ancora distinta da "reclamo
+aperto".
+
+**Da eseguire in Supabase**:
+```sql
+alter table "order"
+  add column if not exists reclamo_az_importo      numeric(12,2),
+  add column if not exists reclamo_az_ricevuto_at  timestamptz;
+```
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge

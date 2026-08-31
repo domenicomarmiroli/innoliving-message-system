@@ -71,16 +71,17 @@ export function daEscludere(
 }
 
 /** Che genere di posta è, prima ancora di chiedersi da quale canale viene. */
-export type GenereMittente = 'escluso' | 'reso' | 'rimborso' | 'notifica' | 'avviso' | 'messaggio'
+export type GenereMittente = 'escluso' | 'reso' | 'rimborso' | 'reclamo' | 'notifica' | 'avviso' | 'messaggio'
 
 /**
- * Valori noti di `X-Space-Notification-Type` che sono richieste di reso
- * o rimborsi emessi. Non è un dato specifico di questa azienda: è la
- * tassonomia di Amazon, uguale per chiunque venda su Amazon con questo
- * sistema.
+ * Valori noti di `X-Space-Notification-Type` che sono richieste di reso,
+ * rimborsi emessi o reclami di Garanzia dalla A alla Z. Non è un dato
+ * specifico di questa azienda: è la tassonomia di Amazon, uguale per
+ * chiunque venda su Amazon con questo sistema.
  */
 const TIPI_RESO = ['RETURN_REQUEST']
 const TIPI_RIMBORSO = ['REFUND_ISSUED']
+const TIPI_RECLAMO = ['A_Z_CLAIM_RESPONDENT_NOTIFY']
 
 export function classificaMittente(
   email: Pick<EmailGrezza, 'from' | 'reply_to' | 'notifica_tipo'>,
@@ -107,14 +108,20 @@ export function classificaMittente(
   const domini = regole.flatMap((r) => r.sender_domains)
   if (daEscludere(email, domini)) return 'messaggio'
 
-  // 3. Le richieste di reso e i rimborsi emessi PRIMA delle liste per
-  //    dominio: condividono `amazon.com` con le notifiche di mancata
-  //    consegna (domini_notifica), ma l'header dice esattamente di cosa
-  //    si tratta — senza questo controllo qui, finirebbero scambiati per
-  //    una notifica di mancata consegna e riaprirebbero il thread
-  //    sbagliato, con il messaggio sbagliato.
+  // 3. Le richieste di reso, i rimborsi emessi e i reclami A-to-Z PRIMA
+  //    delle liste per dominio E prima del riconoscimento per testo
+  //    nell'oggetto (avviso_tag, punto 4): condividono `amazon.it`/
+  //    `amazon.com` con le notifiche di mancata consegna e con gli
+  //    avvisi generici, ma l'header dice esattamente di cosa si tratta.
+  //    Per i reclami è la differenza fra un tag preciso e uno generico:
+  //    verificato su un esemplare reale in cui l'oggetto era "Richiesta
+  //    di rimborso ricevuta..." — non conteneva "dalla A alla Z" da
+  //    nessuna parte, solo il corpo lo diceva. Con la sola corrispondenza
+  //    sul testo dell'oggetto (punto 4) sarebbe finito nel tag generico
+  //    "avviso-piattaforma", perdendo l'informazione più urgente.
   if (email.notifica_tipo && TIPI_RESO.includes(email.notifica_tipo)) return 'reso'
   if (email.notifica_tipo && TIPI_RIMBORSO.includes(email.notifica_tipo)) return 'rimborso'
+  if (email.notifica_tipo && TIPI_RECLAMO.includes(email.notifica_tipo)) return 'reclamo'
 
   // 4. Solo ora le liste per genere.
   if (daEscludere(email, opzioni.domini_avviso)) return 'avviso'

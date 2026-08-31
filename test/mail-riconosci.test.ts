@@ -415,3 +415,33 @@ describe('rimborsi emessi', () => {
     expect(classificaMittente(email, opz)).toBe('rimborso')
   })
 })
+
+describe('reclami di Garanzia dalla A alla Z', () => {
+  const n = { rfc822_id: null, in_reply_to: null, references: [], to: [],
+    subject: null, date: null, body_text: null, body_html: null,
+    allegati: [], uid: null, reply_to: null }
+  const opz = { domini_esclusi: [], domini_notifica: ['amazon.com'], domini_avviso: ['amazon.it'] }
+
+  it('A_Z_CLAIM_RESPONDENT_NOTIFY è un reclamo, non un avviso generico per testo', () => {
+    expect(classificaMittente(
+      { ...n, from: 'atoz-guarantee-no-reply@amazon.it', notifica_tipo: 'A_Z_CLAIM_RESPONDENT_NOTIFY' },
+      opz))
+      .toBe('reclamo')
+  })
+
+  it('senza l header, lo stesso mittente resta un avviso generico', () => {
+    expect(classificaMittente(
+      { ...n, from: 'atoz-guarantee-no-reply@amazon.it', notifica_tipo: null }, opz))
+      .toBe('avviso')
+  })
+
+  it('sulla email reale l header è presente e riconosciuto, nonostante l oggetto non parli di reclamo', async () => {
+    const email = await analizza(eml('amazon-reclamo-az-reale.eml'), 220)
+    expect(email.notifica_tipo).toBe('A_Z_CLAIM_RESPONDENT_NOTIFY')
+    // La prova del perché serve l'header: l'oggetto reale non contiene
+    // "dalla A alla Z" da nessuna parte, solo il corpo lo dice — con la
+    // sola corrispondenza sul testo sarebbe finito nel tag generico.
+    expect(email.subject).not.toContain('alla Z')
+    expect(classificaMittente(email, opz)).toBe('reclamo')
+  })
+})

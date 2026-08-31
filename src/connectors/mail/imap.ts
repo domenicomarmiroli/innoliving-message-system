@@ -7,6 +7,7 @@ import { aggancia } from './aggancia.js'
 import { analizza } from './parse.js'
 import { caricaRegole } from './regole.js'
 import { registraAvviso, registraNotifica } from './notifica.js'
+import { registraReclamo } from './reclami.js'
 import { registraReso } from './resi.js'
 import { registraRimborso } from './rimborsi.js'
 import { classificaMittente, riconosci } from './riconosci.js'
@@ -39,6 +40,8 @@ export interface EsitoCiclo {
   resi: number
   /** Rimborsi emessi da Amazon, annotati sull'ordine. */
   rimborsi: number
+  /** Reclami di Garanzia dalla A alla Z, annotati sull'ordine. */
+  reclami: number
   errori: number
   ultimo_uid: number | null
 }
@@ -87,6 +90,7 @@ export async function leggiCasella(
     avvisi: 0,
     resi: 0,
     rimborsi: 0,
+    reclami: 0,
     errori: 0,
     ultimo_uid: stato.imap_uid,
   }
@@ -136,6 +140,9 @@ export async function leggiCasella(
         //    annota sulla conversazione dell'ordine; a differenza del
         //    reso può ripetersi (rimborsi parziali), quindi l'importo
         //    sull'ordine è una somma, non l'ultimo visto.
+        //  - reclamo: reclamo di Garanzia dalla A alla Z
+        //    (A_Z_CLAIM_RESPONDENT_NOTIFY). La cosa più urgente che
+        //    passa da qui — pesa sulla salute dell'account venditore.
         //  - notifica: avvisi di mancata consegna. Non sono richieste,
         //    ma dicono che una nostra risposta non è arrivata: si
         //    annotano sulla conversazione di quell'ordine.
@@ -172,6 +179,15 @@ export async function leggiCasella(
             db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
           )
           esito.rimborsi += 1
+          continue
+        }
+
+        if (genere === 'reclamo') {
+          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
+          await registraReclamo(
+            db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
+          )
+          esito.reclami += 1
           continue
         }
 
