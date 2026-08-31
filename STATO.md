@@ -853,6 +853,36 @@ comment on column knowledge.canali is
 
 ---
 
+## Bug Mirakl: risposte duplicate in interfaccia — 31/08
+
+Domenico ha segnalato che ogni risposta a un thread Leroy Merlin
+compariva due volte in conversazione — stessa bolla, stesso testo,
+stesso minuto.
+
+**Diagnosi dai log di Render**: il nostro invio (`risposta Mirakl
+inviata`, thread `ad127d77-a800-4607-bf61-54ad92ce31b2`) e, 12 secondi
+dopo, il giro di sincronizzazione periodica ha inserito un messaggio
+nuovo sullo stesso thread — la stessa risposta, reimportata come riga
+diversa. Causa: M12 (l'endpoint di scrittura) e M11 (l'endpoint di
+lettura usato dalla sincronizzazione) non riportano lo stesso
+`external_id` per lo stesso messaggio, quindi il vincolo unique
+`(thread_id, external_id)` non lo intercetta.
+
+**Fatto lato worker** (nessuna migrazione, solo codice): in
+`mirakl/upsert.ts`, prima di inserire un messaggio con `autore_kind =
+'agent'` (nostro), si controlla anche se esiste già un nostro messaggio
+nello stesso thread con lo stesso testo in una finestra di ±2 minuti —
+non solo lo stesso id. 163 test verdi.
+
+**Fatto lato Lovable, stesso giro**: `messagesQuery()` deduplica anche
+lato interfaccia (per `id`, poi per impronta contenuto+minuto) — doppia
+difesa: anche se in futuro sfuggisse un doppione al worker, non
+comparirebbe comunque due volte in coda.
+
+Nessuna azione richiesta in Supabase: solo codice.
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge

@@ -85,8 +85,13 @@ async function preparaAllegatiMirakl(
  * Qui abbiamo qualcosa che con Amazon non avevamo: identificativi veri.
  * Il thread ha un id suo e ogni messaggio pure, quindi il vincolo
  * (account_id, external_thread_id) e (thread_id, external_id) fanno
- * tutto il lavoro. Rileggere gli stessi thread all'infinito non duplica
- * niente, e non serve inventare chiavi.
+ * quasi tutto il lavoro. **Quasi**: per i messaggi nostri (autore_kind
+ * 'agent') non basta — verificato su un caso reale (31/08), un
+ * messaggio spedito da `invia.ts` (M12, scrittura) è stato reimportato
+ * qui come riga nuova al giro di sincronizzazione successivo (M11,
+ * lettura), perché i due endpoint non riportano lo stesso external_id
+ * per lo stesso messaggio. Per quelli, prima dell'insert, un controllo
+ * in più per contenuto+orario oltre a quello per id.
  *
  * L'aggancio all'ordine è esatto e non richiede di interpretare testo:
  * l'entità MMP_ORDER del thread contiene l'identificativo dell'ordine,
@@ -181,6 +186,31 @@ export async function upsertThread(
 
     for (const m of t.messaggi) {
       if (!m.external_id) continue // senza id non è idempotente: si salta
+
+      // Un messaggio nostro (autore_kind='agent') può essere già stato
+      // scritto da invia.ts al momento dell'invio, con l'external_id
+      // restituito da M12 (scrittura) — che non è detto coincida con
+      // quello che M11 (lettura, qui) riporta per lo STESSO messaggio.
+      // Verificato su un caso reale (31/08): la sincronizzazione
+      // periodica ha reinserito una risposta appena spedita come riga
+      // nuova, duplicandola in interfaccia — il vincolo
+      // (thread_id, external_id) non basta se i due endpoint non
+      // concordano sull'id. Un secondo controllo per contenuto, in una
+      // finestra di pochi minuti, evita il doppione anche quando gli id
+      // non coincidono.
+      if (m.autore_kind === 'agent' && m.corpo_testo) {
+        const orarioMsg = m.inviato_il ? new Date(m.inviato_il) : aggiornato
+        const [giaInviato] = await tx<{ id: string }[]>`
+          select id from message
+          where thread_id = ${threadId}
+            and direction = 'out' and author_kind = 'agent'
+            and body_text = ${m.corpo_testo}
+            and sent_at between ${new Date(orarioMsg.getTime() - 120_000)}
+                             and ${new Date(orarioMsg.getTime() + 120_000)}
+          limit 1
+        `
+        if (giaInviato) continue
+      }
 
       const [scritto] = await tx<{ id: string }[]>`
         insert into message (

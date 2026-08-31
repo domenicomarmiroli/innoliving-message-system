@@ -551,6 +551,24 @@ l'oggetto `{ body, to }` come una parte unica. Il debito "verificato
 sulla documentazione, non su un invio reale" era già ridotto dalla
 lettura; ora anche la scrittura è passata da un tentativo vero.
 
+**✅ Quinto bug, trovato su un caso reale (31/08): risposte duplicate in
+interfaccia.** Domenico ha segnalato che ogni risposta a un thread
+Leroy Merlin compariva due volte, stessa bolla, stesso testo, stesso
+minuto. Log di Render: il nostro invio (`risposta Mirakl inviata`) e,
+12 secondi dopo, il giro di sincronizzazione periodica ha inserito un
+messaggio nuovo sullo stesso thread (`mirakl_messaggi: 1`) — la stessa
+risposta, reimportata. Causa: M12 (scrittura, `invia.ts`) e M11
+(lettura, `upsert.ts`) non riportano lo stesso `external_id` per lo
+stesso messaggio, quindi il vincolo `(thread_id, external_id)` non
+basta a prevenire il doppione quando la sincronizzazione rilegge un
+messaggio nostro appena spedito. Corretto in `upsert.ts`: per i
+messaggi con `autore_kind = 'agent'`, prima dell'insert si controlla
+anche se esiste già un nostro messaggio nello stesso thread con lo
+stesso testo in una finestra di ±2 minuti — non solo lo stesso id.
+**Lato Lovable**: nello stesso giro, `messagesQuery()` deduplica anche
+lato interfaccia (per `id`, poi per impronta direzione+destinatari+
+minuto+testo) — doppia difesa, non l'una al posto dell'altra.
+
 **`message.mirakl_destinatari` (migrazione 0019, 28/08)**: a chi è
 andata davvero una risposta Mirakl (`CUSTOMER`, `OPERATOR`, o entrambi),
 salvato sulla riga a ogni invio — scoperto mancante quando Domenico ha
