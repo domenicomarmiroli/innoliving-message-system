@@ -448,6 +448,21 @@ virgola fa dedurre a Postgres che il parametro sia `integer`, non `numeric`. I r
 intero (es. 169€) erano passati per caso, mascherando il problema. Corretto con un cast esplicito
 sul parametro (`::numeric`) prima del `coalesce`.
 
+**Secondo bug corretto (28/08, quattro rimborsi reali dopo il primo fix)**: l'importo tornava
+sempre `null` — non 0,00 per un errore di calcolo, ma perché `estraiImporto()` non trovava
+nessuna corrispondenza. Un secondo esemplare reale (ordine 407-4153246-8419525,
+`amazon-rimborso-emesso-reale-2.eml`) ha rivelato **due** differenze insieme, non una:
+1. la frase è "abbiamo avviato un rimborso **dell'importo** di EUR 39.9", non "rimborso di
+   EUR 39.9" come nel primo esemplare — la regex richiedeva le due parole adiacenti. Corretta
+   con `[^.]{0,25}?` fra "rimborso" e "di": assorbe le parole in più senza richiedere che siano
+   sempre le stesse, delimitato da un punto per non scivolare su una frase successiva.
+2. la tabella degli articoli ha **solo tre colonne** (quantità/articolo/ASIN, quantità PRIMA,
+   non dopo) invece delle sette del primo esemplare — la mappatura per posizione fissa
+   avrebbe scambiato "quantità" per "prodotto". Corretto leggendo le intestazioni invece di
+   assumere una posizione: nuova `estraiTabellaConIntestazioni()`/`indiceColonna()` in
+   `core/html.ts`, usata solo da `rimborsi.ts` (resi.ts resta sulla mappatura fissa, unico
+   esemplare visto finora — se un giorno servirà, si cambia con la stessa evidenza, non prima).
+
 `order.rimborso_totale` è quindi una **somma cumulativa**, non l'ultimo
 importo visto; `order.rimborso_emesso_at` è la data dell'ultimo. Entrambe
 sull'ordine, non sul thread — stesso motivo di `reso_richiesto_at`:

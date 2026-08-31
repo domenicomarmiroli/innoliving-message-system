@@ -68,3 +68,52 @@ export function estraiRigheTabella(html: string): string[][] {
   }
   return righe
 }
+
+/**
+ * Come `estraiRigheTabella`, ma restituisce anche le intestazioni.
+ *
+ * Serve quando le colonne NON sono sempre le stesse, né nello stesso
+ * ordine — verificato su due esemplari reali di rimborso Amazon: uno con
+ * sette colonne (articolo/ASIN/SKU/quantità/prezzo/spedizione/motivo),
+ * l'altro con solo tre (quantità/articolo/ASIN, in quest'ordine). Una
+ * mappatura per posizione fissa scambierebbe i campi fra i due formati;
+ * leggendo le intestazioni si sa sempre quale colonna è quale, a
+ * prescindere da quante sono o come sono ordinate.
+ */
+export function estraiTabellaConIntestazioni(html: string): {
+  intestazioni: string[]
+  righe: string[][]
+} {
+  const tabella = html.match(/<table[^>]*cellpadding="10"[^>]*>([\s\S]*?)<\/table>/i)
+  if (!tabella?.[1]) return { intestazioni: [], righe: [] }
+
+  let intestazioni: string[] = []
+  const righe: string[][] = []
+  for (const rigaMatch of tabella[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const rigaHtml = rigaMatch[1] ?? ''
+
+    const celleHeader = [...rigaHtml.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/gi)].map((m) =>
+      testoPulito(m[1] ?? '').toLowerCase(),
+    )
+    if (celleHeader.length > 0) {
+      intestazioni = celleHeader
+      continue
+    }
+
+    const celle = [...rigaHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((m) =>
+      testoPulito(m[1] ?? ''),
+    )
+    if (celle.length === 0) continue
+    righe.push(celle)
+  }
+  return { intestazioni, righe }
+}
+
+/** L'indice della prima intestazione che contiene uno degli alias (case-insensitive, già confrontati in minuscolo). */
+export function indiceColonna(intestazioni: string[], ...alias: string[]): number {
+  for (const a of alias) {
+    const i = intestazioni.findIndex((h) => h.includes(a))
+    if (i !== -1) return i
+  }
+  return -1
+}

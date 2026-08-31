@@ -883,6 +883,40 @@ Nessuna azione richiesta in Supabase: solo codice.
 
 ---
 
+## Rimborsi con importo sempre 0,00 — 31/08
+
+Domenico ha segnalato che i rimborsi venivano registrati ma con importo
+sempre 0,00, benché il valore fosse ben visibile nell'email. Controllato
+nei log: `estraiImporto()` restituiva `null` su tutti e quattro i
+rimborsi reali arrivati dopo il fix del cast numerico (28-30/08) — non
+un errore di calcolo, la frase non veniva proprio trovata.
+
+**Causa, trovata su un secondo esemplare reale** (ordine
+407-4153246-8419525): la frase è "abbiamo avviato un rimborso
+**dell'importo** di EUR 39.9", non "rimborso di EUR 39.9" come nel
+primo esemplare — parole in più che la regex non prevedeva. **Trovato
+un secondo problema nello stesso esemplare**: la tabella degli articoli
+ha solo tre colonne (quantità/articolo/ASIN, quantità PRIMA non dopo)
+invece delle sette del primo — la mappatura per posizione fissa
+scambiava i campi.
+
+**Fatto lato worker** (nessuna migrazione, solo codice):
+1. la regex dell'importo ora tollera parole in più fra "rimborso" e
+   "di", delimitata da un punto;
+2. le colonne della tabella si leggono ora dalle intestazioni
+   (`estraiTabellaConIntestazioni()`/`indiceColonna()` in
+   `core/html.ts`), non da una posizione fissa — così l'ordine e il
+   numero di colonne possono cambiare senza scambiare i dati.
+
+166 test verdi, inclusi 3 nuovi sul secondo esemplare reale
+(`test/fixtures/mail/amazon-rimborso-emesso-reale-2.eml`).
+
+Nessuna azione richiesta in Supabase: solo codice. **Da verificare**:
+il prossimo rimborso reale, per confermare che l'importo compaia
+correttamente.
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge

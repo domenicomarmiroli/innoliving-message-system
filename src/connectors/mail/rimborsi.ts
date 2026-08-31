@@ -1,6 +1,6 @@
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
-import { campoEtichettaGrassetto, estraiRigheTabella } from '../../core/html.js'
+import { campoEtichettaGrassetto, estraiTabellaConIntestazioni, indiceColonna } from '../../core/html.js'
 import { anomalia } from './notifica.js'
 import { perArchivio } from './parse.js'
 import { estraiNumeroOrdine } from './riconosci.js'
@@ -49,27 +49,51 @@ export interface DatiRimborso {
   righe: RigaRimborso[]
 }
 
+/**
+ * Le colonne di REFUND_ISSUED non sono sempre le stesse: verificato su
+ * due esemplari reali, uno con sette colonne (articolo/ASIN/SKU/
+ * quantità/prezzo/spedizione/motivo), l'altro con solo tre (quantità/
+ * articolo/ASIN, in QUESTO ordine — quantità prima, non dopo). Leggere
+ * le intestazioni invece di assumere una posizione fissa evita di
+ * scambiare "quantità" per "prodotto" quando l'ordine cambia. Una
+ * colonna assente resta null, non genera un errore.
+ */
 function estraiRighe(html: string): RigaRimborso[] {
-  return estraiRigheTabella(html).map((celle) => ({
-    prodotto: celle[0] || null,
-    asin: celle[1] || null,
-    sku: celle[2] || null,
-    quantita: celle[3] || null,
-    rimborso_prezzo: celle[4] || null,
-    rimborso_spedizione: celle[5] || null,
-    motivo: celle[6] || null,
+  const { intestazioni, righe } = estraiTabellaConIntestazioni(html)
+  const iProdotto = indiceColonna(intestazioni, 'articolo')
+  const iAsin = indiceColonna(intestazioni, 'asin')
+  const iSku = indiceColonna(intestazioni, 'sku')
+  const iQuantita = indiceColonna(intestazioni, 'quantit')
+  const iPrezzo = indiceColonna(intestazioni, 'prezzo')
+  const iSpedizione = indiceColonna(intestazioni, 'spedizione')
+  const iMotivo = indiceColonna(intestazioni, 'motivo')
+
+  return righe.map((celle) => ({
+    prodotto: iProdotto !== -1 ? celle[iProdotto] || null : null,
+    asin: iAsin !== -1 ? celle[iAsin] || null : null,
+    sku: iSku !== -1 ? celle[iSku] || null : null,
+    quantita: iQuantita !== -1 ? celle[iQuantita] || null : null,
+    rimborso_prezzo: iPrezzo !== -1 ? celle[iPrezzo] || null : null,
+    rimborso_spedizione: iSpedizione !== -1 ? celle[iSpedizione] || null : null,
+    motivo: iMotivo !== -1 ? celle[iMotivo] || null : null,
   }))
 }
 
 /**
- * Importo e valuta dalla frase riassuntiva ("abbiamo avviato un rimborso
- * di EUR 169.01 a <nome cliente> per i seguenti articoli"). Non c'è un
- * campo strutturato per questo: è testo libero, quindi tollerante — se
- * la frase cambia forma, importo e valuta restano null invece di far
+ * Importo e valuta dalla frase riassuntiva. Non c'è un campo strutturato
+ * per questo: è testo libero, e verificato su due esemplari reali NON è
+ * sempre la stessa frase — "abbiamo avviato un rimborso di EUR 169.01 a
+ * <nome> per i seguenti articoli" in un caso, "abbiamo avviato un
+ * rimborso dell'importo di EUR 39.9 a <nome> a seguito del reso dei
+ * seguenti articoli" nell'altro. `[^.]{0,25}?` fra "rimborso" e "di"
+ * assorbe le parole in più ("dell'importo") senza richiedere che siano
+ * sempre le stesse, ma resta delimitato da un punto: non può scivolare
+ * su una frase successiva. Tollerante anche sull'esito: se la frase
+ * cambia ancora forma, importo e valuta restano null invece di far
  * fallire tutto il resto dell'estrazione.
  */
 function estraiImporto(html: string): { importo_totale: number | null; valuta: string | null } {
-  const trovato = html.match(/rimborso di\s+([A-Za-z]{3})\s*([\d.,]+)/i)
+  const trovato = html.match(/rimborso[^.]{0,25}?di\s+([A-Za-z]{3})\s*([\d.,]+)/i)
   if (!trovato) return { importo_totale: null, valuta: null }
   const numero = Number(trovato[2]!.replace(/,/g, ''))
   return {

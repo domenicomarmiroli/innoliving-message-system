@@ -56,6 +56,42 @@ describe('estrazione dei dati di rimborso su un esemplare reale', () => {
   })
 })
 
+describe('secondo esemplare reale — frase e tabella diverse (28/08, ordine 407-4153246-8419525)', () => {
+  // Trovato dopo che il primo esemplare aveva mascherato due problemi
+  // insieme: la frase è "rimborso DELL'IMPORTO di" non "rimborso di",
+  // e la tabella ha solo tre colonne (quantità/articolo/ASIN, IN
+  // QUEST'ORDINE) invece delle sette del primo esemplare.
+  it('legge l importo anche con "dell\'importo" in mezzo alla frase', async () => {
+    const email = await analizza(eml('amazon-rimborso-emesso-reale-2.eml'), 410)
+    const dati = estraiDatiRimborso(email.body_html)
+    expect(dati.valuta).toBe('EUR')
+    expect(dati.importo_totale).toBe(39.9)
+  })
+
+  it('mappa le colonne per intestazione, non per posizione: quantità è prima qui, non dopo', async () => {
+    const email = await analizza(eml('amazon-rimborso-emesso-reale-2.eml'), 411)
+    const dati = estraiDatiRimborso(email.body_html)
+
+    expect(dati.righe).toHaveLength(1)
+    expect(dati.righe[0]).toEqual({
+      prodotto:
+        'bimar VC77 Ventilatore a Colonna 80 cm con Timer. Ventilatore a Torre 3 Velocità, Inclinazione Regolabile, Oscillazione Automatica Destra e Sinistra, Motore 45W',
+      asin: 'B0C2HP2QF1',
+      sku: null,
+      quantita: '1',
+      rimborso_prezzo: null,
+      rimborso_spedizione: null,
+      motivo: null,
+    })
+  })
+
+  it('senza il campo "Rete logistica" (assente in questo formato) resta null, non fallisce', async () => {
+    const email = await analizza(eml('amazon-rimborso-emesso-reale-2.eml'), 412)
+    const dati = estraiDatiRimborso(email.body_html)
+    expect(dati.rete_logistica).toBeNull()
+  })
+})
+
 describe('formattazione del riassunto rimborso', () => {
   it('produce un testo leggibile con importo e articolo', async () => {
     const email = await analizza(eml('amazon-rimborso-emesso-reale.eml'), 403)
