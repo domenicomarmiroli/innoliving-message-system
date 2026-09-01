@@ -89,10 +89,17 @@ try {
           for (const s of elenco as Record<string, unknown>[]) {
             console.log(`   - shop_id=${JSON.stringify(s.shop_id ?? s.id)} nome=${JSON.stringify(s.shop_name ?? s.name)} stato=${JSON.stringify(s.suspend ?? s.status ?? s.state)}`)
           }
+        } else {
+          // Risposta arrivata ma non nella forma attesa: mostro le
+          // chiavi grezze invece di stare zitto — è quello che serve
+          // per capire come adattare la lettura, non un errore a caso
+          // scoperto più tardi.
+          console.log('  /shops risponde ma non nella forma attesa, chiavi:', Object.keys(shops).join(', '))
         }
-      } catch {
-        // Endpoint non disponibile per questo tipo di account: normale,
-        // niente da segnalare.
+      } catch (errore) {
+        console.log(
+          `  /shops non disponibile per questo account (${errore instanceof Error ? errore.message : String(errore)}) — normale se l'account gestisce un solo shop.`,
+        )
       }
 
       // Un operatore configurato male (es. uno shop_id non valido) non
