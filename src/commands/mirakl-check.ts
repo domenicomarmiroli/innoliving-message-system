@@ -76,6 +76,25 @@ try {
         )
       }
 
+      // Solo per account "multi-shop": elenca tutti gli shop collegati
+      // alla stessa chiave, ognuno col suo shop_id — utile quando /account
+      // restituisce solo lo shop di default e serve invece quello di un
+      // negozio diverso (es. un altro paese). Non tutti gli account ce
+      // l'hanno: un 404/403 qui è normale, non un errore da correggere.
+      try {
+        const shops = await client.get<Record<string, unknown>>('/shops', {})
+        const elenco = Array.isArray(shops.shops) ? shops.shops : Array.isArray(shops) ? shops : null
+        if (elenco && elenco.length > 0) {
+          console.log('  shop collegati a questa chiave:')
+          for (const s of elenco as Record<string, unknown>[]) {
+            console.log(`   - shop_id=${JSON.stringify(s.shop_id ?? s.id)} nome=${JSON.stringify(s.shop_name ?? s.name)} stato=${JSON.stringify(s.suspend ?? s.status ?? s.state)}`)
+          }
+        }
+      } catch {
+        // Endpoint non disponibile per questo tipo di account: normale,
+        // niente da segnalare.
+      }
+
       const risposta = await client.get<Record<string, unknown>>('/inbox/threads', {
         shop_id: op.shop_id ?? undefined,
         with_messages: 'true',
