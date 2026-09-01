@@ -644,6 +644,21 @@ copriva solo noi (`MITTENTI_NOSTRI_PREDEFINITI`) e il marketplace
 un cliente riconosciuto non genera più rumore, un tipo davvero nuovo
 continua a essere segnalato come prima.
 
+**Settimo bug, stessa causa dal lato opposto: l'invio (M12) restava
+sullo shop sbagliato anche dopo il fix della lettura.** Il primo
+tentativo reale di rispondere a un thread di un operatore multi-shop
+ha dato lo stesso 502 già visto con Leroy Merlin il 28/08 — ma qui la
+causa era diversa: `postMultipart()` (`client.ts`, usato da `invia.ts`
+per M12) non accettava parametri di query, quindi `shop_id` non veniva
+mai passato in scrittura anche se già letto correttamente da
+`costruisciOperatori()` — la richiesta scriveva sempre sullo shop di
+default (quello sospeso), indipendentemente dal thread. Il fix di
+lettura (M11) non copriva la scrittura: due punti diversi dello stesso
+client, corretti separatamente. `postMultipart()` ora accetta un
+parametro `parametri` come `get()`; `invia.ts` passa `shop_id:
+operatore.shop_id` a ogni invio. 169 test verdi, incluso uno che
+verifica lo `shop_id` nell'URL della POST multipart.
+
 **`message.mirakl_destinatari` (migrazione 0019, 28/08)**: a chi è
 andata davvero una risposta Mirakl (`CUSTOMER`, `OPERATOR`, o entrambi),
 salvato sulla riga a ogni invio — scoperto mancante quando Domenico ha

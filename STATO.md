@@ -1024,6 +1024,15 @@ operatore configurato male (uno `shop_id` non valido faceva fallire
 tutto il comando con un'eccezione non gestita, nascondendo l'esito
 degli altri operatori) — ora stampa l'errore e passa oltre.
 
+**Bug in più, scoperto sul primo invio reale**: la lettura (M11)
+funzionava con lo `shop_id` giusto, ma il primo tentativo di rispondere
+a un thread ha dato lo stesso 502 già visto con Leroy Merlin il 28/08
+— causa diversa però: `postMultipart()` (usato per M12) non aveva mai
+avuto modo di ricevere `shop_id`, quindi ogni invio scriveva sempre
+sullo shop di default (quello sospeso), indipendentemente dal thread.
+Corretto aggiungendo lo stesso parametro `parametri` già presente su
+`get()`. 169 test verdi.
+
 ---
 
 ## Prossimo passo del runbook

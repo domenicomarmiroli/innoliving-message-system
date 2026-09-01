@@ -86,7 +86,7 @@ export async function inviaMessaggioMirakl(
       account_id: string
       code: string
       display_name: string
-      config: { endpoint?: unknown } | null
+      config: { endpoint?: unknown; shop_id?: unknown } | null
       secret_ref: string | null
     }[]
   >`
@@ -150,7 +150,9 @@ export async function inviaMessaggioMirakl(
   for (const a of richiesta.allegati ?? []) {
     form.append('files', new Blob([new Uint8Array(a.contenuto)], { type: a.mime }), a.nome_file)
   }
-  const risposta = await client.postMultipart<{ id?: unknown }>(percorsoInvio, form)
+  const risposta = await client.postMultipart<{ id?: unknown }>(percorsoInvio, form, {
+    shop_id: operatore.shop_id ?? undefined,
+  })
 
   // Se Mirakl restituisce l'id del messaggio lo usiamo come chiave
   // esterna: al prossimo giro di sincronizzazione lo stesso messaggio

@@ -46,4 +46,30 @@ describe('ClientMirakl — postMultipart', () => {
     // boundary multipart. Impostarlo qui romperebbe la richiesta.
     expect(headers['Content-Type']).toBeUndefined()
   })
+
+  it('passa shop_id come query param quando configurato — un account multi-shop scrive sullo shop giusto', async () => {
+    // Trovato dopo il fix lato lettura (M11): solo la GET passava
+    // shop_id, la POST no — un invio su un operatore multi-shop
+    // continuava a fallire perché scriveva sempre sullo shop di
+    // default, non su quello del thread.
+    const chiamate: { url: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        chiamate.push({ url })
+        return new Response(JSON.stringify({ id: 'msg-1' }), { status: 200 })
+      }),
+    )
+
+    const client = new ClientMirakl({ ...operatore, shop_id: '5079' }, logger)
+    const form = new FormData()
+    form.append('message_input.body', 'ciao')
+
+    await client.postMultipart('/inbox/threads/T1/message', form, { shop_id: '5079' })
+
+    expect(chiamate).toHaveLength(1)
+    expect(chiamate[0]!.url).toBe(
+      'https://esempio.mirakl.net/api/inbox/threads/T1/message?shop_id=5079',
+    )
+  })
 })

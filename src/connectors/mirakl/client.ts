@@ -82,10 +82,24 @@ export class ClientMirakl {
    * POST multipart/form-data — M12 con allegati. Niente Content-Type
    * manuale: con un corpo FormData, fetch calcola da solo il boundary
    * corretto, e impostarlo a mano lo romperebbe.
+   *
+   * `parametri` esiste per lo stesso motivo di `get`: un account
+   * multi-shop senza `shop_id` esplicito scrive sullo shop di default,
+   * che può non essere quello del thread a cui si sta rispondendo —
+   * trovato dopo il fix lato lettura (M11), quando il primo invio reale
+   * su un operatore multi-shop ha continuato a fallire perché solo la
+   * richiesta di lettura passava shop_id, non quella di scrittura.
    */
-  async postMultipart<T>(percorso: string, form: FormData): Promise<T> {
-    const url = `${normalizzaEndpoint(this.operatore.endpoint)}/api${percorso}`
-    return this.richiedi<T>(url, { method: 'POST', body: form })
+  async postMultipart<T>(
+    percorso: string,
+    form: FormData,
+    parametri: Record<string, string | undefined> = {},
+  ): Promise<T> {
+    const url = new URL(`${normalizzaEndpoint(this.operatore.endpoint)}/api${percorso}`)
+    for (const [k, v] of Object.entries(parametri)) {
+      if (v !== undefined && v !== '') url.searchParams.set(k, v)
+    }
+    return this.richiedi<T>(url.toString(), { method: 'POST', body: form })
   }
 
   /**
