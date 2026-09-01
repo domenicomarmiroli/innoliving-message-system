@@ -597,20 +597,32 @@ ma assente dalla nostra app. `sync_state` mostrava sincronizzazioni
 riuscite regolarmente, zero errori: la connessione era sana. Ma
 `thread`/`message` per quell'account erano completamente vuoti da
 sempre, e anche `ingest_anomaly` — non un dato scartato, mai arrivato.
-Causa: la richiesta M11 (`sync.ts`) filtrava sempre con `entity_type:
-'MMP_ORDER'`, ma il normalizzatore (`normalize.ts`, `ENTITA_ORDINE`)
-accetta anche `MPS_ORDER` — qualcuno aveva già previsto che non tutti
-gli operatori Mirakl chiamano l'entità ordine allo stesso modo, ma solo
-lato lettura della risposta, mai lato richiesta. Un operatore che
-etichetta le sue entità ordine diversamente da `MMP_ORDER` veniva
-filtrato via prima ancora di raggiungere il normalizzatore: nessun
-errore, nessuna stranezza, perché per Mirakl è una richiesta legittima
-che semplicemente non trova corrispondenze. Corretto togliendo il
-filtro `entity_type` dalla richiesta, sia in `sync.ts` sia nel comando
-di collaudo `mirakl:check -- --forma`: il normalizzatore gestisce già
-qualunque entità arrivi, quelle non riconosciute finiscono in
-`ingest_anomaly` come `mirakl_entita_non_riconosciuta` invece di
-sparire in silenzio.
+
+**Prima ipotesi, insufficiente**: la richiesta M11 filtrava sempre con
+`entity_type: 'MMP_ORDER'`, mentre il normalizzatore (`ENTITA_ORDINE`
+in `normalize.ts`) accetta anche `MPS_ORDER` — tolto il filtro (resta
+tolto: Mirakl stesso sconsiglia di passare `entity_type` senza un
+`entity_id` specifico, rischio 400), ma dopo il fix l'operatore
+continuava a ricevere `200` con `data: []` anche su una richiesta senza
+alcun filtro. Non era la causa.
+
+**Causa vera, confermata dal supporto Mirakl dell'operatore**: un
+utente con accesso a più shop, se non passa `shop_id` esplicito in M11,
+interroga lo shop "di default" — che può non essere quello con le
+conversazioni reali. Nessun errore lo rivela: è una richiesta
+legittima, risponde 200 con una lista vuota. Stessa causa sospettata
+all'inizio per la chiave API o l'endpoint sbagliati (entrambi
+verificati corretti) — era invece lo scope implicito della chiave.
+
+**Fatto**: `channel_account.config.shop_id` (facoltativo, letto in
+`costruisciOperatori()`) — se presente, va nella richiesta M11 come
+`shop_id`; se assente il comportamento è quello di sempre, non
+cambia nulla per un operatore a shop singolo come Leroy Merlin. Il
+comando di collaudo `mirakl:check -- --forma` ora chiama anche A01
+(`GET /api/account`) prima di leggere i thread e stampa lo `shop_id`
+reale dell'account — così si scopre il valore giusto da mettere in
+configurazione senza andarlo a cercare a mano nel pannello Mirakl, e
+segnala un'eventuale discrepanza con quello già configurato.
 
 **`message.mirakl_destinatari` (migrazione 0019, 28/08)**: a chi è
 andata davvero una risposta Mirakl (`CUSTOMER`, `OPERATOR`, o entrambi),

@@ -21,6 +21,13 @@ export interface OperatoreMirakl {
   display_name: string
   endpoint: string
   chiave: string
+  /**
+   * Facoltativo: solo per un utente Mirakl con accesso a più shop, dove
+   * senza indicarlo esplicitamente l'API ne assume uno "di default" che
+   * può non essere quello con le conversazioni vere — 200 con data:[],
+   * nessun errore. La maggior parte degli operatori non ne ha bisogno.
+   */
+  shop_id: string | null
 }
 
 export class ErroreMirakl extends Error {
@@ -195,7 +202,7 @@ export function costruisciOperatori(
     id: string
     code: string
     display_name: string
-    config: { endpoint?: unknown } | null
+    config: { endpoint?: unknown; shop_id?: unknown } | null
     secret_ref: string | null
   }>,
   env: NodeJS.ProcessEnv,
@@ -222,6 +229,10 @@ export function costruisciOperatori(
       )
       continue
     }
+    const shopId =
+      typeof r.config?.shop_id === 'string' && r.config.shop_id.trim() !== ''
+        ? r.config.shop_id.trim()
+        : null
 
     pronti.push({
       account_id: r.id,
@@ -229,6 +240,7 @@ export function costruisciOperatori(
       display_name: r.display_name,
       endpoint,
       chiave,
+      shop_id: shopId,
     })
   }
 

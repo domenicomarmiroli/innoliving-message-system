@@ -965,29 +965,44 @@ scartato, proprio mai arrivato. Un ordine reale di quell'operatore
 confermava che il canale esiste ed è attivo — il problema era isolato
 alla lettura dei messaggi Mirakl (M11).
 
-**Causa, trovata nel codice**: la richiesta M11
+**Prima ipotesi, corretta ma insufficiente**: la richiesta M11
 (`connectors/mirakl/sync.ts`) filtrava sempre con `entity_type:
 'MMP_ORDER'`, ma il normalizzatore (`normalize.ts`, `ENTITA_ORDINE`) è
-scritto per accettare anche `MPS_ORDER` — qualcuno aveva già previsto
-che non tutti gli operatori Mirakl chiamano l'entità ordine allo stesso
-modo, ma solo lato lettura della risposta, mai lato richiesta. Un
-operatore che etichetta le sue entità ordine diversamente da
-`MMP_ORDER` veniva quindi filtrato via prima ancora di raggiungere il
-normalizzatore — nessun errore, nessuna stranezza, perché per Mirakl è
-una richiesta legittima che semplicemente non trova corrispondenze.
+scritto per accettare anche `MPS_ORDER`. Tolto il filtro (resta tolto:
+Mirakl sconsiglia di passarlo senza un `entity_id` specifico), ma dopo
+il deploy l'operatore continuava a rispondere `200` con `data: []`
+anche su una richiesta senza nessun filtro — verificato con
+`mirakl:check -- --forma` lanciato dalla Shell di Render. Non era la
+causa.
 
-**Fatto lato worker** (nessuna migrazione, solo codice): tolto il
-filtro `entity_type` dalla richiesta M11, sia in `sync.ts` sia nel
-comando di collaudo `mirakl:check -- --forma`. Il normalizzatore
-gestisce già qualunque entità arrivi — quelle non riconosciute
-diventano `mirakl_entita_non_riconosciuta` in `ingest_anomaly`, non
-vengono più perse in silenzio. 168 test verdi.
+**Causa vera, confermata dal supporto Mirakl dell'operatore**:
+`sync_state` avanzava comunque il segnalibro a ogni giro anche con zero
+thread trovati (successo = nessuna eccezione, non "ha trovato
+qualcosa") — nei giorni in cui il filtro sbagliato scartava tutto, il
+cursore è marciato avanti nel tempo lo stesso, quindi il primo tentativo
+di fix andava anche accompagnato da un reset di `sync_state.api_cursor`
+per far rileggere il periodo perso (fatto a mano via SQL). Anche così,
+zero risultati. La causa reale: un utente Mirakl con accesso a più shop
+che non passa `shop_id` esplicito in M11 interroga lo shop "di default"
+— che può non essere quello con le conversazioni reali. Nessun errore
+lo rivela, è una richiesta legittima che risponde 200 vuoto. Chiave API
+e dominio dell'endpoint erano entrambi corretti (verificati a mano
+confrontando col pannello) — il problema era solo lo scope implicito
+della chiave.
 
-**Da verificare al prossimo giro**: se il thread segnalato da Domenico
-(ordine con richiesta reso/danno) compare ora nell'app. Se compare,
-diagnosi confermata. Se anche dopo questo fix restasse vuoto, il
-prossimo sospetto è la paginazione o `updated_since` per quell'operatore
-specifico.
+**Fatto lato worker** (nessuna migrazione, solo codice):
+`channel_account.config.shop_id`, facoltativo — se presente va nella
+richiesta M11, se assente nessun cambiamento per un operatore a shop
+singolo come Leroy Merlin. `mirakl:check -- --forma` ora chiama anche
+A01 (`GET /api/account`) prima di leggere i thread e stampa lo
+`shop_id` reale, segnalando un'eventuale discrepanza con quello già
+configurato — così il prossimo operatore multi-shop si scopre da solo,
+senza andarlo a cercare a mano nel pannello. 168 test verdi.
+
+**Resta da fare**: leggere lo `shop_id` vero per questo operatore (con
+`mirakl:check -- --forma`, ora che stampa anche quello) e impostarlo in
+`channel_account.config` via SQL. Poi verificare che il thread
+segnalato da Domenico compaia nell'app.
 
 ---
 

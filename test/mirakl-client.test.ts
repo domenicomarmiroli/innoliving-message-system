@@ -8,6 +8,7 @@ const operatore = {
   display_name: 'Operatore di prova',
   endpoint: 'https://esempio.mirakl.net',
   chiave: 'chiave-segreta',
+  shop_id: null,
 }
 
 afterEach(() => {

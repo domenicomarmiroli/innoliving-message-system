@@ -49,7 +49,35 @@ try {
     for (const op of operatori) {
       console.log(`\n=== ${op.display_name} (${op.code}) ===`)
       const client = new ClientMirakl(op, logger)
+
+      // A01 "Get shop information" — utile per scoprire lo shop_id vero
+      // quando un utente Mirakl ha accesso a più shop: senza indicarlo,
+      // M11 può interrogare uno shop "di default" diverso da quello con
+      // le conversazioni reali, rispondendo comunque 200 con data:[]
+      // (nessun errore che lo riveli).
+      try {
+        const account = await client.get<Record<string, unknown>>('/account', {})
+        const shopId = account.shop_id ?? account.id
+        console.log(
+          `  account: shop_id=${JSON.stringify(shopId)} shop_name=${JSON.stringify(account.shop_name ?? account.name)}`,
+        )
+        if (op.shop_id && String(shopId) !== op.shop_id) {
+          console.log(
+            `  ATTENZIONE: config.shop_id (${op.shop_id}) non coincide con quello dell'account (${shopId})`,
+          )
+        } else if (!op.shop_id) {
+          console.log(
+            '  nessun shop_id in config: se questo utente gestisce più shop, imposta config.shop_id sul valore sopra.',
+          )
+        }
+      } catch (errore) {
+        console.log(
+          `  /account non raggiungibile (${errore instanceof Error ? errore.message : String(errore)}) — proseguo comunque con /inbox/threads.`,
+        )
+      }
+
       const risposta = await client.get<Record<string, unknown>>('/inbox/threads', {
+        shop_id: op.shop_id ?? undefined,
         with_messages: 'true',
         limit: '3',
       })
