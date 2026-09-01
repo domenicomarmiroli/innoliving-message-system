@@ -95,61 +95,70 @@ try {
         // niente da segnalare.
       }
 
-      const risposta = await client.get<Record<string, unknown>>('/inbox/threads', {
-        shop_id: op.shop_id ?? undefined,
-        with_messages: 'true',
-        limit: '3',
-      })
+      // Un operatore configurato male (es. uno shop_id non valido) non
+      // deve impedire di vedere l'esito degli altri operatori nello
+      // stesso giro: l'errore si stampa e si passa oltre.
+      try {
+        const risposta = await client.get<Record<string, unknown>>('/inbox/threads', {
+          shop_id: op.shop_id ?? undefined,
+          with_messages: 'true',
+          limit: '3',
+        })
 
-      console.log('  chiavi di primo livello:', Object.keys(risposta).join(', '))
+        console.log('  chiavi di primo livello:', Object.keys(risposta).join(', '))
 
-      const dati = risposta.data
-      if (!Array.isArray(dati) || dati.length === 0) {
-        console.log('  nessuna conversazione: niente da verificare, per ora.')
-        continue
-      }
-
-      const primo = dati[0] as Record<string, unknown>
-      console.log('  campi del thread:  ', Object.keys(primo).join(', '))
-
-      const messaggi = primo.messages
-      if (Array.isArray(messaggi) && messaggi.length > 0) {
-        const m = messaggi[0] as Record<string, unknown>
-        console.log('  campi del messaggio:', Object.keys(m).join(', '))
-        const from = m.from as Record<string, unknown> | undefined
-        if (from) {
-          console.log('  campi di "from":   ', Object.keys(from).join(', '))
-          console.log('  from.type vale:    ', JSON.stringify(from.type))
+        const dati = risposta.data
+        if (!Array.isArray(dati) || dati.length === 0) {
+          console.log('  nessuna conversazione: niente da verificare, per ora.')
+          continue
         }
-      }
 
-      const entita = primo.entities
-      if (Array.isArray(entita) && entita.length > 0) {
+        const primo = dati[0] as Record<string, unknown>
+        console.log('  campi del thread:  ', Object.keys(primo).join(', '))
+
+        const messaggi = primo.messages
+        if (Array.isArray(messaggi) && messaggi.length > 0) {
+          const m = messaggi[0] as Record<string, unknown>
+          console.log('  campi del messaggio:', Object.keys(m).join(', '))
+          const from = m.from as Record<string, unknown> | undefined
+          if (from) {
+            console.log('  campi di "from":   ', Object.keys(from).join(', '))
+            console.log('  from.type vale:    ', JSON.stringify(from.type))
+          }
+        }
+
+        const entita = primo.entities
+        if (Array.isArray(entita) && entita.length > 0) {
+          console.log(
+            '  entità:            ',
+            entita
+              .map((e) => (e as Record<string, unknown>)?.type)
+              .filter(Boolean)
+              .join(', '),
+          )
+        }
+
+        // La prova del nove: il normalizzatore capisce questa risposta?
+        const norm = normalizzaRisposta(risposta)
+        console.log(`  interpretati:       ${norm.threads.length} thread`)
         console.log(
-          '  entità:            ',
-          entita
-            .map((e) => (e as Record<string, unknown>)?.type)
-            .filter(Boolean)
-            .join(', '),
+          `  con ordine:         ${norm.threads.filter((t) => t.external_order_id).length}`,
         )
-      }
-
-      // La prova del nove: il normalizzatore capisce questa risposta?
-      const norm = normalizzaRisposta(risposta)
-      console.log(`  interpretati:       ${norm.threads.length} thread`)
-      console.log(
-        `  con ordine:         ${norm.threads.filter((t) => t.external_order_id).length}`,
-      )
-      console.log(
-        `  messaggi:           ${norm.threads.reduce((n, t) => n + t.messaggi.length, 0)}`,
-      )
-      if (norm.stranezze.length > 0) {
-        console.log('  DA CORREGGERE:')
-        for (const s of norm.stranezze) {
-          console.log(`   - ${s.tipo}: ${JSON.stringify(s.dettaglio)}`)
+        console.log(
+          `  messaggi:           ${norm.threads.reduce((n, t) => n + t.messaggi.length, 0)}`,
+        )
+        if (norm.stranezze.length > 0) {
+          console.log('  DA CORREGGERE:')
+          for (const s of norm.stranezze) {
+            console.log(`   - ${s.tipo}: ${JSON.stringify(s.dettaglio)}`)
+          }
+        } else {
+          console.log('  nessuna stranezza: i campi corrispondono.')
         }
-      } else {
-        console.log('  nessuna stranezza: i campi corrispondono.')
+      } catch (errore) {
+        console.log(
+          `  /inbox/threads fallita: ${errore instanceof Error ? errore.message : String(errore)}`,
+        )
       }
     }
     console.log('')
