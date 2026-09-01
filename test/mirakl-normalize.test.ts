@@ -132,11 +132,15 @@ describe('classificazione del mittente — verificata su Leroy Merlin/Adeo reale
     expect(stranezze).toEqual([])
   })
 
-  it('CUSTOMER_USER è il cliente: in/customer', () => {
-    const { threads } = normalizzaRisposta(threadCon('CUSTOMER_USER'))
+  it('CUSTOMER_USER è il cliente: in/customer, nessuna stranezza (01/09)', () => {
+    // Prima di questo fix era classificato correttamente ma registrato
+    // comunque come tipo ignoto: il caso più comune di tutti finiva a
+    // riempire ingest_anomaly di rumore, su ogni operatore.
+    const { threads, stranezze } = normalizzaRisposta(threadCon('CUSTOMER_USER'))
     const m = threads[0]!.messaggi[0]!
     expect(m.direzione).toBe('in')
     expect(m.autore_kind).toBe('customer')
+    expect(stranezze).toEqual([])
   })
 
   it('un tipo davvero ignoto resta customer per prudenza, ma si registra', () => {

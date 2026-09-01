@@ -999,10 +999,30 @@ A01 (`GET /api/account`) prima di leggere i thread e stampa lo
 configurato — così il prossimo operatore multi-shop si scopre da solo,
 senza andarlo a cercare a mano nel pannello. 168 test verdi.
 
-**Resta da fare**: leggere lo `shop_id` vero per questo operatore (con
-`mirakl:check -- --forma`, ora che stampa anche quello) e impostarlo in
-`channel_account.config` via SQL. Poi verificare che il thread
-segnalato da Domenico compaia nell'app.
+**✅ RISOLTO.** Nessun endpoint self-service per elencare gli shop di un
+account multi-shop — confermato dal supporto Mirakl dell'operatore:
+`/api/shops` risponde 403 per questo tipo di chiave, va richiesto
+direttamente al marketplace. Shop primario della chiave: 4998
+("Innoliving DE", sospeso). Shop vero: 5079 ("Innoliving IT"), ottenuto
+da Domenico dal supporto e impostato in `config.shop_id`. Con lo shop
+giusto M11 ha risposto subito: 3 thread, 13 messaggi, compreso quello
+già visto dall'URL di un messaggio sul portale.
+
+**Bug in più, trovato collaudando su questi dati reali**: `from.type =
+"CUSTOMER_USER"` (il cliente — il caso più comune) veniva classificato
+correttamente ma registrato comunque come tipo ignoto in
+`ingest_anomaly`, perché nessuna delle liste riconosciute copriva il
+cliente (solo noi e il marketplace). Ogni messaggio cliente, su ogni
+operatore, generava rumore da giorni. Aggiunta
+`MITTENTI_CLIENTE_PREDEFINITI` in `normalize.ts` — un cliente
+riconosciuto non genera più stranezza, un tipo davvero nuovo continua a
+essere segnalato come prima. 168 test verdi, incluso il test su
+CUSTOMER_USER aggiornato per bloccare la regressione.
+
+**Fatto anche**: `mirakl:check -- --forma` non si ferma più su un
+operatore configurato male (uno `shop_id` non valido faceva fallire
+tutto il comando con un'eccezione non gestita, nascondendo l'esito
+degli altri operatori) — ora stampa l'errore e passa oltre.
 
 ---
 

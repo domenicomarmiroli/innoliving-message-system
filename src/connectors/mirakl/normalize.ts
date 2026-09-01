@@ -83,6 +83,19 @@ export const MITTENTI_NOSTRI_PREDEFINITI = ['SHOP', 'SELLER', 'STORE', 'SHOP_USE
  */
 export const MITTENTI_MARKETPLACE_PREDEFINITI = ['OPERATOR', 'OPERATOR_USER']
 
+/**
+ * Quali valori di `from.type` sono il cliente vero — il caso più comune
+ * di tutti, eppure senza questa lista finiva comunque registrato come
+ * stranezza: `autoreKind` lo classificava già 'customer' per esclusione
+ * (non nostro, non marketplace), ma il controllo sull'ignoto guardava
+ * solo le prime due liste, non se il valore fosse "cliente riconosciuto".
+ * Risultato: ogni messaggio di un cliente reale, su ogni operatore,
+ * finiva in `ingest_anomaly` come `mirakl_tipo_mittente` — rumore che
+ * copriva un vero tipo ignoto se mai fosse arrivato. `CUSTOMER_USER`
+ * verificato su un cliente reale (01/09).
+ */
+export const MITTENTI_CLIENTE_PREDEFINITI = ['CUSTOMER_USER']
+
 /** L'entità che rappresenta un ordine nel modello Mirakl. */
 const ENTITA_ORDINE = ['MMP_ORDER', 'MPS_ORDER']
 
@@ -115,6 +128,7 @@ export function normalizzaRisposta(
   risposta: unknown,
   mittentiNostri: string[] = MITTENTI_NOSTRI_PREDEFINITI,
   mittentiMarketplace: string[] = MITTENTI_MARKETPLACE_PREDEFINITI,
+  mittentiCliente: string[] = MITTENTI_CLIENTE_PREDEFINITI,
 ): EsitoNormalizza {
   const stranezze: EsitoNormalizza['stranezze'] = []
   const threads: ThreadMirakl[] = []
@@ -148,7 +162,7 @@ export function normalizzaRisposta(
       creato_il: testo(t.date_created),
       aggiornato_il: testo(t.date_updated),
       external_order_id: ordineDa(t.entities, stranezze, id),
-      messaggi: messaggiDa(t.messages, mittentiNostri, mittentiMarketplace, stranezze, id),
+      messaggi: messaggiDa(t.messages, mittentiNostri, mittentiMarketplace, mittentiCliente, stranezze, id),
       raw: grezzo,
     })
   }
@@ -200,6 +214,7 @@ function messaggiDa(
   messages: unknown,
   mittentiNostri: string[],
   mittentiMarketplace: string[],
+  mittentiCliente: string[],
   stranezze: EsitoNormalizza['stranezze'],
   threadId: string,
 ): MessaggioMirakl[] {
@@ -220,11 +235,16 @@ function messaggiDa(
 
     // Il verso del messaggio è l'unica cosa che non ho potuto
     // verificare su dati veri. Se il tipo è ignoto (non in nessuna delle
-    // due liste) lo registriamo: è l'informazione che serve a correggerle.
+    // tre liste, cliente incluso) lo registriamo: è l'informazione che
+    // serve a correggerle. Senza il controllo su mittentiCliente, il
+    // caso più comune di tutti (un cliente vero) finiva comunque
+    // segnalato come ignoto — rumore che avrebbe coperto un tipo
+    // davvero nuovo se mai fosse arrivato.
     if (
       tipoMittente &&
       !mittentiNostri.includes(tipoMittente) &&
-      !mittentiMarketplace.includes(tipoMittente)
+      !mittentiMarketplace.includes(tipoMittente) &&
+      !mittentiCliente.includes(tipoMittente)
     ) {
       const gia = stranezze.some(
         (s) =>

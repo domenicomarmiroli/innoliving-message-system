@@ -622,7 +622,27 @@ comando di collaudo `mirakl:check -- --forma` ora chiama anche A01
 (`GET /api/account`) prima di leggere i thread e stampa lo `shop_id`
 reale dell'account — così si scopre il valore giusto da mettere in
 configurazione senza andarlo a cercare a mano nel pannello Mirakl, e
-segnala un'eventuale discrepanza con quello già configurato.
+segnala un'eventuale discrepanza con quello già configurato. Non c'è
+un endpoint self-service per elencare gli shop di un account
+multi-shop (confermato dal supporto Mirakl dell'operatore): lo
+`shop_id` di uno shop diverso da quello primario va sempre richiesto
+al marketplace stesso.
+
+**✅ RISOLTO (01/09).** Shop primario della chiave: 4998 ("Innoliving
+DE", sospeso). Shop vero, con le conversazioni reali: 5079 ("Innoliving
+IT"), ottenuto dal supporto MediaMarktSaturn e impostato in
+`config.shop_id`. Con lo shop giusto, M11 ha risposto subito con dati
+veri — stesso `id` di thread già visto dall'URL di un messaggio sul
+portale. **Effetto collaterale trovato collaudando su questi dati
+reali**: `from.type = "CUSTOMER_USER"` (il cliente, il caso più comune
+di tutti) veniva classificato correttamente come `autore_kind =
+'customer'` ma registrato comunque come tipo ignoto in
+`ingest_anomaly` — mancava da una lista di valori riconosciuti che
+copriva solo noi (`MITTENTI_NOSTRI_PREDEFINITI`) e il marketplace
+(`MITTENTI_MARKETPLACE_PREDEFINITI`), mai il cliente. Aggiunta
+`MITTENTI_CLIENTE_PREDEFINITI = ['CUSTOMER_USER']` in `normalize.ts`:
+un cliente riconosciuto non genera più rumore, un tipo davvero nuovo
+continua a essere segnalato come prima.
 
 **`message.mirakl_destinatari` (migrazione 0019, 28/08)**: a chi è
 andata davvero una risposta Mirakl (`CUSTOMER`, `OPERATOR`, o entrambi),
