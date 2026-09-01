@@ -50,7 +50,6 @@ try {
       console.log(`\n=== ${op.display_name} (${op.code}) ===`)
       const client = new ClientMirakl(op, logger)
       const risposta = await client.get<Record<string, unknown>>('/inbox/threads', {
-        entity_type: 'MMP_ORDER',
         with_messages: 'true',
         limit: '3',
       })

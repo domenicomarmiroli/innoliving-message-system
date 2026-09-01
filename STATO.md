@@ -951,6 +951,46 @@ a uno ammesso nello stesso messaggio. 168 test verdi.
 
 ---
 
+## Bug Mirakl: un secondo operatore non riceveva mai i messaggi — 01/09
+
+Domenico ha segnalato un messaggio visto sul portale di un secondo
+operatore Mirakl (oltre a Leroy Merlin) ma assente dalla nostra app.
+
+**Diagnosi**: `sync_state` per quell'operatore mostrava sincronizzazioni
+riuscite regolarmente, zero errori — la connessione era sana. Ma
+`thread`/`message` per il suo `channel_account` erano **completamente
+vuoti**, da sempre, e anche `ingest_anomaly` era vuota: non un dato
+scartato, proprio mai arrivato. Un ordine reale di quell'operatore
+(verificato in `"order"`, sincronizzato regolarmente da Shopify)
+confermava che il canale esiste ed è attivo — il problema era isolato
+alla lettura dei messaggi Mirakl (M11).
+
+**Causa, trovata nel codice**: la richiesta M11
+(`connectors/mirakl/sync.ts`) filtrava sempre con `entity_type:
+'MMP_ORDER'`, ma il normalizzatore (`normalize.ts`, `ENTITA_ORDINE`) è
+scritto per accettare anche `MPS_ORDER` — qualcuno aveva già previsto
+che non tutti gli operatori Mirakl chiamano l'entità ordine allo stesso
+modo, ma solo lato lettura della risposta, mai lato richiesta. Un
+operatore che etichetta le sue entità ordine diversamente da
+`MMP_ORDER` veniva quindi filtrato via prima ancora di raggiungere il
+normalizzatore — nessun errore, nessuna stranezza, perché per Mirakl è
+una richiesta legittima che semplicemente non trova corrispondenze.
+
+**Fatto lato worker** (nessuna migrazione, solo codice): tolto il
+filtro `entity_type` dalla richiesta M11, sia in `sync.ts` sia nel
+comando di collaudo `mirakl:check -- --forma`. Il normalizzatore
+gestisce già qualunque entità arrivi — quelle non riconosciute
+diventano `mirakl_entita_non_riconosciuta` in `ingest_anomaly`, non
+vengono più perse in silenzio. 168 test verdi.
+
+**Da verificare al prossimo giro**: se il thread segnalato da Domenico
+(ordine con richiesta reso/danno) compare ora nell'app. Se compare,
+diagnosi confermata. Se anche dopo questo fix restasse vuoto, il
+prossimo sospetto è la paginazione o `updated_since` per quell'operatore
+specifico.
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge

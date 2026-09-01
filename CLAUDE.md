@@ -590,6 +590,28 @@ stesso testo in una finestra di ±2 minuti — non solo lo stesso id.
 lato interfaccia (per `id`, poi per impronta direzione+destinatari+
 minuto+testo) — doppia difesa, non l'una al posto dell'altra.
 
+**✅ Sesto bug, trovato su un secondo operatore reale (01/09): un
+operatore non riceveva mai i messaggi, in silenzio.** Domenico ha
+segnalato un messaggio visto sul portale Mirakl di un secondo operatore
+ma assente dalla nostra app. `sync_state` mostrava sincronizzazioni
+riuscite regolarmente, zero errori: la connessione era sana. Ma
+`thread`/`message` per quell'account erano completamente vuoti da
+sempre, e anche `ingest_anomaly` — non un dato scartato, mai arrivato.
+Causa: la richiesta M11 (`sync.ts`) filtrava sempre con `entity_type:
+'MMP_ORDER'`, ma il normalizzatore (`normalize.ts`, `ENTITA_ORDINE`)
+accetta anche `MPS_ORDER` — qualcuno aveva già previsto che non tutti
+gli operatori Mirakl chiamano l'entità ordine allo stesso modo, ma solo
+lato lettura della risposta, mai lato richiesta. Un operatore che
+etichetta le sue entità ordine diversamente da `MMP_ORDER` veniva
+filtrato via prima ancora di raggiungere il normalizzatore: nessun
+errore, nessuna stranezza, perché per Mirakl è una richiesta legittima
+che semplicemente non trova corrispondenze. Corretto togliendo il
+filtro `entity_type` dalla richiesta, sia in `sync.ts` sia nel comando
+di collaudo `mirakl:check -- --forma`: il normalizzatore gestisce già
+qualunque entità arrivi, quelle non riconosciute finiscono in
+`ingest_anomaly` come `mirakl_entita_non_riconosciuta` invece di
+sparire in silenzio.
+
 **`message.mirakl_destinatari` (migrazione 0019, 28/08)**: a chi è
 andata davvero una risposta Mirakl (`CUSTOMER`, `OPERATOR`, o entrambi),
 salvato sulla riga a ogni invio — scoperto mancante quando Domenico ha

@@ -104,8 +104,19 @@ async function sincronizzaOperatore(
     let pagina = 0
 
     do {
+      // Nessun entity_type nel filtro: il normalizzatore accetta sia
+      // MMP_ORDER sia MPS_ORDER (normalize.ts, ENTITA_ORDINE) perché non
+      // tutti gli operatori Mirakl chiamano l'entità ordine allo stesso
+      // modo. Filtrare qui su un solo valore fisso l'aveva già escluso
+      // prima ancora che il normalizzatore potesse vederlo — trovato su
+      // un secondo operatore (01/09): connessione sana, zero errori, ma
+      // zero thread ricevuti nonostante conversazioni reali sul portale,
+      // perché ogni richiesta filtrava su entity_type=MMP_ORDER e i suoi
+      // thread erano (probabilmente) etichettati diversamente. Senza il
+      // filtro arrivano tutti i thread dell'operatore; quelli senza
+      // un'entità ordine riconosciuta restano comunque legittimi (vedi
+      // ordineDa in normalize.ts).
       const risposta = await client.get<RispostaM11>('/inbox/threads', {
-        entity_type: 'MMP_ORDER',
         updated_since: da ?? undefined,
         with_messages: 'true',
         limit: LIMITE_PAGINA,
