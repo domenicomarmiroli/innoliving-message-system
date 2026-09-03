@@ -1085,10 +1085,35 @@ stessa sessione (con un intoppo: le credenziali git salvate su questa
 macchina erano ancora dell'account Claude precedente — risolto pulendo
 la voce residua in Windows Credential Manager e rifacendo il login).
 
-**Da verificare**: nessun invio SMTP di prova possibile da questa
-sessione (niente credenziali). Da provare su un ticket vero dopo il
-deploy e la migrazione — vedi log Render per `ticket collegato aperto e
-messaggio inviato`.
+**✅ VERIFICATO END-TO-END SU UN CASO REALE (03/09)**: Domenico ha creato
+un ticket collegato reale ("test ticket lincato") e ha provato a
+rispondere una seconda volta prima che arrivasse qualunque risposta —
+proprio il caso che ha subito trovato il bug qui sotto.
+
+**Bug corretto sul primo collaudo reale**: rispondere una seconda volta
+su un ticket collegato appena aperto (nessuna risposta ancora arrivata)
+falliva con 502, `"non ha messaggi in arrivo: non c'è a chi rispondere"`
+— `inviaRisposta()` cercava sempre l'ultimo messaggio IN ARRIVO, ma un
+ticket collegato nasce con un solo messaggio in USCITA. Corretto con un
+ripiego sull'ultimo messaggio in USCITA (`raw.to`) quando non c'è ancora
+nessun arrivo; corretto anche lo stato dopo l'invio (`pending_internal`,
+non `pending_customer`, su un thread senza cliente). Dettagli in
+CLAUDE.md. **Lato Lovable, stesso giro**: il ramo di errore generico di
+`send()` ora mostra il messaggio vero restituito dal worker invece del
+solo codice HTTP — è stato proprio questo a far scoprire il testo
+dell'errore e quindi la causa, senza dover leggere i log di Render.
+
+**Due aggiunte Lovable per la leggibilità del ticket collegato**, segnalate
+da Domenico dopo il primo test: sezione fissa "Contatto esterno" (l'email
+del corriere/assistenza, letta da `message.raw->>'to'`, prima non visibile
+da nessuna parte perché questi thread non hanno un cliente in anagrafica)
+e "Ticket collegati" promosso da scheda in fondo a sezione fissa vicino
+alla testata del ticket cliente.
+
+**Intoppo di deploy, non di codice**: il primo tentativo di deploy del fix
+su Render è fallito con "internal system error" (lato Render, non
+build/codice — `npm run verify` locale era verde sullo stesso commit). Un
+secondo tentativo manuale è bastato.
 
 ---
 
