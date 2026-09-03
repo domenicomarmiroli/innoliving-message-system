@@ -796,6 +796,21 @@ restrizione) e stessa policy di contenuto (`verificaPolicy('email',
 padre, azione "Contatta corriere/assistenza" che chiama
 `/threads/collega`, etichetta "In attesa" per lo stato `pending_internal`.
 
+**Bug corretto lo stesso giorno, trovato sul primo collaudo reale**:
+rispondere una seconda volta su un ticket collegato appena aperto (prima
+che corriere/assistenza avessero risposto) falliva con 502 —
+`inviaRisposta()` in `invia.ts` cercava sempre l'ULTIMO MESSAGGIO IN
+ARRIVO del thread per sapere a chi scrivere, ma un ticket collegato
+nasce con un solo messaggio in USCITA: nessun messaggio in arrivo,
+nessun destinatario trovato. Corretto con un ripiego: se non c'è nessun
+messaggio in arrivo, si usa l'ultimo messaggio in USCITA e il suo
+`raw.to` come destinatario — l'agente può continuare a scrivere allo
+stesso indirizzo anche prima che risponda. **Stesso giro**: lo stato
+dopo l'invio non torna più sempre `pending_customer` — su un thread con
+`linked_thread_id` valorizzato torna `pending_internal`, perché non c'è
+nessun cliente dall'altra parte e l'etichetta "in attesa del cliente"
+sarebbe stata fuorviante.
+
 ### Bozze AI e knowledge base (passo 07, migrazione 0010)
 `core/ai/` — un provider dietro un'interfaccia (`provider.ts`), un'implementazione
 oggi (`anthropic.ts`, Claude via REST diretto, non l'SDK — coerente con Storage

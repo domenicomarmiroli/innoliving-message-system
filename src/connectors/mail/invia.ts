@@ -65,14 +65,15 @@ export async function inviaRisposta(
   // Prendiamo l'ultimo messaggio IN ARRIVO del thread: è lui a portare
   // l'indirizzo del relay e gli identificativi che tengono insieme la
   // catena. Rispondere all'ultimo messaggio in uscita non avrebbe senso.
-  const [ultimo] = await db<
-    {
-      subject: string | null
-      raw: { from?: string; reply_to?: string; references?: string[] } | null
-      rfc822_id: string | null
-    }[]
-  >`
-    select t.subject, m.raw, m.rfc822_id
+  type RigaMessaggio = {
+    subject: string | null
+    raw: { from?: string; reply_to?: string; to?: string; references?: string[] } | null
+    rfc822_id: string | null
+    linked_thread_id: string | null
+  }
+
+  const [ultimoIn] = await db<RigaMessaggio[]>`
+    select t.subject, m.raw, m.rfc822_id, t.linked_thread_id
     from message m
     join thread t on t.id = m.thread_id
     where m.thread_id = ${richiesta.thread_id} and m.direction = 'in'
@@ -80,13 +81,34 @@ export async function inviaRisposta(
     limit 1
   `
 
+  // Un ticket collegato (migrazione 0026) nasce con un solo messaggio in
+  // USCITA, verso corriere/assistenza: finché non arriva una risposta non
+  // c'è nessun messaggio in arrivo da cui prendere il destinatario. In quel
+  // caso si continua a scrivere allo stesso indirizzo del nostro ultimo
+  // invio (`raw.to`), non solo a chi ci ha scritto.
+  let ultimo = ultimoIn
+  let destinatarioForzato: string | null = null
+
+  if (!ultimo) {
+    const [ultimoOut] = await db<RigaMessaggio[]>`
+      select t.subject, m.raw, m.rfc822_id, t.linked_thread_id
+      from message m
+      join thread t on t.id = m.thread_id
+      where m.thread_id = ${richiesta.thread_id} and m.direction = 'out'
+      order by m.sent_at desc
+      limit 1
+    `
+    ultimo = ultimoOut
+    destinatarioForzato = ultimoOut?.raw?.to ?? null
+  }
+
   if (!ultimo) {
     throw new Error(
-      `Il thread ${richiesta.thread_id} non ha messaggi in arrivo: non c'è a chi rispondere.`,
+      `Il thread ${richiesta.thread_id} non ha ancora nessun messaggio: non c'è a chi rispondere.`,
     )
   }
 
-  const destinatario = ultimo.raw?.reply_to ?? ultimo.raw?.from ?? null
+  const destinatario = destinatarioForzato ?? ultimo.raw?.reply_to ?? ultimo.raw?.from ?? null
   if (!destinatario) {
     throw new Error(
       `Il thread ${richiesta.thread_id} non ha un indirizzo mittente: impossibile rispondere.`,
@@ -165,9 +187,15 @@ export async function inviaRisposta(
     `
   }
 
+  // Un ticket collegato (thread.linked_thread_id valorizzato) non ha un
+  // cliente dall'altra parte: dopo l'invio torna 'pending_internal' ("in
+  // attesa" di corriere/assistenza), non 'pending_customer' — altrimenti
+  // l'agente rilegge "in attesa del cliente" su un thread che di clienti
+  // non ne ha.
+  const statoSuccessivo = ultimo.linked_thread_id ? 'pending_internal' : 'pending_customer'
   await db`
     update thread
-    set state = 'pending_customer', updated_at = now()
+    set state = ${statoSuccessivo}, updated_at = now()
     where id = ${richiesta.thread_id}
   `
 
