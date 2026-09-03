@@ -735,6 +735,67 @@ evento indipendente (stesso dedup per `rfc822_id` di tutti gli altri
 moduli) — non perde niente, ma non distingue ancora "reclamo aperto" da
 "decisione presa".
 
+### Ticket collegati — "linked tickets" stile Zendesk (migrazione 0026, 03/09)
+Richiesto da Domenico: dal ticket cliente, poter scrivere una email a un
+indirizzo esterno (corriere, assistenza) senza uscire dal sistema, con
+un nuovo ticket che nasce **in attesa** e resta **collegato** a quello di
+partenza, visibile nella barra laterale — come i linked tickets di
+Zendesk.
+
+`thread.linked_thread_id` (migrazione 0026): un solo campo, sul thread
+"figlio" (verso corriere/assistenza), che punta al thread "padre" (il
+ticket cliente). Per i figli di un padre si interroga al contrario
+(`where linked_thread_id = :padre_id`) — nessuna tabella di collegamento
+in più, un padre può avere più figli, un figlio ha un solo padre.
+
+**Stato "in attesa"**: riusa `pending_internal`, presente nel vincolo di
+`thread.state` fin dalla migrazione 0001 ma **mai scritto da nessun
+codice** fino ad oggi — era esattamente il posto pensato per "in attesa
+di qualcuno che non è il cliente".
+
+`src/connectors/mail/collega.ts` — `apriTicketCollegato()`: crea il
+nuovo thread (`account_id` = l'unico `channel_account` con `kind='email'`,
+stesso account di ogni altra email; `order_id` ereditato dal padre;
+`assignee_id` = l'agente che scrive, o quello del padre come ripiego) e
+spedisce il primo messaggio via SMTP, **prima** di aprire la transazione
+— stessa regola di `upsert.ts` per l'I/O di rete. `tags` prende
+`'ticket-collegato'` + `'collegato-<tipo>'` (`tipo` è `corriere` |
+`assistenza` | `altro`, solo per etichetta/tag — non una colonna nuova,
+stessa scelta già fatta altrove nel progetto). `due_at` usa lo
+`sla_minutes` della casella: un corriere che non risponde compare anche
+nella vista "In scadenza".
+
+**La risposta del corriere si aggancia da sola, nessun codice di
+matching nuovo**: `aggancia.ts` (strategia THREAD) collega qualunque
+email in arrivo il cui In-Reply-To/References punti a un `rfc822_id`
+nostro già in `message`, indipendentemente dal canale — basta aver
+registrato il nostro invio con quel `rfc822_id` nel nuovo thread. Le
+risposte successive dell'agente (continuare a scrivere al corriere)
+passano dal normale `POST /threads/reply` → `inviaRisposta()`, che
+funziona su qualunque thread `kind='email'`: nessuna modifica lì.
+
+**Bug corretto nello stesso giro, prima che potesse manifestarsi**:
+`upsert.ts` riapriva un thread (`state → 'open'`) su una nuova email in
+arrivo solo per `state in ('closed', 'pending_customer')`.
+`pending_internal` non c'era — senza il fix, la risposta del corriere si
+sarebbe agganciata al thread giusto ma il ticket sarebbe rimasto "in
+attesa" per sempre, invisibile a chi deve agire. Aggiunto
+`'pending_internal'` alla stessa lista.
+
+`POST /threads/collega` (`src/routes/collega.ts`) — stessa doppia
+autenticazione di `/threads/reply` (WORKER_API_TOKEN o sessione
+Supabase), stessa gestione allegati (`prepare('email', ...)`, nessuna
+restrizione) e stessa policy di contenuto (`verificaPolicy('email',
+...)`, oggi sempre `ok: true` — email non ha regole). Corpo: `thread_id`
+(il ticket cliente), `destinatario`, `testo`, `oggetto` facoltativo,
+`tipo` facoltativo, `allegati` facoltativi. Risposta: `thread_id` del
+**nuovo** ticket, `message_id`, `rfc822_id`.
+
+**Lato Lovable**: scheda "Ticket collegati" nel pannello di contesto
+(query su `linked_thread_id`), banner sul ticket figlio col link al
+padre, azione "Contatta corriere/assistenza" che chiama
+`/threads/collega`, etichetta "In attesa" per lo stato `pending_internal`.
+
 ### Bozze AI e knowledge base (passo 07, migrazione 0010)
 `core/ai/` — un provider dietro un'interfaccia (`provider.ts`), un'implementazione
 oggi (`anthropic.ts`, Claude via REST diretto, non l'SDK — coerente con Storage

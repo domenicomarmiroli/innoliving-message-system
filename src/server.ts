@@ -6,6 +6,7 @@ import { logger } from './logger.js'
 import { createDb } from './db/index.js'
 import { healthRoutes } from './routes/health.js'
 import { replyRoutes } from './routes/reply.js'
+import { collegaRoutes } from './routes/collega.js'
 import { draftRoutes } from './routes/draft.js'
 import { knowledgeRoutes } from './routes/knowledge.js'
 import { contattiRoutes } from './routes/contatti.js'
@@ -42,6 +43,7 @@ export async function buildServer(config: Config) {
   await app.register(healthRoutes, { db })
   await app.register(shopifyWebhookRoutes, { db, config })
   await app.register(replyRoutes, { db, config })
+  await app.register(collegaRoutes, { db, config })
   await app.register(draftRoutes, { db, config })
   await app.register(knowledgeRoutes, { db, config })
   await app.register(contattiRoutes, { db, config })

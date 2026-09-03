@@ -214,10 +214,15 @@ export async function upsertEmail(
         due_at           = ${scadenza},
         -- Un'email vecchia non riapre niente: importare lo storico non
         -- deve far risalire in coda conversazioni concluse mesi fa.
+        -- 'pending_internal' è lo stato di un ticket collegato (migrazione
+        -- 0026, in attesa di corriere/assistenza): senza riaprirlo qui,
+        -- la loro risposta si aggancerebbe comunque al thread giusto
+        -- (aggancia.ts, strategia THREAD) ma resterebbe invisibile per
+        -- sempre in "in attesa".
         state            = case
                              when ${vecchia} then state
                              when state = 'unmatched' and ${agg.order_id}::uuid is not null then 'open'
-                             when state in ('closed', 'pending_customer') then 'open'
+                             when state in ('closed', 'pending_customer', 'pending_internal') then 'open'
                              else state
                            end,
         updated_at       = now()

@@ -1035,6 +1035,66 @@ Corretto aggiungendo lo stesso parametro `parametri` già presente su
 
 ---
 
+## Ticket collegati — "linked tickets" stile Zendesk — 03/09
+
+Domenico ha chiesto, dal ticket cliente, di poter scrivere una email a
+un corriere o all'assistenza esterna sullo stesso argomento, senza
+uscire dal sistema: un nuovo ticket che nasce **in attesa** e resta
+**collegato** al ticket di partenza, visibile nella barra laterale —
+come i linked tickets di Zendesk. Sessione di passaggio a un nuovo
+account Claude Code: ripartita rileggendo `CLAUDE.md` e questo file per
+intero prima di toccare codice.
+
+**Scoperta che ha semplificato tutto**: `thread.state` aveva già il
+valore `pending_internal` nel vincolo fin dalla migrazione 0001, mai
+scritto da nessun codice — esattamente il posto pensato per "in attesa
+di qualcuno che non è il cliente". Nessuna migrazione sullo stato,
+solo su un campo nuovo.
+
+**Fatto lato worker** (migrazione 0026): `thread.linked_thread_id` (il
+figlio punta al padre; i figli di un padre si interrogano al contrario).
+`src/connectors/mail/collega.ts` (`apriTicketCollegato()`) e `POST
+/threads/collega` (`src/routes/collega.ts`) — stessa doppia
+autenticazione e stessa gestione allegati/policy di `/threads/reply`.
+175 test verdi (6 nuovi, solo sulle funzioni pure `costruisciOggetto`/
+`tagCollegato` — nessun test con database reale, coerente con
+`invia.ts`/`reply.ts`, mai stati testati così in questo repo).
+
+**Bug corretto prima che potesse manifestarsi**: `upsert.ts` riapriva un
+thread su una nuova email in arrivo solo per `state in ('closed',
+'pending_customer')` — `pending_internal` non c'era. Senza il fix, la
+risposta del corriere si sarebbe agganciata al thread giusto (l'aggancio
+per In-Reply-To/References di `aggancia.ts` non guarda lo stato) ma il
+ticket sarebbe rimasto "in attesa" per sempre, invisibile a chi deve
+agire. Trovato leggendo il codice esistente, non su un caso reale.
+
+**Nessun codice di matching nuovo**: la risposta del corriere si
+aggancia da sola al giro IMAP successivo, stessa strategia THREAD già
+usata per ogni altra risposta. Le risposte successive dell'agente sul
+ticket collegato passano dal normale `/threads/reply`, invariato.
+
+**Fatto lato Lovable, stesso giro** (progetto `fluent-desk-hub`, inviato
+via MCP): scheda "Ticket collegati" nel pannello di contesto, banner sul
+ticket figlio con link al padre, azione "Contatta corriere/assistenza"
+(form destinatario/tipo/oggetto/testo) collegata a `/threads/collega`,
+etichetta "In attesa" per `pending_internal`.
+
+**Da eseguire in Supabase**:
+```sql
+alter table thread
+  add column if not exists linked_thread_id uuid references thread(id) on delete set null;
+
+create index if not exists thread_linked_thread_idx
+  on thread (linked_thread_id) where linked_thread_id is not null;
+```
+
+**Da verificare**: nessun invio SMTP di prova possibile da questa
+sessione (niente credenziali). Da provare su un ticket vero dopo il
+deploy e la migrazione — vedi log Render per `ticket collegato aperto e
+messaggio inviato`.
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge
