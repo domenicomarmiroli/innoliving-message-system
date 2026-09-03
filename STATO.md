@@ -1079,14 +1079,11 @@ ticket figlio con link al padre, azione "Contatta corriere/assistenza"
 (form destinatario/tipo/oggetto/testo) collegata a `/threads/collega`,
 etichetta "In attesa" per `pending_internal`.
 
-**Da eseguire in Supabase**:
-```sql
-alter table thread
-  add column if not exists linked_thread_id uuid references thread(id) on delete set null;
-
-create index if not exists thread_linked_thread_idx
-  on thread (linked_thread_id) where linked_thread_id is not null;
-```
+**✅ Migrazione 0026 eseguita ed verificata (03/09)**: `linked_thread_id`
+confermata su `thread` (`uuid`, nullable). Push su `main` fatto nella
+stessa sessione (con un intoppo: le credenziali git salvate su questa
+macchina erano ancora dell'account Claude precedente — risolto pulendo
+la voce residua in Windows Credential Manager e rifacendo il login).
 
 **Da verificare**: nessun invio SMTP di prova possibile da questa
 sessione (niente credenziali). Da provare su un ticket vero dopo il
