@@ -1,5 +1,25 @@
 {
   "amazon": {
+    "id": "gid://shopify/Order/17790000000099",
+    "name": "INSH6820",
+    "sourceName": "amazon-it",
+    "sourceIdentifier": "402-1234567-7654321",
+    "tags": ["#ZOHOIN", "Amazon", "Amazon-IT", "AX5YZADEFFY49", "FBA"],
+    "createdAt": "2026-09-01T10:00:00Z",
+    "displayFinancialStatus": "PAID",
+    "displayFulfillmentStatus": "UNFULFILLED",
+    "currentTotalPriceSet": { "shopMoney": { "amount": "19.90", "currencyCode": "EUR" } },
+    "customAttributes": [
+      { "key": "Amazon Order Id", "value": "402-1234567-7654321" },
+      { "key": "Amazon Account", "value": "Innoliving Spa" }
+    ],
+    "lineItems": { "nodes": [
+      { "title": "Innoliving Asciugacapelli Mini INN-612", "quantity": 1, "sku": "INN-612GFBA",
+        "originalUnitPriceSet": { "shopMoney": { "amount": "19.90" } }, "image": null }
+    ]},
+    "fulfillments": []
+  },
+  "amazon_legacy": {
     "id": "gid://shopify/Order/17600000000001",
     "name": "AMZ304-0904527-7250707",
     "sourceName": "380652355585",

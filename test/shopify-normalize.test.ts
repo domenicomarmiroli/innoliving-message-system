@@ -7,13 +7,21 @@ const gql = JSON.parse(readFileSync('test/fixtures/shopify/graphql.json', 'utf8'
 const webhookMirakl = JSON.parse(readFileSync('test/fixtures/shopify/webhook-mirakl.json', 'utf8'))
 
 describe('riconoscimento del canale — esemplari reali dello store', () => {
-  it('Amazon: estrae il numero dal nome dell ordine', () => {
+  it('Amazon (Marketplace Connect): id da sourceIdentifier, non dal nome dell ordine', () => {
     const o = daGraphQL(gql.amazon)
     expect(o.channel).toBe('amazon')
-    // il nome è AMZ304-0904527-7250707: l'ID è la parte dopo il prefisso
+    // il nome è INSH6820, identico a un ordine sito qualunque: l'ID vero
+    // sta in sourceIdentifier, non si legge dal nome.
+    expect(o.external_order_id).toBe('402-1234567-7654321')
+    expect(o.shopify_name).toBe('INSH6820')
+    expect(o.operator).toBeNull()
+  })
+
+  it('Amazon (integrazione storica): id dal prefisso AMZ nel nome, ripiego', () => {
+    const o = daGraphQL(gql.amazon_legacy)
+    expect(o.channel).toBe('amazon')
     expect(o.external_order_id).toBe('304-0904527-7250707')
     expect(o.shopify_name).toBe('AMZ304-0904527-7250707')
-    expect(o.operator).toBeNull()
   })
 
   it('Mirakl MediaMarktSaturn: id da sourceIdentifier, operatore e alias acquirente', () => {

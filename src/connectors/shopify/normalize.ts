@@ -138,7 +138,27 @@ export function riconosciCanale(g: Grezzo): {
   const tagsUp = g.tags.map((t) => t.toUpperCase())
   const name = g.name ?? ''
 
-  // --- Amazon: l'ID sta dentro il nome dell'ordine, es. AMZ304-0904527-7250707
+  // --- Amazon: due integrazioni diverse viste sui dati reali dello store.
+  // Quella attiva oggi (app "Marketplace Connect") lascia il NOME
+  // dell'ordine come numerazione interna del negozio (INSHxxxx, identica
+  // a qualunque altro ordine) — il vero numero Amazon sta in
+  // source_identifier (duplicato anche nell'attributo "Amazon Order
+  // Id"), con source_name 'amazon' o 'amazon-<paese>' (es. amazon-it).
+  // Verificato sui dati reali dello store: senza questo controllo questi
+  // ordini finivano scambiati per 'shopify', con external_order_id =
+  // INSHxxxx — irraggiungibile da un'email che cita il numero Amazon.
+  if ((g.source_name ?? '').toLowerCase().startsWith('amazon')) {
+    return {
+      channel: 'amazon',
+      external_order_id: g.source_identifier ?? g.attributi['Amazon Order Id'] ?? name,
+      operator: null,
+      buyer_alias: g.attributi['Customer email'] ?? null,
+    }
+  }
+
+  // Una integrazione precedente (non più attiva) prefissava invece il
+  // NOME dell'ordine con AMZ, es. AMZ304-0904527-7250707 — tenuta come
+  // ripiego per gli ordini storici già importati in quella forma.
   if (name.toUpperCase().startsWith('AMZ') || tagsUp.includes('AMAZON-IMPORT')) {
     const match = name.match(/\d{3}-\d{7}-\d{7}/)
     return {
