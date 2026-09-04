@@ -1117,6 +1117,42 @@ secondo tentativo manuale è bastato.
 
 ---
 
+## Ordini Amazon classificati come 'shopify' — 03/09
+
+Domenico ha segnalato un dubbio, con l'indizio giusto: gli ordini Amazon
+importati oggi hanno nome Shopify `INSHxxxx`, e il vero numero Amazon
+sta nel campo "Channel Information → Order ID" che Shopify mostra per
+gli ordini da marketplace — non nel nome. Ha chiesto di verificare che
+il match ticket↔ordine seguisse questa logica per Amazon.
+
+**Verificato via MCP Shopify sui dati reali dello store, non
+sull'ipotesi**: quel campo è `Order.sourceIdentifier` nella Admin
+GraphQL API. `riconosciCanale()` cercava invece il prefisso `AMZ` nel
+nome — corretto per un'integrazione Amazon precedente, ma gli ordini
+attuali arrivano tramite l'app **Marketplace Connect**, che lascia il
+nome com'è (`INSHxxxx`) e mette canale (`source_name`: `amazon`/
+`amazon-it`) e id vero (`source_identifier`) altrove. **413 ordini
+Amazon reali** erano quindi in archivio come `channel='shopify'` con
+`external_order_id` uguale al nome Shopify — irraggiungibili da
+un'email che cita il numero Amazon vero. Dettagli tecnici del fix in
+CLAUDE.md.
+
+**Dati già in archivio corretti via MCP Supabase, con conferma passo
+per passo prima di ogni scrittura** (query di verifica → esito atteso
+→ conferma di Domenico → scrittura → controllo finale): 405 righe
+corrette sul posto; 8 in conflitto con un segnaposto reso/rimborso già
+esistente per lo stesso ordine, unite (dati Shopify sul segnaposto,
+righe prodotto ripuntate, riga duplicata cancellata solo dopo aver
+verificato zero thread collegati). Verifica finale: zero ordini Amazon
+ancora mal classificati, zero duplicati su `(channel, external_order_id)`.
+Non toccato `thread`: `riaggancia.ts` ritrova da solo le conversazioni
+`unmatched` di questi ordini al primo giro utile.
+
+**✅ VERIFICATO da Domenico su un ticket reale**, dopo il deploy: i
+dettagli dell'ordine Amazon compaiono ora nel pannello di contesto.
+
+---
+
 ## Prossimo passo del runbook
 
 Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge

@@ -165,6 +165,52 @@ Il segnalibro sta in `app_config.shopify_sync`, **non** in
 di paginazione del backfill, e sovrascriverlo romperebbe la ripresa di un
 backfill interrotto.
 
+**✅ Bug corretto (03/09): gli ordini Amazon finivano su `channel='shopify'`.**
+Domenico ha segnalato che il match ticket↔ordine sembrava non funzionare
+per Amazon, sapendo che il negozio importa questi ordini con nome
+`INSHxxxx` mentre il vero numero Amazon vive nel campo "Channel
+Information → Order ID" che l'admin Shopify mostra per gli ordini
+arrivati da un marketplace.
+
+**Verificato via MCP Shopify sui dati reali dello store** (non
+sull'ipotesi): quel campo corrisponde a `Order.sourceIdentifier` nella
+Admin GraphQL API, duplicato anche nell'attributo `"Amazon Order Id"`.
+`riconosciCanale()` (`normalize.ts`) cercava invece il prefisso `AMZ`
+nel `name` dell'ordine — corretto per un'integrazione Amazon precedente
+(ordini reali con `name = "AMZ304-0904527-7250707"`, ancora in
+archivio, tenuti come ripiego), ma gli ordini di oggi arrivano tramite
+l'app **Marketplace Connect**: `name` resta `INSHxxxx` come qualunque
+altro ordine, il canale si legge da `source_name` (`amazon`/`amazon-it`),
+l'id vero da `source_identifier`. Senza questo, ogni ordine Amazon
+sincronizzato da quando è attiva Marketplace Connect finiva silenziosamente
+su `channel='shopify'` con `external_order_id` uguale al nome interno del
+negozio — irraggiungibile da un'email che cita il numero Amazon vero.
+
+Corretto in `riconosciCanale()`: riconoscimento primario da `source_name`
+che inizia per `amazon`, id da `source_identifier` (ripiego
+sull'attributo `"Amazon Order Id"`); il vecchio riconoscimento dal
+prefisso `AMZ` resta secondo, per gli ordini storici.
+
+**Dati già in archivio, corretti con una query mirata via MCP Supabase**
+(non un reprocessing da zero — il payload originale in `raw` bastava):
+413 ordini `channel='shopify'` con `source_name` Amazon nel loro `raw`.
+405 senza conflitti: `channel`/`external_order_id` corretti sul posto. 8
+in conflitto con una riga `channel='amazon'` già esistente — un
+segnaposto creato da `resi.ts`/`rimborsi.ts` quando un reso o un
+rimborso Amazon era arrivato prima che l'ordine si sincronizzasse da
+Shopify (stesso meccanismo di 28/08): per questi, i campi Shopify (righe
+prodotto, tracking, indirizzi, totale) sono stati uniti sul segnaposto —
+senza toccare `reso_*`/`rimborso_*`/`reclamo_az_*`, che restano quelli
+del segnaposto — e la riga Shopify duplicata cancellata, dopo aver
+verificato che nessun `thread.order_id` la referenziasse. Nessuna
+migrazione di schema: solo dati. **Non serve toccare `thread`**:
+`riaggancia.ts` ritrova da solo, al primo giro dopo il deploy, le
+conversazioni `unmatched` che citano questi numeri d'ordine — stesso
+comportamento già visto per il problema strutturale del 26/08.
+
+**✅ VERIFICATO da Domenico su un ticket reale**, subito dopo il deploy:
+l'ordine Amazon compare ora nel pannello di contesto.
+
 ### Connettore casella (passo 05)
 La casella è su Gmail, letta via **IMAP** e scritta via **SMTP** con una
 *password per app*. Microsoft Graph resta la destinazione finale — le variabili
