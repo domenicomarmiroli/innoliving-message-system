@@ -18,7 +18,8 @@
     "mail:ripulisci": "tsx src/commands/mail-ripulisci.ts",
     "mirakl:check": "tsx src/commands/mirakl-check.ts",
     "shopify:webhooks": "tsx src/commands/shopify-webhooks.ts",
-    "shopify:sync": "tsx src/commands/shopify-sync.ts"
+    "shopify:sync": "tsx src/commands/shopify-sync.ts",
+    "intento:backfill": "tsx src/commands/intento-backfill.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

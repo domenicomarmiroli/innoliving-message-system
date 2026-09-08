@@ -103,6 +103,8 @@ export interface RisultatoThread {
   nuovo: boolean
   messaggi_inseriti: number
   agganciato: boolean
+  /** Corpo del primo messaggio del cliente davvero inserito in questo giro, solo se il thread è nuovo: serve alla classificazione dell'intento. */
+  primo_testo_cliente: string | null
 }
 
 export async function upsertThread(
@@ -183,6 +185,7 @@ export async function upsertThread(
 
     const threadId = riga!.id
     let inseriti = 0
+    let primoTestoCliente: string | null = null
 
     for (const m of t.messaggi) {
       if (!m.external_id) continue // senza id non è idempotente: si salta
@@ -227,6 +230,9 @@ export async function upsertThread(
       `
       if (!scritto) continue
       inseriti += 1
+      if (!primoTestoCliente && m.autore_kind === 'customer' && m.corpo_testo) {
+        primoTestoCliente = m.corpo_testo
+      }
 
       const allegatiPronti = m.external_id ? allegatiPerMessaggio.get(m.external_id) ?? [] : []
       for (const a of allegatiPronti) {
@@ -260,6 +266,7 @@ export async function upsertThread(
       nuovo: riga!.created,
       messaggi_inseriti: inseriti,
       agganciato: orderId !== null,
+      primo_testo_cliente: riga!.created ? primoTestoCliente : null,
     }
   })
 }

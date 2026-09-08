@@ -2,6 +2,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { ClientMirakl, costruisciOperatori, type OperatoreMirakl } from './client.js'
+import { classificaEsalvaIntento } from '../../core/ai/intento.js'
 import { normalizzaRisposta, type EsitoNormalizza } from './normalize.js'
 import { upsertThread } from './upsert.js'
 
@@ -133,6 +134,10 @@ async function sincronizzaOperatore(
         if (r.nuovo) esito.thread_nuovi += 1
         if (r.agganciato) esito.agganciati += 1
         esito.messaggi_inseriti += r.messaggi_inseriti
+
+        if (r.nuovo && r.primo_testo_cliente) {
+          await classificaEsalvaIntento(db, log, config, r.thread_id, r.primo_testo_cliente)
+        }
       }
 
       token =

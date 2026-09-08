@@ -22,18 +22,27 @@ export interface ProviderAI {
   completa(richiesta: RichiestaCompletamento): Promise<EsitoCompletamento>
 }
 
-/** Da chiamare da chi ha bisogno di generare testo — mai istanziare i provider a mano altrove. */
-export async function creaProvider(config: {
-  AI_PROVIDER: string
-  ANTHROPIC_API_KEY?: string
-  ANTHROPIC_MODEL: string
-}): Promise<ProviderAI> {
+/**
+ * Da chiamare da chi ha bisogno di generare testo — mai istanziare i
+ * provider a mano altrove. `modelloOverride` serve a chi ha bisogno di un
+ * modello diverso da quello delle bozze (es. la classificazione
+ * dell'intento, economica e ad alto volume): stesso provider e stessa
+ * chiave, solo il nome del modello cambia.
+ */
+export async function creaProvider(
+  config: {
+    AI_PROVIDER: string
+    ANTHROPIC_API_KEY?: string
+    ANTHROPIC_MODEL: string
+  },
+  modelloOverride?: string,
+): Promise<ProviderAI> {
   if (config.AI_PROVIDER === 'anthropic') {
     if (!config.ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY non configurata: le bozze AI non possono generare testo.')
     }
     const { ProviderAnthropic } = await import('./anthropic.js')
-    return new ProviderAnthropic(config.ANTHROPIC_API_KEY, config.ANTHROPIC_MODEL)
+    return new ProviderAnthropic(config.ANTHROPIC_API_KEY, modelloOverride ?? config.ANTHROPIC_MODEL)
   }
   throw new Error(`Provider AI sconosciuto: ${config.AI_PROVIDER}`)
 }

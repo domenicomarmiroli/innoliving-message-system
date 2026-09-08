@@ -958,6 +958,68 @@ non viene contato.
 Lato Lovable, `draft_id` è collegato end-to-end (fatto): "Usa questa
 bozza" lo porta fino all'invio.
 
+### Classificazione dell'intento (passo 07, 04/09)
+Mai partita fino ad oggi. Verificato via MCP Supabase sui dati reali: 1.654
+thread su 1.744 (95%, 04/09) non avevano nessun tag — gli unici tag
+esistenti erano quelli automatici (`rimborso-emesso`, `reso-richiesto`,
+ecc.), zero classificazione del contenuto del messaggio. Conseguenza
+diretta: `generaBozza()` recupera dalla knowledge base solo quando
+`thread.tags` e `knowledge.tag` condividono un valore (`tag &&
+${thread.tags}`) — senza tag, la knowledge base non contribuisce mai a una
+bozza. La knowledge base stessa aveva solo 8 voci reali, con tag scritti a
+mano e incoerenti (tre varianti diverse per "prodotto danneggiato" sulla
+stessa voce) — riallineate alla tassonomia sotto con una query mirata via
+MCP, non riscritte da zero.
+
+**Lista chiusa di 13 categorie** (`CATEGORIE_INTENTO`,
+`src/core/ai/intento.ts`): `reso`, `rimborso`, `garanzia`,
+`prodotto-danneggiato`, `prodotto-difettoso`, `spedizione-ritardo`,
+`spedizione-tracking`, `ordine-modifica`, `fattura`, `domanda-prodotto`,
+`reclamo`, `pezzi-di-ricambio`, `altro`. Lista chiusa e non testo libero
+apposta: un confronto esatto fra tag non funziona senza un vocabolario
+comune, ed è esattamente quello che ha reso inutilizzabile la knowledge
+base finora.
+
+**Le categorie si scrivono nella STESSA colonna `thread.tags`**, non in
+una colonna nuova — decisione deliberata: la knowledge base, la dashboard
+(`v_tag_giornalieri`, già fa `unnest(tags)`) e i tag dell'interfaccia
+Lovable (chip già esistenti in `thread-context.tsx`) iniziano a
+funzionare per questi ticket senza nessuna modifica altrove, worker
+incluso lato Lovable.
+
+`classificaIntento()` applica `redigi()` (regola 8) **prima** di costruire
+il prompt — stessa disciplina di `generaBozza()` — e usa un modello
+economico dedicato, `ANTHROPIC_MODEL_CLASSIFICAZIONE` (default
+`claude-haiku-4-5-20251001`, facoltativa): questa classificazione gira su
+OGNI ticket nuovo, molto più spesso di una bozza che l'agente attiva a
+mano, usare lo stesso modello sarebbe uno spreco. `creaProvider()`
+(`core/ai/provider.ts`) ha guadagnato un secondo parametro opzionale
+`modelloOverride` per questo, senza duplicare la funzione.
+`interpretaRisposta()` è la parte testabile senza rete: whitelist contro
+la lista chiusa (mai fidarsi del testo libero del modello), dedup, massimo
+2 categorie, ripiego su `altro` se non resta nulla di valido — stesso
+principio di `calcolaEsito()` in `core/ai/esito.ts`.
+
+**Innesco: dopo la transazione, mai dentro** — stessa regola già scritta
+per l'upload allegati in `upsert.ts`, una chiamata AI è I/O di rete e non
+deve tenere lock aperti. `classificaEsalvaIntento()` (il punto d'ingresso
+per i connettori) non lancia mai un'eccezione: un fallimento finisce in un
+avviso di log, il ticket resta senza tag automatico ma non si perde.
+Chiamata **solo al primo messaggio di un ticket nuovo** (non ad ogni
+risposta successiva, che non cambia l'argomento della conversazione) da
+tre punti: `connectors/mail/imap.ts` (dopo `upsertEmail()`, quando
+`nuovo_thread`), `connectors/mirakl/sync.ts` (dopo `upsertThread()`,
+quando `nuovo`), `routes/contatti.ts` (dopo la transazione di apertura
+ticket). Non serve per Shopify (ordini, non ticket) né per
+`collega.ts` (il primo messaggio di un ticket collegato è nostro, non del
+cliente).
+
+`npm run intento:backfill -- --limite N` (nuovo comando, mai schedulato):
+classifica i thread già esistenti senza tag, una tantum. Non è stato
+lanciato da solo sulle ~1.650 righe storiche: centinaia di chiamate AI
+sono un costo e un tempo reali, va fatto con una prova su poche righe
+prima (`--limite 20`) per controllare la qualità delle categorie.
+
 ### Dashboard di reportistica (migrazioni 0014, 0015)
 `message.agent_id` e `message.draft_id` (0014) chiudono due lacune scoperte
 costruendo la dashboard: prima, chi avesse spedito un messaggio si trovava

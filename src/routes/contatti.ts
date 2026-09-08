@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
+import { classificaEsalvaIntento } from '../core/ai/intento.js'
 
 /**
  * Apertura ticket dai siti esterni — passo successivo al Contattaci con
@@ -129,6 +130,7 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
 
       const risultato = await db.begin(async (tx) => {
         let threadId: string
+        let nuovoThread: boolean
         if (dati.richiesta_id) {
           const [riga] = await tx<{ id: string; created: boolean }[]>`
             insert into thread (
@@ -144,6 +146,7 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
             returning id, (xmax = 0) as created
           `
           threadId = riga!.id
+          nuovoThread = riga!.created
         } else {
           const [riga] = await tx<{ id: string }[]>`
             insert into thread (
@@ -156,6 +159,7 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
             returning id
           `
           threadId = riga!.id
+          nuovoThread = true
         }
 
         const [messaggio] = await tx<{ id: string }[]>`
@@ -175,14 +179,21 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
           returning id
         `
 
-        return { thread_id: threadId, message_id: messaggio?.id ?? null }
+        return { thread_id: threadId, message_id: messaggio?.id ?? null, nuovo_thread: nuovoThread }
       })
 
       req.log.info(
         { codice, thread_id: risultato.thread_id, agganciato: orderId !== null },
         'ticket aperto da contatto sito',
       )
-      return reply.code(200).send(risultato)
+
+      // Solo al primo messaggio di un ticket nuovo, come per gli altri
+      // canali: le risposte successive non cambiano l'argomento.
+      if (risultato.nuovo_thread && risultato.message_id) {
+        await classificaEsalvaIntento(db, req.log, config, risultato.thread_id, dati.testo)
+      }
+
+      return reply.code(200).send({ thread_id: risultato.thread_id, message_id: risultato.message_id })
     } catch (errore) {
       req.log.error(
         { codice, err: errore instanceof Error ? errore.message : String(errore) },

@@ -73,6 +73,8 @@ export interface RisultatoUpsertEmail {
   message_id: string | null
   thread_id: string
   nuovo_thread: boolean
+  /** Corpo ripulito del messaggio, solo quando esito è 'inserito': serve alla classificazione dell'intento senza ricalcolarlo. */
+  corpo_testo: string | null
 }
 
 export async function upsertEmail(
@@ -185,6 +187,7 @@ export async function upsertEmail(
         message_id: null,
         thread_id: threadId,
         nuovo_thread: false,
+        corpo_testo: null,
       }
     }
 
@@ -241,6 +244,7 @@ export async function upsertEmail(
       message_id: messaggio.id,
       thread_id: threadId,
       nuovo_thread: nuovoThread,
+      corpo_testo: testoPulito,
     }
   })
 }

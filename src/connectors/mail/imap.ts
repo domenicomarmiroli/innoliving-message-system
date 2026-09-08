@@ -4,6 +4,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { aggancia } from './aggancia.js'
+import { classificaEsalvaIntento } from '../../core/ai/intento.js'
 import { analizza } from './parse.js'
 import { caricaRegole } from './regole.js'
 import { registraAvviso, registraNotifica } from './notifica.js'
@@ -210,6 +211,13 @@ export async function leggiCasella(
 
         if (scritto.esito === 'inserito') esito.inserite += 1
         else esito.gia_presenti += 1
+
+        // Solo al primo messaggio di un ticket nuovo: le risposte
+        // successive non cambiano l'argomento della conversazione, e
+        // classificare ad ogni giro sarebbe una chiamata AI sprecata.
+        if (scritto.esito === 'inserito' && scritto.nuovo_thread) {
+          await classificaEsalvaIntento(db, log, config, scritto.thread_id, scritto.corpo_testo)
+        }
       } catch (errore) {
         esito.errori += 1
         // Un errore non si perde mai (regola 5): finisce in

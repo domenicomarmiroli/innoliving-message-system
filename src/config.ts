@@ -93,6 +93,10 @@ const schema = z.object({
   // claude-sonnet-5: equilibrio fra qualità e costo per una bozza di
   // risposta. Non il modello più economico né il più costoso.
   ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-5'),
+  // Classificazione dell'intento (core/ai/intento.ts): gira su OGNI ticket
+  // nuovo, molto più spesso di una bozza che l'agente attiva a mano — un
+  // modello economico dedicato, non lo stesso di ANTHROPIC_MODEL.
+  ANTHROPIC_MODEL_CLASSIFICAZIONE: z.string().min(1).default('claude-haiku-4-5-20251001'),
 
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

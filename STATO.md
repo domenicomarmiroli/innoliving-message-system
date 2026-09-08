@@ -1153,13 +1153,39 @@ dettagli dell'ordine Amazon compaiono ora nel pannello di contesto.
 
 ---
 
-## Prossimo passo del runbook
+## Classificazione dell'intento — 04/09
 
-Classificazione dell'intento e bozze AI (passo 07). Serve la knowledge
-base che Domenico deve fornire.
+Domenico ha chiesto di capire come dare "tag sensati" a tutte le
+comunicazioni in arrivo, fondamentale sia per le bozze AI sia per la
+categorizzazione dei ticket. Prima di proporre qualcosa ho verificato lo
+stato reale via MCP Supabase, non assunto: **1.654 thread su 1.744 (95%)
+non avevano nessun tag**, e la knowledge base (8 voci reali) aveva tag
+scritti a mano e incoerenti (tre varianti diverse per "prodotto
+danneggiato" sulla stessa voce). Confermato nel codice che questo rendeva
+`generaBozza()` cieco alla knowledge base quasi sempre — il passo 07 del
+runbook non era mai partito per mancanza di tassonomia e meccanismo, non
+per mancanza della knowledge base come si pensava.
 
-Vincolo da non dimenticare, già scritto in `CLAUDE.md` regola 8: IBAN,
-carte e codici fiscali **non entrano mai** nel contesto del modello. Per
-la garanzia con rimborso su IBAN il dato va chiesto fuori dalla
-messaggistica del marketplace, e non deve essere visibile al centro
-assistenza esterno.
+**Deciso con Domenico**: classificazione automatica via AI al momento
+dell'ingestione (non regole per parole chiave, non solo manuale), lista
+chiusa di 13 categorie (non testo libero). Dettagli tecnici completi in
+CLAUDE.md, sezione "Classificazione dell'intento".
+
+**Fatto lato worker**: `src/core/ai/intento.ts` (tassonomia, prompt,
+whitelist della risposta del modello), un modello economico dedicato
+(`ANTHROPIC_MODEL_CLASSIFICAZIONE`, default Haiku), innesco dopo la
+transazione al primo messaggio di un ticket nuovo su email/Mirakl/contatto,
+comando `intento:backfill` per i ticket già esistenti. Le categorie vanno
+nella STESSA colonna `thread.tags` — nessuna modifica a Lovable necessaria,
+knowledge base e dashboard iniziano a funzionare da sole. 185 test verdi
+(9 nuovi, solo sulla funzione pura di parsing — nessun mock del provider
+AI, mai esistito in questo repo prima d'ora).
+
+**Da fare, non ancora eseguito**:
+1. Riallineare le 8 voci esistenti della knowledge base alla nuova
+   tassonomia (query mirata via MCP Supabase, con conferma prima della
+   scrittura — stesso schema del fix ordini Amazon).
+2. Deploy su Render.
+3. `npm run intento:backfill -- --limite 20` e controllo a mano della
+   qualità prima del giro completo sulle ~1.650 righe storiche (un costo
+   e un tempo reali, non lanciato da solo).
