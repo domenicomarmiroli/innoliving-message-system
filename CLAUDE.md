@@ -1020,6 +1020,33 @@ lanciato da solo sulle ~1.650 righe storiche: centinaia di chiamate AI
 sono un costo e un tempo reali, va fatto con una prova su poche righe
 prima (`--limite 20`) per controllare la qualità delle categorie.
 
+**✅ Backfill storico completato (08/09), ma non con questo comando.**
+Domenico non ha accesso alla Render Shell, unico posto dove
+`ANTHROPIC_API_KEY`/`SUPABASE_DB_URL` esistono fuori da Render stesso —
+niente `.env` locale, e lanciare lo script da un portatile Windows non
+avrebbe comunque avuto le credenziali. Ha chiesto di procedere
+direttamente: i 1.654 thread storici senza tag sono stati classificati a
+mano, un lotto alla volta via MCP Supabase — lettura del primo messaggio
+cliente di ciascun thread, categoria assegnata per lettura diretta del
+testo (lo stesso giudizio che il prompt chiede al modello) invece che con
+una vera chiamata AI, scrittura a lotti con `UPDATE ... WHERE id =
+ANY(...)`. Verificato alla fine: **0 thread su 1.745 senza tag**.
+
+`fattura` è il tag più frequente (825 su 1.745) non perché sia il tema
+prevalente fra i clienti, ma perché la maggioranza dei thread Mirakl
+storici di Leroy Merlin sono la notifica automatica dell'operatore
+("Hai appena accettato... richiesto l'invio della fattura al cliente"),
+`author_kind='system'`, non un messaggio scritto da un cliente — lo
+stesso testo ripetuto identico su centinaia di thread.
+
+**7 thread sono rimasti fuori dalla query standard del backfill** (nessun
+messaggio con `author_kind='customer'`, solo notifiche `system`
+dell'operatore Mirakl o, in un caso, un thread di test creato durante lo
+sviluppo del ticket collegato) — classificati a mano a parte, leggendo il
+messaggio disponibile. Non è un difetto della query: lo stesso filtro
+resta corretto per i ticket futuri, un thread aperto da una notifica di
+sistema senza che il cliente scriva mai è un caso limite raro.
+
 ### Dashboard di reportistica (migrazioni 0014, 0015)
 `message.agent_id` e `message.draft_id` (0014) chiudono due lacune scoperte
 costruendo la dashboard: prima, chi avesse spedito un messaggio si trovava
