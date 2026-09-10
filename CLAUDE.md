@@ -781,6 +781,43 @@ evento indipendente (stesso dedup per `rfc822_id` di tutti gli altri
 moduli) — non perde niente, ma non distingue ancora "reclamo aperto" da
 "decisione presa".
 
+### Bug: la risposta partiva verso l'indirizzo sbagliato (10/09)
+Domenico ha segnalato un caso reale: risposto a un ticket Amazon (reso
+per articolo difettoso), ma su Gmail la risposta risultava spedita a
+`donotreply@amazon.com` invece che all'alias univoco della cliente,
+mentre il ticket in interfaccia mostrava comunque solo le comunicazioni
+giuste. Verificato via MCP Supabase sul thread reale: tre messaggi in
+ordine di tempo — il messaggio vero della cliente (`author_kind =
+'customer'`, dal suo alias di relay), poi la notifica automatica di
+reso registrata da `resi.ts` sullo stesso thread (`author_kind =
+'system'`, mittente completamente diverso), poi la risposta
+dell'agente.
+
+**Causa**: `inviaRisposta()` (`connectors/mail/invia.ts`) sceglieva "il
+messaggio in arrivo più recente del thread" per decidere a chi
+rispondere — `where direction = 'in' order by sent_at desc limit 1`,
+**senza filtrare per `author_kind`**. Qualunque notifica di sistema
+annotata sullo stesso thread DOPO il messaggio del cliente (reso,
+rimborso, reclamo, mancata consegna, opt-out — tutte scrivono
+`direction = 'in', author_kind = 'system'` sulla conversazione
+esistente, per design) diventava quindi "l'ultimo arrivo", e la
+risposta partiva verso il SUO mittente invece che verso il cliente.
+Bug strutturale, non specifico di un solo canale: presente da quando
+esiste `resi.ts` (28/08), riemerso ora che le notifiche di sistema sono
+più frequenti (opt-out incluso).
+
+**Corretto** aggiungendo `and m.author_kind = 'customer'` alla query:
+il mittente di un ticket non cambia più per via di una notifica di
+sistema arrivata dopo. Nessun impatto sul ripiego già esistente per i
+ticket collegati (nessun messaggio in arrivo: si continua a scrivere
+allo stesso `raw.to` del nostro ultimo invio).
+
+**Non recuperabile**: la risposta già partita verso l'indirizzo
+sbagliato in questo caso reale non può essere richiamata. L'alias vero
+della cliente resta salvato sul messaggio originale
+(`message.raw.from`/`reply_to`): un secondo invio sullo stesso ticket,
+dopo il deploy di questo fix, arriva correttamente a lei.
+
 ### Acquirente ha disattivato i messaggi (10/09)
 Domenico ha segnalato un caso reale: un nostro messaggio a un cliente
 Amazon non è arrivato, e Amazon spiega perché in una email dedicata

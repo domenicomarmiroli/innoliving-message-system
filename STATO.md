@@ -1291,3 +1291,32 @@ corpo dell'email) — resta solo un problema del passato, non del futuro.
 **Da fare**: deploy su Render, poi verifica che un vero opt-out futuro
 generi il reinvio automatico (non testabile prima del prossimo caso
 reale — Amazon non offre un modo per simularlo).
+
+---
+
+## Bug: risposta partita all'indirizzo sbagliato — 10/09
+
+Segnalato subito dopo, sempre da Domenico, su un ticket Amazon diverso
+(reso per articolo difettoso, ordine 405-2550856-9515559): la risposta
+dell'agente risultava spedita a `donotreply@amazon.com` invece che
+all'alias vero della cliente, pur restando tutto corretto nel pannello.
+
+Verificato via MCP Supabase: `inviaRisposta()` sceglieva l'ultimo
+messaggio in arrivo del thread per decidere il destinatario, ma senza
+distinguere un messaggio vero del cliente da una notifica di sistema
+(qui: la richiesta di reso auto-registrata da `resi.ts`, arrivata sullo
+stesso thread pochi minuti dopo il messaggio della cliente). Bug
+strutturale presente da fine agosto, non introdotto oggi — solo
+diventato più visibile ora che le notifiche di sistema (opt-out
+incluso) sono più frequenti.
+
+**Corretto**: aggiunto `author_kind = 'customer'` alla query in
+`connectors/mail/invia.ts`. Dettagli in CLAUDE.md. 193 test verdi
+(nessun test nuovo: la funzione ha sempre richiesto un database vero,
+stesso limite di `resi.ts`/`collega.ts`).
+
+**Non recuperabile** la risposta già partita male su quel ticket
+specifico — l'alias vero della cliente resta comunque salvato, un
+secondo invio dopo il deploy arriva corretto.
+
+**Da fare**: deploy su Render.

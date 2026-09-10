@@ -62,9 +62,24 @@ export async function inviaRisposta(
   richiesta: RichiestaInvio,
 ): Promise<EsitoInvio> {
   // --- A chi rispondiamo, e dentro quale conversazione ------------------
-  // Prendiamo l'ultimo messaggio IN ARRIVO del thread: è lui a portare
-  // l'indirizzo del relay e gli identificativi che tengono insieme la
-  // catena. Rispondere all'ultimo messaggio in uscita non avrebbe senso.
+  // Prendiamo l'ultimo messaggio IN ARRIVO **del cliente** del thread: è
+  // lui a portare l'indirizzo del relay e gli identificativi che tengono
+  // insieme la catena. Rispondere all'ultimo messaggio in uscita non
+  // avrebbe senso.
+  //
+  // **`author_kind = 'customer'` non è opzionale (bug reale, 10/09)**:
+  // sullo STESSO thread arrivano anche messaggi di sistema con
+  // `direction = 'in'` (resi.ts/rimborsi.ts/reclami.ts/notifica.ts/
+  // optout.ts annotano la richiesta di reso, il rimborso, ecc. come
+  // messaggio del thread esistente, `author_kind = 'system'`). Un caso
+  // vero: il cliente scrive dal suo alias univoco del relay, poi arriva
+  // sullo stesso thread la notifica automatica di reso (mittente
+  // completamente diverso, un indirizzo di sistema del marketplace) —
+  // senza questo filtro, "l'ultimo messaggio in arrivo" era quello di
+  // sistema, e la risposta dell'agente partiva verso l'indirizzo di
+  // sistema invece che verso il cliente vero. Il mittente di un ticket
+  // non deve mai cambiare per via di una notifica di sistema arrivata
+  // dopo.
   type RigaMessaggio = {
     subject: string | null
     raw: { from?: string; reply_to?: string; to?: string; references?: string[] } | null
@@ -76,7 +91,7 @@ export async function inviaRisposta(
     select t.subject, m.raw, m.rfc822_id, t.linked_thread_id
     from message m
     join thread t on t.id = m.thread_id
-    where m.thread_id = ${richiesta.thread_id} and m.direction = 'in'
+    where m.thread_id = ${richiesta.thread_id} and m.direction = 'in' and m.author_kind = 'customer'
     order by m.sent_at desc
     limit 1
   `
