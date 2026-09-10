@@ -1268,3 +1268,71 @@ l'indirizzo lasciato dal cliente senza nessuna modifica al connettore di
 invio — stesso meccanismo di sempre, un canale in più che lo usa.
 
 Come aggiungere un sito: la nota è scritta dentro la migrazione 0016.
+
+### Rientri in magazzino (10/09)
+Domenico ha descritto un buco nel processo: un cliente Amazon fa un
+reso, Amazon lo autorizza e fornisce un'etichetta di spedizione (visto
+in un ticket reale: corriere Poste, tracking, tutto già annotato da
+`resi.ts`), l'agente risponde con le istruzioni e il ticket si chiude.
+Ma quando il pacco arriva **fisicamente** in magazzino, nel sistema di
+messaggistica non cambia nulla: nessuno lo sa finché il cliente non
+scrive di nuovo a chiedere il rimborso.
+
+Il magazzino scansiona ogni pacco in arrivo con un tool **completamente
+separato**: "Utilities Magazzino" (`gest-colli-magint`, altro progetto
+Lovable, **altro database Supabase** — verificato leggendo il suo
+`.env`, non assunto). Quel tool cerca il barcode scansionato su Zoho
+Inventory e, se lo trova, registra una riga in una tabella `scans` con
+`package_type` (`reso_ecommerce` | `assistenza_garanzia` | `non_mappato`)
+e `tipo_scan` (`standard` | `no_match` | `errore_lettura`).
+
+**La scoperta chiave, verificata sui dati veri di quel database (non
+assunta)**: il campo `payload.internal_reference` per i resi Amazon è
+il numero dell'ordine di vendita **Zoho**, che Zoho nomina con il
+prefisso `AMZS` seguito dal numero ordine Amazon reale —
+`AMZS407-9987997-0665947` per l'ordine `407-9987997-0665947`.
+`order.reso_tracking_number` (quello che salviamo noi dalla notifica
+Amazon) invece **quasi sempre è null** anche per resi realmente
+rientrati: il pacco fisico può arrivare con un barcode di un corriere
+diverso da quello dell'etichetta Amazon, e il tool di magazzino lo
+riconosce comunque tramite Zoho. Il match affidabile è quindi sul
+riferimento Zoho, non sul barcode.
+
+**Nuovo endpoint sull'ALTRO progetto** (via MCP Lovable, non in questo
+repo): `GET /api/public/rientri` su `gest-colli-magint`, sola lettura,
+protetto da un token condiviso (`app_config.rientri_api_token` su
+quel database — un progetto diverso, non tocca nulla di nostro).
+Restituisce le scansioni `tipo_scan='standard'` degli ultimi 60 giorni
+(o da `?since=`), filtrabili per `package_type` (default
+`reso_ecommerce`), con solo `barcode`/`internal_reference`/
+`customer_name`/`created_at` — niente altro del payload Zoho.
+
+**Lato worker** (`src/connectors/magazzino/rientri.ts`):
+- `estraiNumeroOrdineDaRiferimento()` — pura, whitelist sul prefisso
+  `AMZS` seguito dalla forma esatta di un ordine Amazon
+  (`\d{3}-\d{7}-\d{7}`). Un riferimento di un altro canale (garanzia,
+  TikTok, ecc.) restituisce null: non forziamo un match sbagliato.
+- `recuperaRientri()` — chiama l'endpoint (REST diretto via `fetch`,
+  stesso stile di `core/storage.ts`, niente SDK).
+- `elaboraRientri()` — per ogni rientro riconosciuto, trova il thread
+  dell'ordine, e se non ha già il tag `pacco-rientrato-logistica`:
+  scrive una nota interna ("Pacco rientrato in logistica.",
+  `interno=true`, mai visibile al cliente — stesso schema delle note
+  interne di Lovable) e porta il ticket a `state='open'` **sempre**
+  (non solo se era chiuso: Domenico ha chiesto esplicitamente "STATO
+  APERTO", è un segnale che serve un'azione, non solo un'annotazione).
+  Il tag rende l'operazione idempotente: il giro periodico rilegge
+  sempre una finestra ampia (nessun segnalibro fra i due database) e
+  non deve ripetere la nota ad ogni giro.
+
+`src/connectors/magazzino/periodico.ts` — stesso schema di
+`shopify/periodico.ts`: gira dentro il servizio, primo giro dopo un
+minuto, poi ogni `MAGAZZINO_SYNC_MINUTES` (default 30). Se
+`MAGAZZINO_API_URL`/`MAGAZZINO_API_TOKEN` mancano il ciclo non parte,
+il resto del worker funziona lo stesso. `npm run magazzino:check` per
+un collaudo manuale (mostra cosa verrebbe riconosciuto prima ancora di
+scrivere, poi fa girare davvero l'elaborazione).
+
+**Non toccato**: nessuna scrittura sul database di "Utilities
+Magazzino" — l'integrazione è di sola lettura in quella direzione,
+tutte le scritture restano su questo Supabase.

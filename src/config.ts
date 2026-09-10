@@ -44,6 +44,17 @@ const schema = z.object({
   // sicurezza sotto i webhook, non il canale principale: un'ora basta.
   SHOPIFY_SYNC_MINUTES: z.coerce.number().int().positive().default(60),
 
+  // --- Rientri in magazzino (tool "Utilities Magazzino", altro progetto) ---
+  // Endpoint di sola lettura, esposto da quel tool, che elenca le
+  // scansioni "rientro" registrate quando un corriere consegna un pacco
+  // in magazzino. Serve a scoprire quando un reso Amazon autorizzato è
+  // fisicamente arrivato, per riaprire il ticket e avvisare l'operatore.
+  MAGAZZINO_API_URL: z.string().url().optional(),
+  MAGAZZINO_API_TOKEN: z.string().min(16).optional(),
+  // Ogni quanti minuti controllare. Non è un canale critico in tempo
+  // reale: mezz'ora è un buon compromesso fra reattività e carico.
+  MAGAZZINO_SYNC_MINUTES: z.coerce.number().int().positive().default(30),
+
   MS_TENANT_ID: z.string().min(1).optional(),
   MS_CLIENT_ID: z.string().min(1).optional(),
   MS_CLIENT_SECRET: z.string().min(1).optional(),

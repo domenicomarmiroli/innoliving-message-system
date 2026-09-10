@@ -1325,3 +1325,48 @@ stesso identico difetto (nessun filtro `author_kind` sul messaggio più
 recente), quindi mostrava ancora `donotreply@amazon.com` dopo il fix
 del worker. **✅ Entrambi i fix deployati e verificati da Domenico** sul
 ticket reale: risolto sia l'invio sia il pannello.
+
+---
+
+## Rientri in magazzino — 10/09
+
+Domenico ha descritto un buco di processo con un ticket reale come
+esempio: reso Amazon autorizzato, ticket chiuso dopo la risposta
+dell'agente, ma quando il pacco torna fisicamente in magazzino nessuno
+lo sa nel sistema di messaggistica — lo scopre solo un altro tool
+interno, "Utilities Magazzino", con cui non c'era nessun collegamento.
+
+Prima di scrivere codice ho letto il sorgente di quel secondo progetto
+Lovable (via MCP): ha un **database Supabase completamente diverso**
+dal nostro, integrato con Zoho Inventory. Scoperta chiave, verificata
+sui dati veri di quel database: il campo che identifica un reso Amazon
+in quel sistema (`payload.internal_reference`) è il numero dell'ordine
+di vendita **Zoho**, nominato con prefisso `AMZS` + numero ordine
+Amazon — non il tracking Poste, che infatti risultava quasi sempre
+assente (`reso_tracking_number` null) anche per resi realmente arrivati.
+
+Invece di condividere credenziali di database fra i due sistemi (Lovable
+Cloud non le espone facilmente, verificato tentando), ho fatto
+costruire a Lovable (via MCP, sull'ALTRO progetto) un endpoint di sola
+lettura dedicato: `GET /api/public/rientri`, protetto da token,
+restituisce solo i campi necessari. Il nostro worker lo interroga ogni
+`MAGAZZINO_SYNC_MINUTES` (default 30) e, per ogni rientro riconoscibile
+come un nostro ordine Amazon, scrive una nota interna ("Pacco rientrato
+in logistica.") e riapre il ticket (`state='open'`).
+
+**Fatto**: `src/connectors/magazzino/rientri.ts` + `periodico.ts`,
+comando `magazzino:check` per il collaudo manuale. 199 test verdi (6
+nuovi, sulla funzione pura di estrazione del numero ordine), typecheck
+e build puliti.
+
+**Da fare**:
+1. Domenico deve **pubblicare** l'app "Utilities Magazzino" — il nuovo
+   endpoint esiste solo in anteprima finché non viene fatto il deploy
+   su Lovable.
+2. Impostare `MAGAZZINO_API_URL`/`MAGAZZINO_API_TOKEN` su Render (il
+   token è stato generato da Lovable durante la costruzione
+   dell'endpoint — vedi la chat per il valore, non salvato qui per
+   principio, anche se non è nel repo).
+3. Dopo il deploy, un giro di `npm run magazzino:check` per verificare
+   che il match funzioni su un rientro reale prima di fidarsi del giro
+   automatico.

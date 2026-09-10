@@ -13,6 +13,7 @@ import { contattiRoutes } from './routes/contatti.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
 import { avviaPolling } from './connectors/mail/poll.js'
 import { avviaAllineamentoOrdini } from './connectors/shopify/periodico.js'
+import { avviaControlloRientri } from './connectors/magazzino/periodico.js'
 
 export async function buildServer(config: Config) {
   const app = Fastify({
@@ -59,9 +60,15 @@ export async function buildServer(config: Config) {
   // ordine che per noi non esiste.
   const ordini = avviaAllineamentoOrdini(db, logger, config)
 
+  // Rientri fisici in magazzino: un altro tool (altro progetto, altro
+  // database) scansiona i resi in arrivo; questo giro scopre quando un
+  // reso Amazon autorizzato è arrivato davvero e riapre il ticket.
+  const rientri = avviaControlloRientri(db, logger, config)
+
   app.addHook('onClose', async () => {
     casella?.ferma()
     ordini?.ferma()
+    rientri?.ferma()
     await db.end({ timeout: 5 })
   })
 

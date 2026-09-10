@@ -19,7 +19,8 @@
     "mirakl:check": "tsx src/commands/mirakl-check.ts",
     "shopify:webhooks": "tsx src/commands/shopify-webhooks.ts",
     "shopify:sync": "tsx src/commands/shopify-sync.ts",
-    "intento:backfill": "tsx src/commands/intento-backfill.ts"
+    "intento:backfill": "tsx src/commands/intento-backfill.ts",
+    "magazzino:check": "tsx src/commands/magazzino-check.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
