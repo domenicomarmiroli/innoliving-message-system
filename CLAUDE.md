@@ -781,6 +781,104 @@ evento indipendente (stesso dedup per `rfc822_id` di tutti gli altri
 moduli) — non perde niente, ma non distingue ancora "reclamo aperto" da
 "decisione presa".
 
+### Acquirente ha disattivato i messaggi (10/09)
+Domenico ha segnalato un caso reale: un nostro messaggio a un cliente
+Amazon non è arrivato, e Amazon spiega perché in una email dedicata
+("...perché l'acquirente ha scelto di non ricevere messaggi non
+richiesti dai venditori"), indicando anche il rimedio — includere la
+parola **"[Importante]"** nell'oggetto fa passare il messaggio anche a
+un acquirente che ha disattivato quelli non essenziali.
+
+**Bug trovato indagando, più ampio della segnalazione iniziale**:
+verificato via MCP Supabase che decine di queste email arrivavano ogni
+giorno finendo in `ingest_anomaly` come `notifica_senza_ordine` —
+**il numero d'ordine non veniva mai estratto**, quindi nessun ticket
+veniva mai riaperto per NESSUNA di queste notifiche, non solo per il
+caso segnalato. Causa, confermata leggendo il sorgente grezzo reale
+(non solo lo screenshot che Domenico aveva mandato — vedi regola 6):
+questa email di Amazon ha **solo la parte HTML**, nessun `text/plain`
+alternativo, e mailparser (`simpleParser`) **non genera da solo un
+testo a partire dall'HTML** quando manca — `m.text` risultava
+`undefined`, quindi `body_text` restava `null` e ogni ricerca su di
+esso (numero d'ordine compreso, in `estraiNumeroOrdine()`) falliva in
+silenzio da sempre, per qualunque email futura con questo stesso
+problema, non solo per Amazon.
+
+**Corretto in due punti**:
+1. `core/html.ts`, `testoPulito()`: ora toglie anche il CONTENUTO di
+   `<style>`/`<script>`, non solo i tag — necessario per poterla
+   applicare a un documento HTML COMPLETO (con `<head>`/CSS inline),
+   non solo ai frammenti per cui era pensata finora (resi.ts/
+   rimborsi.ts/mirakl). Senza, centinaia di righe di CSS sarebbero
+   finite nel testo ripulito.
+2. `connectors/mail/parse.ts`: quando `m.text` manca ma `m.html` c'è,
+   `body_text` si ricava da `testoPulito(m.html)` invece di restare
+   `null`. Ripiego, non sostituzione: un'email con un vero
+   `text/plain` (la maggioranza) non cambia comportamento.
+
+Verificato sul sorgente reale (anonimizzato in
+`test/fixtures/mail/amazon-opt-out-reale.eml`, header ricostruiti come
+gli altri esemplari "reale") che dopo il fix `body_text` contiene il
+numero d'ordine e non contiene CSS.
+
+**La gestione vera e propria** (`src/connectors/mail/optout.ts`,
+genere `opt_out` da `X-Space-Notification-Type:
+BUYER_OPTED_OUT_BSM_MESSAGES`, stessa precedenza degli altri header
+Amazon — PRIMA delle liste per dominio, punto 3 di
+`classificaMittente()`): a differenza delle altre notifiche di mancata
+consegna (genere `notifica`, che si limitano a taggare
+`consegna-fallita` e riaprire), qui Amazon indica un rimedio preciso,
+quindi si agisce:
+
+1. Si trova il thread dell'ordine citato (nessun segnaposto se non
+   esiste già: questa notifica riguarda un NOSTRO messaggio, e senza
+   un thread non c'è nessun nostro messaggio da recuperare — stessa
+   scelta di `registraNotifica`).
+2. **Dedup sulla notifica in sé** (`rfc822_id`), non solo sui tag: una
+   rilettura IMAP della STESSA email non deve contarsi come un secondo
+   fallimento vero, altrimenti una ripetizione del giro di polling
+   escalerebbe ad azione manuale senza che sia successo nulla di
+   nuovo — a differenza di `registraNotifica`, che non ha questo
+   problema perché non ha un'azione automatica da proteggere.
+3. **Primo fallimento** (nessun tag `reinvio-importante-tentato` né
+   `richiede-azione-sellercentral` sul thread): si recupera l'ULTIMO
+   messaggio nostro (`direction='out'`) su quel thread e lo si
+   **reinvia una sola volta**, stesso testo, oggetto con
+   `[Importante]` anteposto (`costruisciOggettoImportante()`, pura,
+   non duplica il prefisso se già presente). L'invio (I/O di rete)
+   avviene PRIMA di aprire la transazione, stessa regola di
+   `collega.ts`. Tag `reinvio-importante-tentato` sul thread, che
+   torna aperto se era chiuso.
+4. **Secondo fallimento** (il reinvio è arrivato a sua volta rimbalzato
+   come opt-out): niente terzo tentativo — Amazon stessa non offre
+   altra via da qui (l'alternativa è l'interfaccia di messaggistica
+   acquirente-venditore su Seller Central, non raggiungibile
+   dall'esterno). Tag `richiede-azione-sellercentral`, thread
+   riaperto: serve un operatore.
+5. Se non c'è nessun messaggio nostro recuperabile (nessun `out`
+   trovato, o senza destinatario/testo — es. la risposta originale non
+   è mai passata da questo worker) si salta direttamente al punto 4:
+   non si inventa un reinvio senza sapere cosa reinviare né a chi.
+
+Il messaggio in uscita del reinvio è `author_kind='agent'`,
+`agent_id=null` — nessun operatore l'ha scritto, stesso spazio già
+usato dal codice per gli invii automatici server-to-server (vedi
+`WORKER_API_TOKEN` in `routes/reply.ts`), non un valore nuovo.
+
+**DEBITO accettato**: le decine di notifiche già finite in
+`ingest_anomaly` PRIMA di questo fix non vengono riprocessate — quella
+tabella salva solo oggetto e Message-ID, non il corpo (regola 4
+rispettata parzialmente: qui si è scelto deliberatamente di non
+salvare un HTML enorme per una email che non genera un ticket), quindi
+non c'è nulla da cui ricostruire il reinvio. Anche potendo, reinviare
+oggi un "[Importante]" per un messaggio di giorni fa confonderebbe più
+che aiutare. Da qui in avanti il fix è pieno.
+
+**Lato Lovable**: nessuna modifica necessaria — i due tag nuovi sono
+chip generici come tutti gli altri (stesso principio già verificato
+con la classificazione dell'intento: l'interfaccia non distingue un
+tag di sistema da uno automatico).
+
 ### Ticket collegati — "linked tickets" stile Zendesk (migrazione 0026, 03/09)
 Richiesto da Domenico: dal ticket cliente, poter scrivere una email a un
 indirizzo esterno (corriere, assistenza) senza uscire dal sistema, con

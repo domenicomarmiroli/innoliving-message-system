@@ -445,3 +445,28 @@ describe('reclami di Garanzia dalla A alla Z', () => {
     expect(classificaMittente(email, opz)).toBe('reclamo')
   })
 })
+
+describe('acquirente ha disattivato i messaggi (opt-out)', () => {
+  const n = { rfc822_id: null, in_reply_to: null, references: [], to: [],
+    subject: null, date: null, body_text: null, body_html: null,
+    allegati: [], uid: null, reply_to: null }
+  const opz = { domini_esclusi: [], domini_notifica: ['amazon.com'], domini_avviso: [] }
+
+  it('BUYER_OPTED_OUT_BSM_MESSAGES è un opt_out, non una notifica generica', () => {
+    expect(classificaMittente(
+      { ...n, from: 'x@amazon.com', notifica_tipo: 'BUYER_OPTED_OUT_BSM_MESSAGES' }, opz))
+      .toBe('opt_out')
+  })
+
+  it('sulla email reale l header è presente e riconosciuto, e il numero d ordine si legge dall HTML', async () => {
+    const email = await analizza(eml('amazon-opt-out-reale.eml'), 230)
+    expect(email.notifica_tipo).toBe('BUYER_OPTED_OUT_BSM_MESSAGES')
+    expect(classificaMittente(email, opz)).toBe('opt_out')
+    // La prova del bug corretto (09/09): questa email non ha nessuna
+    // parte text/plain, solo HTML — senza il ripiego in parse.ts,
+    // body_text restava null e il numero d'ordine non si trovava mai.
+    expect(email.body_text).toContain('406-5322013-9383523')
+    expect(email.body_text).not.toContain('font-family')
+    expect(estraiNumeroOrdine(email, null)).toBe('406-5322013-9383523')
+  })
+})

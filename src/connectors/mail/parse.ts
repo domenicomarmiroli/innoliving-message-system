@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { simpleParser, type AddressObject } from 'mailparser'
 
 import type { AllegatoGrezzo, EmailGrezza } from './tipi.js'
+import { testoPulito } from '../../core/html.js'
 
 /**
  * Da sorgente RFC822 a EmailGrezza.
@@ -40,7 +41,12 @@ export async function analizza(sorgente: Buffer, uid: number | null): Promise<Em
     to: indirizzi(m.to),
     subject: m.subject ?? null,
     date: m.date ?? null,
-    body_text: m.text ?? null,
+    // mailparser non genera sempre un `.text` da solo: un'email che ha
+    // SOLO la parte HTML (nessun text/plain alternativo — il caso reale
+    // di certe notifiche di sistema Amazon) lascia `m.text` a
+    // `undefined`. Senza questo ripiego, `body_text` restava null e ogni
+    // ricerca su di esso (numero d'ordine compreso) falliva in silenzio.
+    body_text: m.text ?? (typeof m.html === 'string' ? testoPulito(m.html) : null),
     body_html: typeof m.html === 'string' ? m.html : null,
     allegati,
     uid,

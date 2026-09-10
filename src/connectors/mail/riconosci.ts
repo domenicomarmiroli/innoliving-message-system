@@ -71,7 +71,15 @@ export function daEscludere(
 }
 
 /** Che genere di posta è, prima ancora di chiedersi da quale canale viene. */
-export type GenereMittente = 'escluso' | 'reso' | 'rimborso' | 'reclamo' | 'notifica' | 'avviso' | 'messaggio'
+export type GenereMittente =
+  | 'escluso'
+  | 'reso'
+  | 'rimborso'
+  | 'reclamo'
+  | 'opt_out'
+  | 'notifica'
+  | 'avviso'
+  | 'messaggio'
 
 /**
  * Valori noti di `X-Space-Notification-Type` che sono richieste di reso,
@@ -82,6 +90,14 @@ export type GenereMittente = 'escluso' | 'reso' | 'rimborso' | 'reclamo' | 'noti
 const TIPI_RESO = ['RETURN_REQUEST']
 const TIPI_RIMBORSO = ['REFUND_ISSUED']
 const TIPI_RECLAMO = ['A_Z_CLAIM_RESPONDENT_NOTIFY']
+/**
+ * L'acquirente ha disattivato la ricezione di messaggi non richiesti dai
+ * venditori: un nostro invio non è mai arrivato. A differenza delle altre
+ * notifiche di mancata consegna (genere 'notifica'), Amazon indica un
+ * rimedio preciso — includere "[Importante]" nell'oggetto — quindi merita
+ * una gestione propria (un tentativo di reinvio), non solo un'annotazione.
+ */
+const TIPI_OPT_OUT = ['BUYER_OPTED_OUT_BSM_MESSAGES']
 
 export function classificaMittente(
   email: Pick<EmailGrezza, 'from' | 'reply_to' | 'notifica_tipo'>,
@@ -122,6 +138,7 @@ export function classificaMittente(
   if (email.notifica_tipo && TIPI_RESO.includes(email.notifica_tipo)) return 'reso'
   if (email.notifica_tipo && TIPI_RIMBORSO.includes(email.notifica_tipo)) return 'rimborso'
   if (email.notifica_tipo && TIPI_RECLAMO.includes(email.notifica_tipo)) return 'reclamo'
+  if (email.notifica_tipo && TIPI_OPT_OUT.includes(email.notifica_tipo)) return 'opt_out'
 
   // 4. Solo ora le liste per genere.
   if (daEscludere(email, opzioni.domini_avviso)) return 'avviso'

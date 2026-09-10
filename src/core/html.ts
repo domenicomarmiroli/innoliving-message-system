@@ -14,6 +14,10 @@
 /** Toglie i tag, normalizza gli spazi, decodifica le poche entità HTML che contano. */
 export function testoPulito(html: string): string {
   return html
+    // Il CONTENUTO di <style>/<script> non è testo per nessuno che legga
+    // l'email: senza questo, un documento HTML completo (non solo un
+    // frammento) riversa centinaia di righe di CSS nel testo ripulito.
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')

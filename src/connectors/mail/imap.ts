@@ -8,6 +8,7 @@ import { classificaEsalvaIntento } from '../../core/ai/intento.js'
 import { analizza } from './parse.js'
 import { caricaRegole } from './regole.js'
 import { registraAvviso, registraNotifica } from './notifica.js'
+import { registraOptOut } from './optout.js'
 import { registraReclamo } from './reclami.js'
 import { registraReso } from './resi.js'
 import { registraRimborso } from './rimborsi.js'
@@ -43,6 +44,8 @@ export interface EsitoCiclo {
   rimborsi: number
   /** Reclami di Garanzia dalla A alla Z, annotati sull'ordine. */
   reclami: number
+  /** Acquirente ha disattivato i messaggi: reinviato con [Importante], o segnalato per azione manuale. */
+  opt_out: number
   errori: number
   ultimo_uid: number | null
 }
@@ -92,6 +95,7 @@ export async function leggiCasella(
     resi: 0,
     rimborsi: 0,
     reclami: 0,
+    opt_out: 0,
     errori: 0,
     ultimo_uid: stato.imap_uid,
   }
@@ -144,6 +148,11 @@ export async function leggiCasella(
         //  - reclamo: reclamo di Garanzia dalla A alla Z
         //    (A_Z_CLAIM_RESPONDENT_NOTIFY). La cosa più urgente che
         //    passa da qui — pesa sulla salute dell'account venditore.
+        //  - opt_out: l'acquirente ha disattivato i messaggi non
+        //    richiesti (BUYER_OPTED_OUT_BSM_MESSAGES). Un solo
+        //    reinvio automatico con "[Importante]" nell'oggetto; se
+        //    fallisce anche quello, serve un operatore da Seller
+        //    Central.
         //  - notifica: avvisi di mancata consegna. Non sono richieste,
         //    ma dicono che una nostra risposta non è arrivata: si
         //    annotano sulla conversazione di quell'ordine.
@@ -189,6 +198,15 @@ export async function leggiCasella(
             db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
           )
           esito.reclami += 1
+          continue
+        }
+
+        if (genere === 'opt_out') {
+          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
+          await registraOptOut(
+            db, log, config, email, canale.account_id, canale.order_id_pattern,
+          )
+          esito.opt_out += 1
           continue
         }
 

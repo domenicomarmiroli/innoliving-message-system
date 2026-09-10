@@ -34,6 +34,7 @@ try {
   console.log('  ignorate:       ', esito.ignorate, '(mittente escluso)')
   console.log('  avvisi:         ', esito.avvisi, '(garanzia A-Z, rimborsi)')
   console.log('  mancate consegne:', esito.notifiche)
+  console.log('  opt-out:        ', esito.opt_out, '(reinviato con [Importante], o azione manuale)')
   console.log('  errori:         ', esito.errori)
   console.log('  ultimo UID:     ', esito.ultimo_uid ?? '(nessuno)')
   console.log('')

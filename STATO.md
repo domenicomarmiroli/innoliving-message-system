@@ -1244,3 +1244,50 @@ del codice con `classificaEsalvaIntento` collegato ai tre connettori
 sistemati a mano) vengano taggati automaticamente dalla pipeline reale.
 Da controllare al prossimo ticket in arrivo, o chiedendo conferma del
 deploy.
+
+---
+
+## Acquirente Amazon ha disattivato i messaggi — 10/09
+
+Domenico ha segnalato uno screenshot: Amazon comunica che un nostro
+messaggio a un cliente non è stato consegnato perché l'acquirente ha
+disattivato la ricezione di messaggi non richiesti dai venditori, e
+chiede di riaprire il ticket e — seguendo il rimedio che Amazon stessa
+indica ("[Importante]" nell'oggetto) — ritentare una volta l'invio,
+segnalando per intervento manuale se anche il secondo tentativo fallisce.
+
+Prima di scrivere codice ho verificato via MCP Supabase: l'ordine dello
+screenshot non aveva NESSUN thread collegato, e in `ingest_anomaly`
+c'erano decine di email identiche ("Il tuo messaggio all'acquirente non
+è stato consegnato") finite come `notifica_senza_ordine` — il bug era
+più ampio della singola segnalazione. Ho chiesto a Domenico il sorgente
+grezzo (.eml) reale invece di lavorare dallo screenshot, per lo stesso
+motivo per cui ogni altro parser Amazon in questo repo nasce da un
+esemplare vero: **causa trovata leggendolo**, non indovinata — questa
+email di Amazon ha solo la parte HTML (nessun `text/plain`), e
+mailparser non genera da solo un testo quando manca, quindi `body_text`
+restava `null` e il numero d'ordine non si trovava mai, per QUALUNQUE
+email futura con lo stesso problema, non solo per questo caso.
+
+**Fatto**:
+1. Fix generale in `core/html.ts`/`connectors/mail/parse.ts`: `body_text`
+   si ricava dall'HTML quando manca il testo semplice (dettagli in
+   CLAUDE.md, sezione "Acquirente ha disattivato i messaggi").
+2. Nuovo genere `opt_out` (header `X-Space-Notification-Type:
+   BUYER_OPTED_OUT_BSM_MESSAGES`), gestito in
+   `src/connectors/mail/optout.ts`: un solo reinvio automatico con
+   "[Importante]" nell'oggetto al primo fallimento; tag
+   `richiede-azione-sellercentral` (nessun altro reinvio) se fallisce
+   anche quello. Dedup sul Message-ID della notifica, non solo sui tag,
+   per non scambiare una rilettura IMAP per un secondo fallimento vero.
+3. Fixture reale anonimizzata:
+   `test/fixtures/mail/amazon-opt-out-reale.eml`. 193 test verdi (8
+   nuovi), typecheck e build puliti.
+
+**Debito accettato**: le notifiche già finite in `ingest_anomaly` prima
+di questo fix non vengono riprocessate (quella tabella non salva il
+corpo dell'email) — resta solo un problema del passato, non del futuro.
+
+**Da fare**: deploy su Render, poi verifica che un vero opt-out futuro
+generi il reinvio automatico (non testabile prima del prossimo caso
+reale — Amazon non offre un modo per simularlo).
