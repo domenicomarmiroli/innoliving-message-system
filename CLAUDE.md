@@ -818,6 +818,22 @@ della cliente resta salvato sul messaggio originale
 (`message.raw.from`/`reply_to`): un secondo invio sullo stesso ticket,
 dopo il deploy di questo fix, arriva correttamente a lei.
 
+**Stesso bug, stessa causa, lato Lovable**: subito dopo aver corretto
+il worker, Domenico ha notato che il pannello di contesto continuava a
+mostrare `donotreply@amazon.com` come "Contatto" — non era un problema
+di cache, era un secondo posto con lo stesso identico difetto.
+`externalContactQuery()` (`src/lib/hub-data.ts`, repo Lovable) leggeva
+"il messaggio più recente del thread, qualunque direzione o tipo" per
+decidere email/nome da mostrare — stessa mancanza di filtro su
+`author_kind`, stesso effetto: una notifica di sistema arrivata dopo il
+messaggio del cliente ne copriva l'indirizzo nel pannello. Corretto via
+MCP Lovable con la stessa logica: prima cerca `direction='in' and
+author_kind='customer'`, e solo se non trova nulla ricade sull'ultimo
+`direction='out'` (ticket collegati). **Verificato da Domenico** sul
+ticket reale dopo il fix: il pannello mostra ora l'alias vero.
+Non toccata `contattoCustomerQuery()` (canale "contatto"): aveva già il
+filtro corretto, è un'altra funzione.
+
 ### Acquirente ha disattivato i messaggi (10/09)
 Domenico ha segnalato un caso reale: un nostro messaggio a un cliente
 Amazon non è arrivato, e Amazon spiega perché in una email dedicata

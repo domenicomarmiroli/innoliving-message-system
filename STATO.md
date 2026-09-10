@@ -1319,4 +1319,9 @@ stesso limite di `resi.ts`/`collega.ts`).
 specifico — l'alias vero della cliente resta comunque salvato, un
 secondo invio dopo il deploy arriva corretto.
 
-**Da fare**: deploy su Render.
+**Stesso bug trovato e corretto anche lato Lovable** (`externalContactQuery`
+in `src/lib/hub-data.ts`, via MCP): il pannello "Contatto" aveva lo
+stesso identico difetto (nessun filtro `author_kind` sul messaggio più
+recente), quindi mostrava ancora `donotreply@amazon.com` dopo il fix
+del worker. **✅ Entrambi i fix deployati e verificati da Domenico** sul
+ticket reale: risolto sia l'invio sia il pannello.
