@@ -7,6 +7,7 @@ import { aggancia } from './aggancia.js'
 import { classificaEsalvaIntento } from '../../core/ai/intento.js'
 import { analizza } from './parse.js'
 import { caricaRegole } from './regole.js'
+import { registraAnnullamento } from './annullamenti.js'
 import { registraAvviso, registraNotifica } from './notifica.js'
 import { registraOptOut } from './optout.js'
 import { registraReclamo } from './reclami.js'
@@ -46,6 +47,8 @@ export interface EsitoCiclo {
   reclami: number
   /** Acquirente ha disattivato i messaggi: reinviato con [Importante], o segnalato per azione manuale. */
   opt_out: number
+  /** Richieste di annullamento ordine (prima della spedizione), urgenti per la logistica. */
+  annullamenti: number
   errori: number
   ultimo_uid: number | null
 }
@@ -96,6 +99,7 @@ export async function leggiCasella(
     rimborsi: 0,
     reclami: 0,
     opt_out: 0,
+    annullamenti: 0,
     errori: 0,
     ultimo_uid: stato.imap_uid,
   }
@@ -153,6 +157,10 @@ export async function leggiCasella(
         //    reinvio automatico con "[Importante]" nell'oggetto; se
         //    fallisce anche quello, serve un operatore da Seller
         //    Central.
+        //  - annullamento: richiesta di annullamento ordine prima della
+        //    spedizione (BRC_SELLER_NOTIFICATION). Urgente per la
+        //    logistica: apre un ticket (con segnaposto ordine se non
+        //    ancora sincronizzato) invece di limitarsi ad annotare.
         //  - notifica: avvisi di mancata consegna. Non sono richieste,
         //    ma dicono che una nostra risposta non è arrivata: si
         //    annotano sulla conversazione di quell'ordine.
@@ -207,6 +215,15 @@ export async function leggiCasella(
             db, log, config, email, canale.account_id, canale.order_id_pattern,
           )
           esito.opt_out += 1
+          continue
+        }
+
+        if (genere === 'annullamento') {
+          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
+          await registraAnnullamento(
+            db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
+          )
+          esito.annullamenti += 1
           continue
         }
 

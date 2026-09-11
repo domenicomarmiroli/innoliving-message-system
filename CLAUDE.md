@@ -1269,6 +1269,39 @@ invio — stesso meccanismo di sempre, un canale in più che lo usa.
 
 Come aggiungere un sito: la nota è scritta dentro la migrazione 0016.
 
+### Richiesta di annullamento ordine (11/09)
+Domenico ha segnalato che questa comunicazione Amazon (l'acquirente vuole
+annullare un ordine prima della spedizione) va trattata come un ticket a
+sé, urgente da girare alla logistica per bloccare l'evasione.
+
+**Verificato via MCP Supabase, non assunto**: `donotreply@amazon.com` è
+nella lista `domini_notifica` (genere `notifica`, che si limita ad
+annotare una conversazione ESISTENTE) — questa email veniva quindi
+scambiata per un generico avviso di mancata consegna. Sul caso reale che
+ha originato la richiesta (ordine `404-1296441-3120351`), l'ordine non era
+nemmeno ancora sincronizzato da Shopify: `registraNotifica()` non crea un
+ordine segnaposto, quindi la richiesta è finita in `ingest_anomaly` come
+`notifica_ordine_sconosciuto` — persa, nessun ticket, nessuna nota.
+
+**Corretto**: nuovo genere `annullamento`, riconosciuto dall'header
+`X-Space-Notification-Type: BRC_SELLER_NOTIFICATION` con la stessa
+precedenza degli altri header Amazon (prima delle liste per dominio).
+`src/connectors/mail/annullamenti.ts` — stesso schema di `resi.ts`,
+**segnaposto ordine incluso** (a differenza di `registraAvviso()`,
+apposta: il caso reale ha dimostrato che una richiesta di annullamento
+può arrivare prima della sincronizzazione, il cliente cambia idea a
+ridosso dell'acquisto): crea/aggiorna il ticket dell'ordine con tag
+`annullamento-richiesto`, riaprendolo se non è già stato visto, e scrive
+una nota che dice esplicitamente di contattare la logistica prima della
+spedizione. SLA riusa `avviso_sla_minuti` (240 minuti) — stesso bucket
+"urgente" già usato per i reclami A-to-Z.
+
+**Il caso reale che ha originato la segnalazione è stato sistemato a
+mano** via MCP Supabase (stesso schema del backfill dell'intento):
+ordine segnaposto e ticket creati direttamente, con la nota già scritta,
+perché il codice corretto non riprocessa da solo un'email già finita in
+`ingest_anomaly` prima del fix.
+
 ### Rientri in magazzino (10/09)
 Domenico ha descritto un buco nel processo: un cliente Amazon fa un
 reso, Amazon lo autorizza e fornisce un'etichetta di spedizione (visto

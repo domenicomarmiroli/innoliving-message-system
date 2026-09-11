@@ -77,6 +77,7 @@ export type GenereMittente =
   | 'rimborso'
   | 'reclamo'
   | 'opt_out'
+  | 'annullamento'
   | 'notifica'
   | 'avviso'
   | 'messaggio'
@@ -98,6 +99,16 @@ const TIPI_RECLAMO = ['A_Z_CLAIM_RESPONDENT_NOTIFY']
  * una gestione propria (un tentativo di reinvio), non solo un'annotazione.
  */
 const TIPI_OPT_OUT = ['BUYER_OPTED_OUT_BSM_MESSAGES']
+/**
+ * L'acquirente ha chiesto di annullare l'ordine (prima della spedizione).
+ * Va sempre trattata come un ticket urgente, mai come un avviso generico:
+ * senza intervento, la logistica evade un ordine che il cliente non vuole
+ * più. Stessa precedenza degli altri header Amazon — verificato su un
+ * caso reale (11/09) che senza questo l'email finiva scambiata per la
+ * notifica generica di mancata consegna (dominio `amazon.com`, genere
+ * 'notifica'), che non apre mai un ticket nuovo.
+ */
+const TIPI_ANNULLAMENTO = ['BRC_SELLER_NOTIFICATION']
 
 export function classificaMittente(
   email: Pick<EmailGrezza, 'from' | 'reply_to' | 'notifica_tipo'>,
@@ -139,6 +150,7 @@ export function classificaMittente(
   if (email.notifica_tipo && TIPI_RIMBORSO.includes(email.notifica_tipo)) return 'rimborso'
   if (email.notifica_tipo && TIPI_RECLAMO.includes(email.notifica_tipo)) return 'reclamo'
   if (email.notifica_tipo && TIPI_OPT_OUT.includes(email.notifica_tipo)) return 'opt_out'
+  if (email.notifica_tipo && TIPI_ANNULLAMENTO.includes(email.notifica_tipo)) return 'annullamento'
 
   // 4. Solo ora le liste per genere.
   if (daEscludere(email, opzioni.domini_avviso)) return 'avviso'

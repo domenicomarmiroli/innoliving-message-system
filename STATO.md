@@ -1370,3 +1370,33 @@ e build puliti.
 3. Dopo il deploy, un giro di `npm run magazzino:check` per verificare
    che il match funzioni su un rientro reale prima di fidarsi del giro
    automatico.
+
+---
+
+## Richiesta di annullamento ordine — 11/09
+
+Domenico ha mandato una email Amazon reale ("Richiesta di annullamento
+per l'ordine numero: 404-1296441-3120351") e ha chiesto che diventasse
+un ticket urgente da girare alla logistica, per bloccare l'evasione
+prima che l'ordine venga spedito a un cliente che non lo vuole più.
+
+Verificato via MCP Supabase prima di scrivere codice: questa
+comunicazione arriva da `donotreply@amazon.com`, dominio già in
+`domini_notifica` — veniva quindi scambiata per un generico avviso di
+mancata consegna (genere `notifica`), che si limita ad annotare una
+conversazione già esistente. Sul caso reale l'ordine non era ancora
+sincronizzato da Shopify: la richiesta era finita in `ingest_anomaly`
+come `notifica_ordine_sconosciuto`, persa, senza nessun ticket.
+
+**Fatto**: nuovo genere `annullamento` dall'header
+`X-Space-Notification-Type: BRC_SELLER_NOTIFICATION`,
+`src/connectors/mail/annullamenti.ts` — stesso schema di `resi.ts`, con
+segnaposto ordine (il caso reale ha dimostrato che serve). Tag
+`annullamento-richiesto`, nota esplicita per la logistica. Dettagli in
+CLAUDE.md. 203 test verdi (4 nuovi), typecheck e build puliti.
+
+**Il caso reale (ordine 404-1296441-3120351) è stato sistemato a mano**
+via MCP Supabase, subito, senza aspettare il deploy: ordine segnaposto
+e ticket creati direttamente con la nota per la logistica già scritta.
+
+**Da fare**: deploy su Render.

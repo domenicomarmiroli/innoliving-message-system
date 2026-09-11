@@ -470,3 +470,28 @@ describe('acquirente ha disattivato i messaggi (opt-out)', () => {
     expect(estraiNumeroOrdine(email, null)).toBe('406-5322013-9383523')
   })
 })
+
+describe('richiesta di annullamento ordine', () => {
+  const n = { rfc822_id: null, in_reply_to: null, references: [], to: [],
+    subject: null, date: null, body_text: null, body_html: null,
+    allegati: [], uid: null, reply_to: null }
+  const opz = { domini_esclusi: [], domini_notifica: ['amazon.com'], domini_avviso: [] }
+
+  it('BRC_SELLER_NOTIFICATION è un annullamento, non una notifica generica', () => {
+    expect(classificaMittente(
+      { ...n, from: 'x@amazon.com', notifica_tipo: 'BRC_SELLER_NOTIFICATION' }, opz))
+      .toBe('annullamento')
+  })
+
+  it('senza l header, lo stesso mittente amazon.com resta una notifica generica', () => {
+    expect(classificaMittente({ ...n, from: 'x@amazon.com', notifica_tipo: null }, opz))
+      .toBe('notifica')
+  })
+
+  it('sulla email reale l header è presente e riconosciuto', async () => {
+    const email = await analizza(eml('amazon-annullamento-reale.eml'), 240)
+    expect(email.notifica_tipo).toBe('BRC_SELLER_NOTIFICATION')
+    expect(classificaMittente(email, opz)).toBe('annullamento')
+    expect(estraiNumeroOrdine(email, null)).toBe('404-1296441-3120351')
+  })
+})
