@@ -59,6 +59,11 @@ export class ClientMirakl {
     return this.operatore.code
   }
 
+  /** Lo shop su cui insistono le richieste, quando l'account ne ha più di uno. */
+  get shop_id(): string | null {
+    return this.operatore.shop_id
+  }
+
   async get<T>(percorso: string, parametri: Record<string, string | undefined>): Promise<T> {
     const url = new URL(
       `${normalizzaEndpoint(this.operatore.endpoint)}/api${percorso}`,
@@ -106,10 +111,28 @@ export class ClientMirakl {
    * Scarica un allegato — M13, `GET /inbox/threads/{attachment_id}/download`.
    * Byte grezzi, non JSON: passa dallo stesso ritentativo di `richiedi`,
    * ma legge il corpo come binario e riporta il Content-Type dichiarato.
+   *
+   * Due dettagli imparati dagli errori già fatti su M11 e M12, non
+   * dedotti dalla documentazione (che per M13 mostra solo il percorso):
+   * - `parametri` per lo `shop_id`, come `get` e `postMultipart`: su un
+   *   account multi-shop una richiesta senza shop esplicito finisce
+   *   sullo shop di default, che può non essere quello del thread;
+   * - un `Accept` generico, perché qui la risposta sono byte: chiedere
+   *   solo `application/json` a un endpoint binario è una richiesta che
+   *   il server ha tutto il diritto di rifiutare.
    */
-  async download(percorso: string): Promise<{ contenuto: Buffer; mime: string | null }> {
-    const url = `${normalizzaEndpoint(this.operatore.endpoint)}/api${percorso}`
-    const risposta = await this.richiediGrezzo(url, { method: 'GET' })
+  async download(
+    percorso: string,
+    parametri: Record<string, string | undefined> = {},
+  ): Promise<{ contenuto: Buffer; mime: string | null }> {
+    const url = new URL(`${normalizzaEndpoint(this.operatore.endpoint)}/api${percorso}`)
+    for (const [k, v] of Object.entries(parametri)) {
+      if (v !== undefined && v !== '') url.searchParams.set(k, v)
+    }
+    const risposta = await this.richiediGrezzo(url.toString(), {
+      method: 'GET',
+      headers: { Accept: '*/*' },
+    })
     const buffer = Buffer.from(await risposta.arrayBuffer())
     return { contenuto: buffer, mime: risposta.headers.get('content-type') }
   }
@@ -131,10 +154,13 @@ export class ClientMirakl {
         risposta = await fetch(url, {
           ...init,
           headers: {
+            // Predefinito per le risposte JSON, ma sovrascrivibile da chi
+            // chiama: il download di un allegato (M13) restituisce byte,
+            // non JSON, e deve poter chiedere un tipo diverso.
+            Accept: 'application/json',
             ...(init.headers ?? {}),
             // Verificato: la chiave nuda, senza Bearer.
             Authorization: this.operatore.chiave,
-            Accept: 'application/json',
           },
         })
       } catch (errore) {

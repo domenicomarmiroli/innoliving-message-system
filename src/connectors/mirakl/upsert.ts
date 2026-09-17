@@ -4,6 +4,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { dimensioniImmagine } from '../../core/immagine.js'
+import { mimeDaNomeFile, mimeMigliore } from '../../core/mime.js'
 import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
 import { ClientMirakl, type OperatoreMirakl } from './client.js'
 import type { AllegatoMirakl, ThreadMirakl } from './normalize.js'
@@ -16,22 +17,65 @@ interface AllegatoMiraklPronto extends AllegatoMirakl {
   altezza: number | null
 }
 
+/** Percorso M13 per un allegato: un posto solo, usato anche dal recupero. */
+export function percorsoDownloadAllegato(externalId: string): string {
+  return `/inbox/threads/${encodeURIComponent(externalId)}/download`
+}
+
+/**
+ * Scarica UN allegato via M13 e lo carica su Storage. Esportata perché
+ * la usa anche il comando di recupero (`mirakl:allegati`) per gli
+ * allegati entrati come solo metadato prima che il download funzionasse.
+ *
+ * Lo `shop_id` va passato come su M11 e M12: su un account multi-shop
+ * una richiesta senza shop esplicito parla con lo shop di default.
+ */
+export async function scaricaAllegatoMirakl(
+  config: Config,
+  client: ClientMirakl,
+  a: AllegatoMirakl,
+): Promise<AllegatoMiraklPronto> {
+  const { contenuto, mime } = await client.download(
+    percorsoDownloadAllegato(a.external_id!),
+    { shop_id: client.shop_id ?? undefined },
+  )
+  // Mirakl non dichiara il tipo nell'elenco dei messaggi (solo id, nome
+  // e dimensione) e il download può rispondere con un tipo generico:
+  // senza questo ripiego una foto finisce su Storage come flusso di byte
+  // e il browser la scarica invece di mostrarla.
+  const tipo = mimeMigliore(mime, a.nome_file)
+  const checksum = createHash('sha256').update(contenuto).digest('hex')
+  const dimensioni = await dimensioniImmagine(contenuto)
+  const percorso = `mirakl/${client.code}/${checksum}-${a.nome_file ?? 'allegato'}`
+  const storage_path = await caricaAllegato(config, percorso, contenuto, tipo)
+  return {
+    ...a,
+    checksum,
+    mime: tipo,
+    storage_path,
+    larghezza: dimensioni?.larghezza ?? null,
+    altezza: dimensioni?.altezza ?? null,
+  }
+}
+
 /**
  * Scarica ogni allegato via M13 e lo carica su Storage, PRIMA di aprire
  * la transazione database — stesso motivo della casella email: è I/O di
  * rete, non deve tenere lock aperti.
  *
- * DEBITO — come il resto di questo connettore: il percorso M13
- * (`/inbox/threads/{attachment_id}/download`) è scritto sulla
- * documentazione pubblica, non verificato su una risposta reale. Se il
- * download fallisce, l'allegato entra comunque come solo metadato — un
- * file mancante pesa meno di un messaggio perso — e l'errore finisce nei
- * log, non silenziosamente ignorato.
+ * Se il download fallisce l'allegato entra comunque come solo metadato —
+ * un file mancante pesa meno di un messaggio perso — ma il fallimento
+ * finisce in `ingest_anomaly` oltre che nei log (regola 5). Prima stava
+ * solo nel log, ed è esattamente per questo che i primi allegati Mirakl
+ * reali (16/09) sono comparsi in interfaccia senza potersi aprire, senza
+ * che niente lo segnalasse.
  */
 async function preparaAllegatiMirakl(
   config: Config,
+  db: Db,
   log: Logger,
   client: ClientMirakl,
+  accountId: string,
   allegati: AllegatoMirakl[],
 ): Promise<AllegatoMiraklPronto[]> {
   if (allegati.length === 0) return []
@@ -41,7 +85,7 @@ async function preparaAllegatiMirakl(
       const vuoto: AllegatoMiraklPronto = {
         ...a,
         checksum: a.external_id ?? '',
-        mime: null,
+        mime: mimeDaNomeFile(a.nome_file),
         storage_path: null,
         larghezza: null,
         altezza: null,
@@ -49,30 +93,29 @@ async function preparaAllegatiMirakl(
       if (!a.external_id || !storageConfigurato(config)) return vuoto
 
       try {
-        const { contenuto, mime } = await client.download(
-          `/inbox/threads/${encodeURIComponent(a.external_id)}/download`,
-        )
-        const checksum = createHash('sha256').update(contenuto).digest('hex')
-        const dimensioni = await dimensioniImmagine(contenuto)
-        const percorso = `mirakl/${client.code}/${checksum}-${a.nome_file ?? 'allegato'}`
-        const storage_path = await caricaAllegato(config, percorso, contenuto, mime)
-        return {
-          ...a,
-          checksum,
-          mime,
-          storage_path,
-          larghezza: dimensioni?.larghezza ?? null,
-          altezza: dimensioni?.altezza ?? null,
-        }
+        return await scaricaAllegatoMirakl(config, client, a)
       } catch (errore) {
+        const dettaglio = errore instanceof Error ? errore.message : String(errore)
         log.error(
-          {
-            operatore: client.code,
-            allegato: a.external_id,
-            err: errore instanceof Error ? errore.message : String(errore),
-          },
+          { operatore: client.code, allegato: a.external_id, err: dettaglio },
           'download allegato Mirakl fallito: registrato solo il metadato',
         )
+        try {
+          await db`
+            insert into ingest_anomaly (account_id, tipo, payload)
+            values (
+              ${accountId},
+              'mirakl_allegato_non_scaricato',
+              ${db.json({
+                allegato: a.external_id,
+                nome_file: a.nome_file,
+                errore: dettaglio,
+              } as never)}
+            )
+          `
+        } catch {
+          /* il fallimento del download è già nei log: non peggioriamolo */
+        }
         return vuoto
       }
     }),
@@ -124,7 +167,7 @@ export async function upsertThread(
     if (!m.external_id || m.allegati.length === 0) continue
     allegatiPerMessaggio.set(
       m.external_id,
-      await preparaAllegatiMirakl(config, log, client, m.allegati),
+      await preparaAllegatiMirakl(config, db, log, client, operatore.account_id, m.allegati),
     )
   }
 

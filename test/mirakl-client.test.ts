@@ -73,3 +73,70 @@ describe('ClientMirakl — postMultipart', () => {
     )
   })
 })
+
+describe('ClientMirakl — download (M13)', () => {
+  it('passa shop_id come query param: su un account multi-shop il download parlava con lo shop sbagliato', async () => {
+    // Terza volta per la stessa causa: M11 (lettura), M12 (scrittura) e
+    // ora M13. Prova sui dati reali: lo stesso codice ha scaricato 112
+    // allegati sull'operatore senza shop_id e zero su quello che ne ha uno.
+    const chiamate: { url: string; init: RequestInit }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        chiamate.push({ url, init })
+        return new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        })
+      }),
+    )
+
+    const client = new ClientMirakl({ ...operatore, shop_id: '5079' }, logger)
+    const esito = await client.download('/inbox/threads/ALL-1/download', {
+      shop_id: client.shop_id ?? undefined,
+    })
+
+    expect(esito.mime).toBe('image/jpeg')
+    expect(esito.contenuto).toEqual(Buffer.from([1, 2, 3]))
+    expect(chiamate).toHaveLength(1)
+    expect(chiamate[0]!.url).toBe(
+      'https://esempio.mirakl.net/api/inbox/threads/ALL-1/download?shop_id=5079',
+    )
+  })
+
+  it('non chiede application/json a un endpoint che risponde byte', async () => {
+    const chiamate: { init: RequestInit }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        chiamate.push({ init })
+        return new Response(new Uint8Array([1]), { status: 200 })
+      }),
+    )
+
+    const client = new ClientMirakl(operatore, logger)
+    await client.download('/inbox/threads/ALL-1/download')
+
+    const headers = chiamate[0]!.init.headers as Record<string, string>
+    expect(headers.Accept).not.toBe('application/json')
+    // La chiave resta quella giusta: l'header sovrascrivibile non la tocca.
+    expect(headers.Authorization).toBe('chiave-segreta')
+  })
+
+  it('le richieste JSON continuano a chiedere application/json', async () => {
+    const chiamate: { init: RequestInit }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        chiamate.push({ init })
+        return new Response(JSON.stringify({ data: [] }), { status: 200 })
+      }),
+    )
+
+    const client = new ClientMirakl(operatore, logger)
+    await client.get('/inbox/threads', {})
+
+    const headers = chiamate[0]!.init.headers as Record<string, string>
+    expect(headers.Accept).toBe('application/json')
+  })
+})

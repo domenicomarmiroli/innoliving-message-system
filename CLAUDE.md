@@ -1369,3 +1369,97 @@ scrivere, poi fa girare davvero l'elaborazione).
 **Non toccato**: nessuna scrittura sul database di "Utilities
 Magazzino" — l'integrazione è di sola lettura in quella direzione,
 tutte le scritture restano su questo Supabase.
+
+### Numeri d'ordine nel pannello di contesto (16/09)
+Domenico ha chiesto di vedere, accanto al numero interno Shopify, anche il
+numero d'ordine del canale (Amazon o altro), copiabile e cliccabile.
+
+**Modifica solo lato Lovable** (`src/components/hub/thread-context.tsx`,
+sezione "Ordine"): prima si mostrava un numero solo,
+`shopify_name ?? external_order_id`. Su un ordine di marketplace quello era
+sempre il nome interno del negozio (`INSH7059`), mentre il deep link Amazon
+è `.../orders-v3/order/{external_order_id}`: **l'etichetta cliccabile e la
+sua destinazione non coincidevano**. Ora la prima riga porta il numero del
+canale (link del canale + copia) e una seconda riga, presente solo quando
+`shopify_name` esiste ed è diverso, porta il numero Shopify con il link
+all'admin — risolto con `deepLink()` passandole l'account `kind='shopify'`
+invece di quello del thread, perché il suo modello usa
+`{shopify_numeric_id}`, che viene da `order.shopify_gid`. Quando i due
+numeri coincidono (tutti i 3.815 ordini nati su Shopify) la riga resta una
+sola: nessuna ripetizione inutile.
+
+**Deep link Mirakl, corretto nello stesso giro**: i due account avevano in
+`config.deep_link` il segnaposto `{id}`, che `deepLink()` non conosce — sa
+risolvere solo `{external_order_id}`, `{shopify_name}` e
+`{shopify_numeric_id}`. Un segnaposto ignoto fa restituire `null` (scelta
+giusta: un link rotto è peggio di uno assente), quindi **per i 1.214 ordini
+Mirakl il numero non è mai stato cliccabile, in silenzio, da sempre**.
+L'URL in sé era corretto: sbagliato solo il nome del segnaposto. Sostituito
+con `{external_order_id}` su entrambi gli account — solo dati in
+`channel_account`, nessuna migrazione, e nessuna ripubblicazione
+dell'interfaccia: il modello si legge a runtime dalla configurazione.
+
+### Allegati Mirakl in entrata: il download non arrivava mai (17/09)
+Domenico ha segnalato un ticket MediaWorld con due foto visibili in
+elenco ma che non si aprono. Il cliente le aveva mandate perché gliele
+avevamo chieste ("la prego di inviarci le foto del prodotto
+danneggiato"), quindi il ticket era fermo su un dato che c'era e non si
+poteva guardare.
+
+**Verificato sui dati, non sull'ipotesi.** Le due righe in `attachment`
+hanno `storage_path = null` e `mime = null`, ma `dimensione_byte`
+valorizzato: erano entrate come solo metadato, il ripiego previsto da
+`preparaAllegatiMirakl()` quando M13 fallisce. Il confronto fra i due
+operatori dice il resto:
+
+| operatore | shop_id in config | allegati con file | senza file |
+|---|---|---|---|
+| `mirakl-lmfr` | assente | 112 | 0 |
+| `mirakl-mms` | `5079` | 0 | 4 |
+
+Stesso codice, stesso endpoint, esito opposto — e l'unica differenza fra
+i due account è lo `shop_id`. **È la terza volta per la stessa causa**:
+M11 in lettura e M12 in scrittura (entrambe 01/09), ora M13. Su un
+account multi-shop una richiesta senza `shop_id` esplicito parla con lo
+shop di default, che qui è quello sospeso. `download()` non accettava
+affatto parametri di query — esattamente com'era `postMultipart()` prima
+del settimo bug.
+
+Da notare per la documentazione precedente: il debito "allegati Mirakl
+mai collaudati" **era già superato dai fatti**, 112 allegati Leroy
+Merlin erano entrati correttamente senza che nessuno lo registrasse qui.
+
+**Corretto in `client.ts`**:
+- `download(percorso, parametri)` come `get()` e `postMultipart()`;
+  `upsert.ts` passa `shop_id: client.shop_id` (nuovo getter);
+- l'header `Accept` diventa un valore predefinito sovrascrivibile da chi
+  chiama, e il download chiede un tipo generico: chiedere
+  `application/json` a un endpoint che risponde byte è scorretto a
+  prescindere. **Non è questa la causa** — lmfr scaricava con lo stesso
+  header — ma è un difetto vero e correggerlo non può rompere il caso
+  che già funziona.
+
+**`core/mime.ts` (nuovo)**: `mimeDaNomeFile()`/`mimeMigliore()`. Mirakl
+elenca solo id, nome e dimensione dell'allegato, e il download può
+rispondere con un tipo generico: senza ripiego sull'estensione il file
+finisce su Storage come `application/octet-stream` e il browser lo
+scarica invece di mostrarlo. Un'estensione sconosciuta resta `null` —
+meglio nessun tipo che uno inventato.
+
+**Regola 5, applicata dove mancava**: il fallimento del download finiva
+solo in un log. È per questo che nessuno se n'era accorto per settimane.
+Ora finisce anche in `ingest_anomaly` come
+`mirakl_allegato_non_scaricato`, con id allegato, nome ed errore.
+
+**`npm run mirakl:allegati`** (`--prova` per il solo elenco, `--limite
+N`): le righe già scritte senza file non si recuperano da sole — la
+sincronizzazione non ripassa un messaggio che esiste già. Il comando le
+ripesca una per una e completa `storage_path`/`mime`/`checksum`/
+dimensioni. L'id Mirakl dell'allegato sta nella colonna `checksum`:
+sulle righe senza file quel campo non contiene un'impronta dei byte (mai
+avuti) ma l'id, che è appunto ciò che serve a M13.
+
+**Restano fuori i 131 allegati `amazon-it` senza file**: sono tutti
+anteriori al 26/08 09:22, cioè a quando Storage è stato configurato, e
+da allora ogni allegato email si carica correttamente. Quei byte non
+sono più recuperabili da qui — servirebbe rileggere le email da IMAP.

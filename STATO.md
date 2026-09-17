@@ -295,7 +295,10 @@ cliente o nostro.
 `amazon-messaggio-reale.eml` ha il corpo vero. Vedi i LEGGIMI in
 `test/fixtures/`.
 
-**Il `deep_link` Mirakl** è inventato (vedi punto 3).
+**Il `deep_link` Mirakl**: l'URL era corretto, ma il segnaposto si
+chiamava `{id}`, che `deepLink()` lato Lovable non sa risolvere — quindi
+il link non è mai comparso. Corretto il 16/09 in `{external_order_id}`
+(vedi la sezione in fondo).
 
 **✅ Bug corretto (27/08): falso positivo "telefono" su un numero
 d'ordine Amazon.** Una bozza AI citava il numero d'ordine del cliente
@@ -1400,3 +1403,81 @@ via MCP Supabase, subito, senza aspettare il deploy: ordine segnaposto
 e ticket creati direttamente con la nota per la logistica già scritta.
 
 **Da fare**: deploy su Render.
+
+---
+
+## Numero d'ordine del canale nel pannello — 16/09
+
+Prima modifica dopo il cambio di computer. Richiesta di Domenico: accanto
+al numero interno Shopify, vedere sempre anche il numero d'ordine del
+canale, copiabile e cliccabile.
+
+Verificato prima di toccare il codice: l'ordine dell'esempio (`INSH7059`)
+ha già `external_order_id = 407-7377279-8789121` in archivio — il dato
+c'era, non veniva mostrato. E il deep link Amazon si risolve proprio con
+`{external_order_id}`: l'etichetta cliccabile diceva `INSH7059` ma portava
+all'ordine Amazon.
+
+**Fatto, solo lato Lovable** (nessuna modifica a questo repo, nessuna
+migrazione): sezione "Ordine" del pannello di contesto a due righe, numero
+del canale sopra (link del canale) e numero Shopify sotto (link all'admin,
+risolto con l'account `kind='shopify'`), ciascuno con il suo pulsante di
+copia. Riga unica quando i due numeri coincidono o uno manca. Typecheck
+pulito, commit `318a0b9`, pubblicato su `fluent-desk-hub.lovable.app`.
+
+**Trovato strada facendo e corretto**: i deep link dei due account Mirakl
+usavano il segnaposto `{id}`, che `deepLink()` non conosce — i 1.214
+ordini Mirakl non hanno mai avuto un link cliccabile, senza che nulla lo
+segnalasse. Sostituito con `{external_order_id}` in
+`channel_account.config` (query eseguita da Domenico nell'editor SQL di
+Supabase: la modalità automatica di questa sessione non ha il permesso di
+scrivere sul database di produzione). Verificato dopo: entrambi gli
+account risolvono, e tutti i 1.214 ordini hanno `external_order_id`
+valorizzato.
+
+**Nota di stile lasciata aperta**: sui ticket TikTok le due righe sono
+ridondanti (`576739803789040557` e `TTOK576739803789040557`). Si è
+preferita la regola semplice "mostrali quando differiscono" a una
+scorciatoia sul contenimento delle stringhe. Da rivedere solo se dà
+fastidio all'uso.
+
+---
+
+## Allegati Mirakl che non si aprono — 17/09
+
+Segnalato da Domenico su un ticket MediaWorld reale: due foto del
+prodotto danneggiato, visibili in elenco, che non si aprono. Le avevamo
+chieste noi al cliente, quindi il ticket era bloccato su un dato
+presente e inutilizzabile.
+
+Causa trovata confrontando i due operatori Mirakl sui dati veri: il
+download M13 non passava `shop_id`, e per un account multi-shop questo
+significa parlare con lo shop di default. `mirakl-lmfr` (nessuno
+shop_id) aveva 112 allegati con file, `mirakl-mms` (shop_id 5079) zero
+su quattro. Terza occorrenza della stessa causa dopo M11 e M12.
+
+**Fatto** (worker, nessuna migrazione): `download()` accetta parametri
+di query e riceve `shop_id`; `Accept` predefinito ma sovrascrivibile, il
+download non chiede più JSON a un endpoint binario; nuovo
+`src/core/mime.ts` per dedurre il tipo dal nome quando Mirakl non lo
+dichiara; il fallimento del download va anche in `ingest_anomaly`
+(`mirakl_allegato_non_scaricato`) e non più solo nei log — la ragione per
+cui il problema è passato inosservato. 212 test verdi (9 nuovi),
+typecheck e build puliti.
+
+**Da fare, in quest'ordine**:
+1. Deploy su Render (push su `main`, autoDeploy).
+2. `npm run mirakl:allegati -- --prova` dalla Shell di Render per vedere
+   cosa verrebbe ripescato, poi senza `--prova` per recuperare davvero i
+   4 allegati già entrati vuoti (fra cui le due foto del ticket
+   segnalato). Le righe esistenti non si sistemano da sole: la
+   sincronizzazione non ripassa un messaggio già scritto.
+3. Verificare sul ticket che le foto si aprano.
+
+**Nota**: il debito "allegati Mirakl mai collaudati in entrata" era già
+superato dai fatti — 112 allegati Leroy Merlin erano entrati bene senza
+che fosse registrato da nessuna parte. Aggiornato in CLAUDE.md.
+
+**Non recuperabili**: 131 allegati `amazon-it` senza file, tutti
+anteriori al 26/08 (Storage non ancora configurato). Da allora gli
+allegati email si caricano correttamente.
