@@ -5,6 +5,7 @@ import { ClientMirakl, costruisciOperatori, type OperatoreMirakl } from './clien
 import { classificaEsalvaIntento } from '../../core/ai/intento.js'
 import { normalizzaRisposta, type EsitoNormalizza } from './normalize.js'
 import { upsertThread } from './upsert.js'
+import { recuperaAllegatiMancanti } from './allegati.js'
 
 /**
  * Sincronizzazione dei messaggi Mirakl, operatore per operatore.
@@ -31,6 +32,8 @@ export interface EsitoSyncOperatore {
   messaggi_inseriti: number
   agganciati: number
   stranezze: number
+  /** Allegati entrati come solo metadato e ripescati in questo giro. */
+  allegati_recuperati: number
   errore: string | null
 }
 
@@ -93,6 +96,7 @@ async function sincronizzaOperatore(
     messaggi_inseriti: 0,
     agganciati: 0,
     stranezze: 0,
+    allegati_recuperati: 0,
     errore: null,
   }
 
@@ -169,6 +173,21 @@ async function sincronizzaOperatore(
     esito.errore = errore instanceof Error ? errore.message : String(errore)
     await salvaSegnalibro(db, operatore.account_id, null, esito.errore)
     log.error({ operatore: operatore.code, err: esito.errore }, 'sincronizzazione Mirakl fallita')
+  }
+
+  // Fuori dal try della sincronizzazione, e con un try tutto suo: il
+  // recupero di un allegato arretrato non deve poter far fallire un
+  // giro di lettura riuscito, né toccarne il segnalibro.
+  try {
+    esito.allegati_recuperati = await recuperaAllegatiMancanti(db, log, config, client, operatore)
+  } catch (errore) {
+    log.warn(
+      {
+        operatore: operatore.code,
+        err: errore instanceof Error ? errore.message : String(errore),
+      },
+      'recupero degli allegati Mirakl arretrati non riuscito',
+    )
   }
 
   return esito

@@ -1481,3 +1481,10 @@ che fosse registrato da nessuna parte. Aggiornato in CLAUDE.md.
 **Non recuperabili**: 131 allegati `amazon-it` senza file, tutti
 anteriori al 26/08 (Storage non ancora configurato). Da allora gli
 allegati email si caricano correttamente.
+
+**Aggiornamento in giornata**: il recupero degli allegati arretrati non
+è più solo il comando manuale — gira da solo alla fine di ogni
+sincronizzazione Mirakl (`src/connectors/mirakl/allegati.ts`), perché
+senza accesso alla Shell di Render il comando non sarebbe lanciabile da
+nessuno. Quindi il punto 2 del "da fare" qui sopra decade: dopo il
+deploy i 4 allegati si recuperano da soli al primo giro utile.

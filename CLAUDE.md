@@ -1463,3 +1463,21 @@ avuti) ma l'id, che è appunto ciò che serve a M13.
 anteriori al 26/08 09:22, cioè a quando Storage è stato configurato, e
 da allora ogni allegato email si carica correttamente. Quei byte non
 sono più recuperabili da qui — servirebbe rileggere le email da IMAP.
+
+**Recupero automatico, non solo a comando (17/09, stesso giro)**:
+`src/connectors/mirakl/allegati.ts` — `recuperaAllegatiMancanti()` gira
+alla fine di ogni sincronizzazione, per operatore, e riprova a scaricare
+le righe rimaste senza file. Serve perché **Domenico non ha accesso alla
+Shell di Render**: un recupero che esiste solo come comando manuale, qui,
+è un recupero che non avviene. Stessa idea di `riaggancia.ts` — ciò che
+non è riuscito una volta si riprova al giro dopo, e il giorno in cui la
+causa sparisce si sistema da solo.
+Due limiti tengono il costo sotto controllo: finestra di 30 giorni (un
+allegato che il marketplace non serve più non viene richiesto in eterno)
+e al massimo 20 tentativi per operatore per giro. Gira **fuori** dal
+`try` della sincronizzazione e con uno suo: un allegato arretrato non
+deve poter far fallire una lettura riuscita né toccarne il segnalibro.
+I tentativi ripetuti restano nei log e non in `ingest_anomaly`: lì c'è
+già il fallimento della prima volta, ripetere la stessa riga ad ogni
+giro trasformerebbe la tabella degli errori in un registro di tentativi.
+`npm run mirakl:allegati` resta, per quando una shell c'è.
