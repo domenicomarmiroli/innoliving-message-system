@@ -3,18 +3,9 @@ import { ImapFlow } from 'imapflow'
 import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
-import { aggancia } from './aggancia.js'
-import { classificaEsalvaIntento } from '../../core/ai/intento.js'
+import { conta, contatoriVuoti, elaboraEmail, type ContatoriGenere } from './elabora.js'
 import { analizza } from './parse.js'
 import { caricaRegole } from './regole.js'
-import { registraAnnullamento } from './annullamenti.js'
-import { registraAvviso, registraNotifica } from './notifica.js'
-import { registraOptOut } from './optout.js'
-import { registraReclamo } from './reclami.js'
-import { registraReso } from './resi.js'
-import { registraRimborso } from './rimborsi.js'
-import { classificaMittente, riconosci } from './riconosci.js'
-import { upsertEmail } from './upsert.js'
 
 /**
  * Lettura della casella via IMAP.
@@ -29,26 +20,13 @@ import { upsertEmail } from './upsert.js'
  * Message-ID a scartare i già visti — è lento una volta, ma è corretto.
  */
 
-export interface EsitoCiclo {
+/**
+ * I contatori per genere (inserite, resi, rimborsi...) stanno in
+ * `elabora.ts`: sono gli stessi per qualunque trasporto, e il ciclo
+ * Graph li riempie allo stesso modo.
+ */
+export interface EsitoCiclo extends ContatoriGenere {
   lette: number
-  inserite: number
-  gia_presenti: number
-  /** Scartate perché il mittente è in `domini_esclusi`. */
-  ignorate: number
-  /** Avvisi di mancata consegna, annotati sulla conversazione. */
-  notifiche: number
-  /** Avvisi su un ordine: garanzia A-to-Z, richieste di rimborso. */
-  avvisi: number
-  /** Richieste di reso autorizzate da Amazon, annotate sull'ordine. */
-  resi: number
-  /** Rimborsi emessi da Amazon, annotati sull'ordine. */
-  rimborsi: number
-  /** Reclami di Garanzia dalla A alla Z, annotati sull'ordine. */
-  reclami: number
-  /** Acquirente ha disattivato i messaggi: reinviato con [Importante], o segnalato per azione manuale. */
-  opt_out: number
-  /** Richieste di annullamento ordine (prima della spedizione), urgenti per la logistica. */
-  annullamenti: number
   errori: number
   ultimo_uid: number | null
 }
@@ -75,7 +53,11 @@ export async function leggiCasella(
     )
   }
 
-  const { regole, casella, opzioni } = await caricaRegole(db)
+  // 'imap' esplicito: da quando convivono due caselle (Gmail e la
+  // aziendale su Microsoft 365) "l'unica riga con kind='email'" non
+  // identifica più niente.
+  const contesto = await caricaRegole(db, 'imap')
+  const { casella } = contesto
   const stato = await leggiStato(db, casella.account_id)
 
   const client = new ImapFlow({
@@ -90,16 +72,7 @@ export async function leggiCasella(
 
   const esito: EsitoCiclo = {
     lette: 0,
-    inserite: 0,
-    gia_presenti: 0,
-    ignorate: 0,
-    notifiche: 0,
-    avvisi: 0,
-    resi: 0,
-    rimborsi: 0,
-    reclami: 0,
-    opt_out: 0,
-    annullamenti: 0,
+    ...contatoriVuoti(),
     errori: 0,
     ultimo_uid: stato.imap_uid,
   }
@@ -134,125 +107,8 @@ export async function leggiCasella(
       maxUid = Math.max(maxUid, msg.uid)
 
       try {
-        const email = await analizza(msg.source as Buffer, msg.uid)
-
-        // Più generi di posta, e solo uno diventa un ticket nuovo.
-        //  - esclusa: posta di servizio, non entra e basta.
-        //  - avviso: garanzia dalla A alla Z, richieste di rimborso.
-        //    Non li scrive il cliente ma sono la cosa più urgente che
-        //    passa di qui, e per la A-to-Z non esiste API: questa email
-        //    è l'unico modo di saperlo.
-        //  - reso: richiesta di reso autorizzata da Amazon
-        //    (RETURN_REQUEST). Si annota sulla conversazione dell'ordine,
-        //    con corriere e tracking del rientro quando presenti.
-        //  - rimborso: rimborso emesso da Amazon (REFUND_ISSUED). Si
-        //    annota sulla conversazione dell'ordine; a differenza del
-        //    reso può ripetersi (rimborsi parziali), quindi l'importo
-        //    sull'ordine è una somma, non l'ultimo visto.
-        //  - reclamo: reclamo di Garanzia dalla A alla Z
-        //    (A_Z_CLAIM_RESPONDENT_NOTIFY). La cosa più urgente che
-        //    passa da qui — pesa sulla salute dell'account venditore.
-        //  - opt_out: l'acquirente ha disattivato i messaggi non
-        //    richiesti (BUYER_OPTED_OUT_BSM_MESSAGES). Un solo
-        //    reinvio automatico con "[Importante]" nell'oggetto; se
-        //    fallisce anche quello, serve un operatore da Seller
-        //    Central.
-        //  - annullamento: richiesta di annullamento ordine prima della
-        //    spedizione (BRC_SELLER_NOTIFICATION). Urgente per la
-        //    logistica: apre un ticket (con segnaposto ordine se non
-        //    ancora sincronizzato) invece di limitarsi ad annotare.
-        //  - notifica: avvisi di mancata consegna. Non sono richieste,
-        //    ma dicono che una nostra risposta non è arrivata: si
-        //    annotano sulla conversazione di quell'ordine.
-        //  - messaggio: tutto il resto, compresa la posta diretta di un
-        //    cliente che non passa da nessun marketplace.
-        const genere = classificaMittente(email, opzioni, regole)
-
-        if (genere === 'escluso') {
-          esito.ignorate += 1
-          continue
-        }
-
-        if (genere === 'avviso') {
-          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
-          await registraAvviso(
-            db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
-          )
-          esito.avvisi += 1
-          continue
-        }
-
-        if (genere === 'reso') {
-          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
-          await registraReso(
-            db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
-          )
-          esito.resi += 1
-          continue
-        }
-
-        if (genere === 'rimborso') {
-          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
-          await registraRimborso(
-            db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
-          )
-          esito.rimborsi += 1
-          continue
-        }
-
-        if (genere === 'reclamo') {
-          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
-          await registraReclamo(
-            db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
-          )
-          esito.reclami += 1
-          continue
-        }
-
-        if (genere === 'opt_out') {
-          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
-          await registraOptOut(
-            db, log, config, email, canale.account_id, canale.order_id_pattern,
-          )
-          esito.opt_out += 1
-          continue
-        }
-
-        if (genere === 'annullamento') {
-          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
-          await registraAnnullamento(
-            db, log, email, canale.account_id, canale.order_id_pattern, opzioni,
-          )
-          esito.annullamenti += 1
-          continue
-        }
-
-        if (genere === 'notifica') {
-          const canale = regole.find((r) => r.kind === 'amazon') ?? casella
-          await registraNotifica(
-            db,
-            log,
-            email,
-            casella.account_id,
-            canale.order_id_pattern,
-          )
-          esito.notifiche += 1
-          continue
-        }
-
-        const ric = riconosci(email, regole, casella)
-        const agg = await aggancia(db, email, ric)
-        const scritto = await upsertEmail(db, log, config, email, ric, agg, opzioni)
-
-        if (scritto.esito === 'inserito') esito.inserite += 1
-        else esito.gia_presenti += 1
-
-        // Solo al primo messaggio di un ticket nuovo: le risposte
-        // successive non cambiano l'argomento della conversazione, e
-        // classificare ad ogni giro sarebbe una chiamata AI sprecata.
-        if (scritto.esito === 'inserito' && scritto.nuovo_thread) {
-          await classificaEsalvaIntento(db, log, config, scritto.thread_id, scritto.corpo_testo)
-        }
+        const email = { ...(await analizza(msg.source as Buffer, msg.uid)), casella: 'imap' as const }
+        conta(esito, await elaboraEmail(db, log, config, email, contesto))
       } catch (errore) {
         esito.errori += 1
         // Un errore non si perde mai (regola 5): finisce in

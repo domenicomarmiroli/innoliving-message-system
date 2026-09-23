@@ -1488,3 +1488,35 @@ sincronizzazione Mirakl (`src/connectors/mirakl/allegati.ts`), perché
 senza accesso alla Shell di Render il comando non sarebbe lanciabile da
 nessuno. Quindi il punto 2 del "da fare" qui sopra decade: dopo il
 deploy i 4 allegati si recuperano da soli al primo giro utile.
+
+---
+
+## Casella Microsoft 365 accanto a Gmail — 23/09
+
+Codice pronto e spento finché mancano le credenziali: lettura e invio
+via Graph, le due caselle attive insieme, ogni risposta dalla casella
+che ha ricevuto il messaggio. Dettagli in CLAUDE.md. 230 test verdi.
+
+**Da fare, in quest'ordine**:
+1. Eseguire `db/migrations/0027_casella_microsoft.sql` nell'editor SQL di
+   Supabase (aggiunge la riga `mailbox-ticket`, `transport='graph'`).
+2. Chiedere all'agenzia, oltre al secret: permessi *Application*
+   `Mail.ReadWrite` e `Mail.Send` con consenso amministratore, e una
+   ApplicationAccessPolicy limitata alla sola casella ticket.
+3. Su Render: `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET` (il
+   valore, arrivato con link monouso), `MS_MAILBOX`. **Segnarsi la
+   scadenza del secret (24 mesi).**
+4. Collaudo: una email di prova da un indirizzo proprio verso la
+   casella nuova → deve comparire come ticket entro un minuto; risposta
+   dall'interfaccia → deve arrivare dalla casella nuova, nello stesso
+   filo. Lo stato si controlla da `sync_state` dell'account
+   `mailbox-ticket` (`last_error` riporta gli errori già tradotti).
+5. Solo dopo il collaudo: spostare gli indirizzi di notifica di Amazon e
+   degli operatori Mirakl sulla casella nuova. Gmail resta attiva finché
+   serve — le conversazioni già aperte continuano ad arrivare lì e
+   continuano a rispondere da lì.
+
+**Nota sulla migrazione dei messaggi vecchi**: quelli importati nella
+casella nuova con la loro data originale restano fuori dalla finestra di
+lettura (parte da ieri); se anche rientrassero, il vincolo sul
+Message-ID li scarterebbe come già visti.

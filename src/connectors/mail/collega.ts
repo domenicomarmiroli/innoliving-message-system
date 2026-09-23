@@ -6,8 +6,8 @@ import type { Logger } from '../../logger.js'
 import type { FilePronto } from '../../core/attachments/normalize.js'
 import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
 import { dimensioniImmagine } from '../../core/immagine.js'
-import { normalizzaMessageId } from './parse.js'
-import { creaTrasporto } from './invia.js'
+import { casellaPerTrasporto, trasportoDaRaw } from './casella.js'
+import { spedisci } from './spedizione.js'
 
 /**
  * Ticket collegati — "linked tickets" stile Zendesk (migrazione 0026).
@@ -100,33 +100,32 @@ export async function apriTicketCollegato(
     : []
   const riferimentoOrdine = ordine?.shopify_name ?? ordine?.external_order_id ?? null
 
-  const [casella] = await db<{ id: string; sla_minutes: number }[]>`
-    select id, sla_minutes from channel_account where kind = 'email' and active limit 1
+  // Da quale casella scrivere a corriere/assistenza: quella a cui il
+  // cliente del ticket padre ha scritto l'ultima volta — la stessa regola
+  // di una risposta. Prima era `where kind='email' limit 1` senza
+  // ordinamento: con due caselle attive, una scelta a caso.
+  const [ultimoPadre] = await db<{ raw: Record<string, unknown> | null }[]>`
+    select m.raw from message m
+    where m.thread_id = ${padre.id} and m.direction = 'in' and m.author_kind = 'customer'
+    order by m.sent_at desc
+    limit 1
   `
-  if (!casella) {
-    throw new Error(
-      "Manca l'account della casella (kind='email') in channel_account: impossibile aprire un ticket collegato.",
-    )
-  }
+  const trasporto = trasportoDaRaw(ultimoPadre?.raw)
+  const casella = await casellaPerTrasporto(db, trasporto)
 
   const oggetto = costruisciOggetto(tipo, richiesta.oggetto, riferimentoOrdine)
   const ora = new Date()
   const scadenza = new Date(ora.getTime() + casella.sla_minutes * 60_000)
 
-  // Spedizione via SMTP prima di aprire la transazione: è I/O di rete,
-  // stessa regola già scritta in upsert.ts per gli allegati.
-  const inviato = await creaTrasporto(config).sendMail({
-    from: config.MAIL_USER,
-    to: richiesta.destinatario,
-    subject: oggetto,
-    text: richiesta.testo,
-    attachments: richiesta.allegati?.map((a) => ({
-      filename: a.nome_file,
-      content: a.contenuto,
-      contentType: a.mime,
-    })),
+  // Spedizione prima di aprire la transazione: è I/O di rete, stessa
+  // regola già scritta in upsert.ts per gli allegati.
+  const inviato = await spedisci(config, log, trasporto, {
+    a: richiesta.destinatario,
+    oggetto,
+    testo: richiesta.testo,
+    ...(richiesta.allegati ? { allegati: richiesta.allegati } : {}),
   })
-  const rfc822 = normalizzaMessageId(inviato.messageId ?? null)
+  const rfc822 = inviato.rfc822_id
 
   const risultato = await db.begin(async (tx) => {
     const [nuovo] = await tx<{ id: string }[]>`
@@ -134,7 +133,7 @@ export async function apriTicketCollegato(
         account_id, order_id, subject, state, linked_thread_id,
         assignee_id, tags, due_at
       ) values (
-        ${casella.id}, ${padre.order_id}, ${oggetto}, 'pending_internal', ${padre.id},
+        ${casella.account_id}, ${padre.order_id}, ${oggetto}, 'pending_internal', ${padre.id},
         ${richiesta.agent_id ?? padre.assignee_id}, ${tagCollegato(tipo)}, ${scadenza}
       )
       returning id
@@ -148,7 +147,7 @@ export async function apriTicketCollegato(
       ) values (
         ${threadId}, 'out', 'agent', ${rfc822}, ${rfc822},
         ${richiesta.testo}, ${ora}, 'inviato', ${richiesta.agent_id},
-        ${tx.json({ to: richiesta.destinatario, subject: oggetto, accepted: inviato.accepted })}
+        ${tx.json({ to: richiesta.destinatario, subject: oggetto, accepted: inviato.accettati, trasporto })}
       )
       returning id
     `

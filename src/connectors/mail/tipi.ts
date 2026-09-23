@@ -1,3 +1,4 @@
+import type { Trasporto } from './casella.js'
 /**
  * Tipi del connettore casella.
  *
@@ -30,6 +31,15 @@ export interface EmailGrezza {
    * che manda un cliente o un altro marketplace.
    */
   notifica_tipo: string | null
+  /**
+   * Quale casella l'ha ricevuta. Non è un dettaglio di trasporto: è ciò
+   * che decide da dove parte la risposta. Il relay di un marketplace
+   * accetta risposte solo dall'indirizzo a cui il cliente ha scritto, e
+   * durante la migrazione a Microsoft 365 un cliente può averci scritto
+   * sull'una o sull'altra. Assente sui messaggi entrati prima di questo
+   * campo: erano tutti Gmail, e l'assenza vale 'imap'.
+   */
+  casella?: Trasporto
 }
 
 export interface AllegatoGrezzo {

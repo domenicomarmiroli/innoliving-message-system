@@ -1,4 +1,5 @@
 import type { Db } from '../../db/index.js'
+import { trasportoDi, type Trasporto } from './casella.js'
 import { regoleDaConfig } from './ripulisci.js'
 import type { OpzioniIngest, RegolaCanale } from './tipi.js'
 
@@ -11,8 +12,21 @@ interface RigaAccount {
   id: string
   code: string
   kind: RegolaCanale['kind']
+  transport: string | null
   config: Record<string, unknown> | null
 }
+
+/**
+ * Di quale casella stiamo parlando.
+ *
+ * Finché ce n'era una sola, `find(kind === 'email')` bastava. Da quando
+ * convivono Gmail (IMAP) e la casella aziendale su Microsoft 365
+ * (Graph), quel `find` restituirebbe la prima in ordine alfabetico di
+ * codice: i ticket di una casella finirebbero agganciati all'account
+ * dell'altra, in silenzio, e la cosa si vedrebbe solo dopo — come
+ * risposte partite dall'indirizzo sbagliato, che il relay del
+ * marketplace rifiuta.
+ */
 
 function domini(config: RigaAccount['config']): string[] {
   const v = config?.sender_domains
@@ -39,9 +53,9 @@ export interface Regole {
   opzioni: OpzioniIngest
 }
 
-export async function caricaRegole(db: Db): Promise<Regole> {
+export async function caricaRegole(db: Db, trasporto: Trasporto = 'imap'): Promise<Regole> {
   const righe = await db<RigaAccount[]>`
-    select id, code, kind, config
+    select id, code, kind, transport, config
     from channel_account
     where active
     order by kind, code
@@ -59,11 +73,16 @@ export async function caricaRegole(db: Db): Promise<Regole> {
     testo: regoleDaConfig(r.config),
   }))
 
-  const casella = tutte.find((r) => r.kind === 'email')
+  const caselle = righe.filter((r) => r.kind === 'email')
+  const rigaCasella = caselle.find((r) => trasportoDi(r.transport) === trasporto)
+  const casella = rigaCasella
+    ? tutte.find((r) => r.account_id === rigaCasella.id)
+    : undefined
   if (!casella) {
     throw new Error(
-      "Manca l'account della casella (kind='email') in channel_account. " +
-        'Applica la migrazione db/migrations/0002_mail_routing.sql.',
+      `Manca la casella con trasporto '${trasporto}' in channel_account (kind='email'` +
+        (trasporto === 'graph' ? ", transport='graph'" : ", transport='imap'") +
+        `). Caselle attive: ${caselle.map((c) => `${c.code}(${trasportoDi(c.transport)})`).join(', ') || 'nessuna'}.`,
     )
   }
 

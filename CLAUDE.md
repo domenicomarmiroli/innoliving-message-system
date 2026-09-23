@@ -1481,3 +1481,70 @@ I tentativi ripetuti restano nei log e non in `ingest_anomaly`: lì c'è
 già il fallimento della prima volta, ripetere la stessa riga ad ogni
 giro trasformerebbe la tabella degli errori in un registro di tentativi.
 `npm run mirakl:allegati` resta, per quando una shell c'è.
+
+### Casella aziendale su Microsoft 365, accanto a Gmail (23/09)
+Arrivati gli accessi alla casella aziendale (registrazione app in Entra
+ID). Domenico ha chiesto di **tenere attive entrambe** durante la
+migrazione — gli serve tempo per spostare i messaggi e fare prove — con
+una regola esplicita: **la risposta parte sempre dalla stessa casella
+che ha ricevuto il messaggio.**
+
+**Un solo codice di normalizzazione, due trasporti davanti.**
+`src/connectors/mail/elabora.ts` (nuovo) contiene il dispatch dei generi
+(avviso, reso, rimborso, reclamo, opt-out, annullamento, notifica,
+messaggio) che prima viveva dentro il ciclo IMAP. `imap.ts` e il nuovo
+`graph/lettura.ts` lo chiamano entrambi: correggere un bug una volta sola
+vale per tutte e due le caselle. `imap.ts` è passato da ~330 a ~210 righe
+senza cambiare comportamento.
+
+**Graph scarica il MIME originale** (`/messages/{id}/$value`), non i
+campi JSON: così `parse.ts` riceve gli stessi byte che riceve da IMAP e
+tutto il resto funziona senza modifiche — header
+`X-Space-Notification-Type` di Amazon compresi, che la versione JSON di
+Graph non conserva. Segnalibro per data (`receivedDateTime`) con
+sovrapposizione di 5 minuti, come Mirakl; il primo giro parte da ieri,
+non da tutto lo storico. Nessun SDK: client credentials con una `fetch`
+(`graph/client.ts`), errori AADSTS tradotti in istruzioni ("secret
+scaduto", "hai copiato l'id invece del valore", "403 = consenso o
+ApplicationAccessPolicy").
+
+**Da quale casella rispondere — la parte delicata.** Due errori evitati:
+1. `caricaRegole()` e `apriTicketCollegato()` cercavano "l'unica riga con
+   `kind='email'`" (`find` / `limit 1` senza ordinamento): con due righe
+   la scelta sarebbe diventata arbitraria. Ora la casella si seleziona
+   dalla colonna **`channel_account.transport`** — prevista fin dalla
+   0001 e già valorizzata ('imap' su Gmail, 'api' su Mirakl/Shopify):
+   la nuova casella ha `'graph'`, qualunque altro valore vale 'imap'.
+2. Il trasporto di una risposta **non** si legge dall'account del thread:
+   un ticket Amazon appartiene a `amazon-it`, che di caselle non ne ha, e
+   una risposta a un cliente che ha scritto alla casella Microsoft
+   sarebbe partita da Gmail — rifiutata dal relay. Ogni messaggio in
+   arrivo registra ora `raw.casella` ('imap' | 'graph'), ogni nostro
+   invio `raw.trasporto`; `trasportoDaRaw()` (`mail/casella.ts`) lo
+   rilegge **dallo stesso messaggio da cui `inviaRisposta()` prende il
+   destinatario**. Indirizzo e identità di invio vengono dalla stessa
+   riga e non possono divergere. Messaggi precedenti a questo campo:
+   nessuna chiave = Gmail, che è ciò che erano.
+
+Vale per tutti e tre i punti che spediscono, ora passati tutti da
+`mail/spedizione.ts` (nessun `sendMail` diretto rimasto altrove):
+risposte (`invia.ts`), ticket collegati (`collega.ts`: la casella è
+quella a cui il cliente del ticket padre ha scritto l'ultima volta) e
+reinvio "[Importante]" (`optout.ts`: dalla stessa casella del messaggio
+rimbalzato).
+
+**Su Graph si spedisce MIME grezzo** (nodemailer compone con
+`streamTransport`, Graph consegna con `sendMail` in base64): i campi JSON
+di Graph non permettono di impostare In-Reply-To/References, e senza
+ogni risposta sembrerebbe una email nuova. Limite 4 MB per messaggio,
+con un errore leggibile oltre.
+
+**Ciclo separato** (`graph/poll.ts`): un 403 di Microsoft non deve
+fermare la posta che arriva su Gmail. Senza le quattro `MS_*` non parte.
+Riaggancio e sincronizzazione Mirakl restano solo nel ciclo principale.
+
+`db/migrations/0027_casella_microsoft.sql`: la riga `mailbox-ticket`
+con `transport='graph'` (solo dati). L'indirizzo sta in `MS_MAILBOX`,
+non nel database, come quello Gmail sta in `MAIL_USER`.
+230 test verdi (18 nuovi, fra cui quelli che bloccano la regola "si
+risponde dalla casella che ha ricevuto").

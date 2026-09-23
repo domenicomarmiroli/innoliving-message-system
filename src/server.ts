@@ -12,6 +12,7 @@ import { knowledgeRoutes } from './routes/knowledge.js'
 import { contattiRoutes } from './routes/contatti.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
 import { avviaPolling } from './connectors/mail/poll.js'
+import { avviaPollingGraph } from './connectors/graph/poll.js'
 import { avviaAllineamentoOrdini } from './connectors/shopify/periodico.js'
 import { avviaControlloRientri } from './connectors/magazzino/periodico.js'
 
@@ -54,6 +55,11 @@ export async function buildServer(config: Config) {
   // lo stesso — il worker non deve morire perché manca un pezzo.
   const casella = avviaPolling(db, logger, config)
 
+  // La casella aziendale su Microsoft 365, accanto a Gmail durante la
+  // migrazione: ciclo separato, così un problema dell'una non ferma
+  // l'altra. Senza le MS_* non parte.
+  const casellaMicrosoft = avviaPollingGraph(db, logger, config)
+
   // Gli ordini arrivano dai webhook, che sono immediati. Questo giro è
   // la rete sotto: un webhook può perdersi durante un deploy o dopo un
   // 500, e un ordine mancante significa un cliente che scrive di un
@@ -67,6 +73,7 @@ export async function buildServer(config: Config) {
 
   app.addHook('onClose', async () => {
     casella?.ferma()
+    casellaMicrosoft?.ferma()
     ordini?.ferma()
     rientri?.ferma()
     await db.end({ timeout: 5 })

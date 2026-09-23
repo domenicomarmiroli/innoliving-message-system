@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import nodemailer, { type Transporter } from 'nodemailer'
 
 import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
@@ -7,16 +6,22 @@ import type { Logger } from '../../logger.js'
 import type { FilePronto } from '../../core/attachments/normalize.js'
 import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
 import { dimensioniImmagine } from '../../core/immagine.js'
-import { normalizzaMessageId } from './parse.js'
+import { trasportoDaRaw } from './casella.js'
+import { spedisci } from './spedizione.js'
 
 /**
- * Invio delle risposte via SMTP.
+ * Invio delle risposte.
  *
  * Regola che vale più di ogni dettaglio tecnico: la casella che riceve
  * deve essere la stessa identità che risponde, e dev'essere un indirizzo
  * registrato sull'account venditore. Non si divide "ricevo qui, invio da
  * lì": il relay del marketplace rifiuta la risposta e il thread si perde.
- * Per questo il mittente è sempre MAIL_USER e non è configurabile.
+ *
+ * Da quando convivono due caselle, questo significa che **il trasporto
+ * lo decide il ticket, non la configurazione globale**: un ticket
+ * entrato da Gmail esce da Gmail via SMTP, uno entrato dalla casella
+ * Microsoft esce da lì via Graph. Il mittente non è mai un parametro
+ * libero — lo sceglie `spedizione.ts` a partire dal trasporto.
  */
 
 export interface RichiestaInvio {
@@ -36,24 +41,7 @@ export interface EsitoInvio {
   destinatario: string
 }
 
-let trasporto: Transporter | null = null
-
-export function creaTrasporto(config: Config): Transporter {
-  if (trasporto) return trasporto
-  if (!config.MAIL_SMTP_HOST || !config.MAIL_USER || !config.MAIL_PASSWORD) {
-    throw new Error(
-      'SMTP non configurato: servono MAIL_SMTP_HOST, MAIL_USER e MAIL_PASSWORD.',
-    )
-  }
-  trasporto = nodemailer.createTransport({
-    host: config.MAIL_SMTP_HOST,
-    port: config.MAIL_SMTP_PORT,
-    // 465 è TLS implicito, 587 è STARTTLS: la distinzione la fa la porta.
-    secure: config.MAIL_SMTP_PORT === 465,
-    auth: { user: config.MAIL_USER, pass: config.MAIL_PASSWORD },
-  })
-  return trasporto
-}
+export { creaTrasporto } from './spedizione.js'
 
 export async function inviaRisposta(
   db: Db,
@@ -82,7 +70,7 @@ export async function inviaRisposta(
   // dopo.
   type RigaMessaggio = {
     subject: string | null
-    raw: { from?: string; reply_to?: string; to?: string; references?: string[] } | null
+    raw: { from?: string; reply_to?: string; to?: string; references?: string[]; casella?: string; trasporto?: string } | null
     rfc822_id: string | null
     linked_thread_id: string | null
   }
@@ -141,21 +129,22 @@ export async function inviaRisposta(
     .filter((x): x is string => !!x)
     .map((x) => `<${x}>`)
 
-  const inviato = await creaTrasporto(config).sendMail({
-    from: config.MAIL_USER,
-    to: destinatario,
-    subject: oggetto,
-    text: richiesta.testo,
-    inReplyTo: ultimo.rfc822_id ? `<${ultimo.rfc822_id}>` : undefined,
-    references: references.length > 0 ? references : undefined,
-    attachments: richiesta.allegati?.map((a) => ({
-      filename: a.nome_file,
-      content: a.contenuto,
-      contentType: a.mime,
-    })),
+  // Il trasporto viene dallo STESSO messaggio da cui abbiamo preso il
+  // destinatario: la risposta parte dalla casella a cui il cliente ha
+  // scritto, non da quella dell'account del thread (per un ticket Amazon
+  // sarebbe amazon-it, che di caselle non ne ha).
+  const trasporto = trasportoDaRaw(ultimo.raw)
+
+  const inviato = await spedisci(config, log, trasporto, {
+    a: destinatario,
+    oggetto,
+    testo: richiesta.testo,
+    inReplyTo: ultimo.rfc822_id,
+    references,
+    ...(richiesta.allegati ? { allegati: richiesta.allegati } : {}),
   })
 
-  const rfc822 = normalizzaMessageId(inviato.messageId ?? null)
+  const rfc822 = inviato.rfc822_id
 
   // --- Registrazione -----------------------------------------------------
   // Il messaggio in uscita entra nello stesso thread: la conversazione
@@ -168,7 +157,7 @@ export async function inviaRisposta(
       ${richiesta.thread_id}, 'out', 'agent', ${rfc822}, ${rfc822},
       ${ultimo.rfc822_id}, ${richiesta.testo}, ${new Date()}, 'inviato',
       ${richiesta.draft_id ?? null}, ${richiesta.agent_id},
-      ${db.json({ to: destinatario, subject: oggetto, accepted: inviato.accepted })}
+      ${db.json({ to: destinatario, subject: oggetto, accepted: inviato.accettati, trasporto })}
     )
     returning id
   `

@@ -103,5 +103,6 @@ export function perArchivio(email: EmailGrezza): Record<string, unknown> {
     allegati: email.allegati.map(({ contenuto: _contenuto, ...resto }) => resto),
     uid: email.uid,
     notifica_tipo: email.notifica_tipo,
+    casella: email.casella ?? null,
   }
 }

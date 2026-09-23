@@ -2,9 +2,10 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { anomalia } from './notifica.js'
-import { normalizzaMessageId, perArchivio } from './parse.js'
+import { perArchivio } from './parse.js'
 import { estraiNumeroOrdine } from './riconosci.js'
-import { creaTrasporto } from './invia.js'
+import { trasportoDaRaw, type Trasporto } from './casella.js'
+import { spedisci } from './spedizione.js'
 import type { EmailGrezza } from './tipi.js'
 
 /**
@@ -116,14 +117,14 @@ export async function registraOptOut(
   const giaTentato = thread.tags.includes(TAG_REINVIO_TENTATO)
 
   let azione: 'reinviato' | 'richiede_azione_manuale' = 'richiede_azione_manuale'
-  let inviato: { rfc822: string | null; destinatario: string; oggetto: string; testo: string } | null = null
+  let inviato: { trasporto: Trasporto; rfc822: string | null; destinatario: string; oggetto: string; testo: string } | null = null
 
   if (!giaManuale && !giaTentato) {
     type RigaOut = {
       id: string
       body_text: string | null
       rfc822_id: string | null
-      raw: { to?: string; subject?: string } | null
+      raw: { to?: string; subject?: string; trasporto?: string } | null
     }
     const [ultimoOut] = await db<RigaOut[]>`
       select id, body_text, rfc822_id, raw
@@ -137,18 +138,20 @@ export async function registraOptOut(
     if (ultimoOut?.body_text && destinatario) {
       const oggetto = costruisciOggettoImportante(ultimoOut.raw?.subject ?? null)
       try {
-        // Spedizione via SMTP prima di aprire la transazione: è I/O di
-        // rete, stessa regola già scritta in upsert.ts/collega.ts.
-        const risultatoInvio = await creaTrasporto(config).sendMail({
-          from: config.MAIL_USER,
-          to: destinatario,
-          subject: oggetto,
-          text: ultimoOut.body_text,
-          inReplyTo: ultimoOut.rfc822_id ? `<${ultimoOut.rfc822_id}>` : undefined,
+        // Il reinvio parte dalla STESSA casella del messaggio rimbalzato:
+        // è a quell'identità che il relay del cliente è legato. Prima di
+        // aprire la transazione, stessa regola di upsert.ts/collega.ts.
+        const trasportoOriginale = trasportoDaRaw(ultimoOut.raw)
+        const risultatoInvio = await spedisci(config, log, trasportoOriginale, {
+          a: destinatario,
+          oggetto,
+          testo: ultimoOut.body_text,
+          inReplyTo: ultimoOut.rfc822_id,
         })
         azione = 'reinviato'
         inviato = {
-          rfc822: normalizzaMessageId(risultatoInvio.messageId ?? null),
+          trasporto: trasportoOriginale,
+          rfc822: risultatoInvio.rfc822_id,
           destinatario,
           oggetto,
           testo: ultimoOut.body_text,
@@ -189,7 +192,7 @@ export async function registraOptOut(
         ) values (
           ${thread.id}, 'out', 'agent', null, ${inviato.rfc822}, ${inviato.rfc822},
           ${inviato.testo}, now(), 'inviato',
-          ${tx.json({ to: inviato.destinatario, subject: inviato.oggetto })}
+          ${tx.json({ to: inviato.destinatario, subject: inviato.oggetto, trasporto: inviato.trasporto })}
         )
       `
       await tx`
