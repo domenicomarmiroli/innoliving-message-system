@@ -1539,3 +1539,15 @@ Message-ID li scarterebbe come già visti.
 Restano i punti 5 (spostare le notifiche di Amazon e Mirakl sulla
 casella nuova) e la scadenza del secret da tenere in calendario. Gmail
 resta attiva in parallelo finché serve.
+
+**Promemoria della scadenza del secret (24/09)**: su richiesta di
+Domenico, un avviso nel portale che compare due mesi prima della
+scadenza (22 mesi dopo la consegna). La data sta in `app_config`
+(`key='scadenze'`, migrazione 0028), non nel codice dell'interfaccia:
+al rinnovo si aggiorna una riga. Lato Lovable: fascia ambra in cima a
+tutte le pagine da 62 giorni prima, rossa a scadenza superata, chiudibile
+solo per la sessione (`deadline-banner.tsx`, funzione pura
+`scadenzeAttive()` in `hub-data.ts`). La lista accoglie altre scadenze
+future senza codice nuovo. **Da fare**: eseguire la 0028 su Supabase e
+verificare nel portale Azure la data esatta del secret (assunta
+2028-09-23).
