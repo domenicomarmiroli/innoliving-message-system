@@ -1520,3 +1520,22 @@ che ha ricevuto il messaggio. Dettagli in CLAUDE.md. 230 test verdi.
 casella nuova con la loro data originale restano fuori dalla finestra di
 lettura (parte da ieri); se anche rientrassero, il vincolo sul
 Message-ID li scarterebbe come già visti.
+
+**✅ Collaudo passato (24/09)**, verificato sul database:
+- primo tentativo bloccato da un 403 *"Blocked by tenant configured
+  AppOnly AccessPolicy settings"*: l'agenzia aveva creato la
+  ApplicationAccessPolicy ma la casella non era nel suo gruppo. Corretto
+  da loro; le credenziali erano giuste fin dall'inizio (il token veniva
+  rilasciato);
+- email di prova entrata con `raw.casella = 'graph'`, ticket creato
+  sull'account `mailbox-ticket`, classificazione dell'intento eseguita.
+  Era rimasta in attesa durante il blocco ed è stata raccolta da sola al
+  primo giro riuscito;
+- risposta dall'interfaccia: `delivery_state = 'inviato'`,
+  `raw.trasporto = 'graph'`, Message-ID `…@innoliving.it` (costruito
+  dall'indirizzo mittente), `In-Reply-To` sul messaggio originale.
+  Funzionano quindi sia `Mail.ReadWrite` sia `Mail.Send`.
+
+Restano i punti 5 (spostare le notifiche di Amazon e Mirakl sulla
+casella nuova) e la scadenza del secret da tenere in calendario. Gmail
+resta attiva in parallelo finché serve.
