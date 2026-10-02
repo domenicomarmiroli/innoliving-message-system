@@ -7,7 +7,7 @@ import type { FilePronto } from '../../core/attachments/normalize.js'
 import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
 import { dimensioniImmagine } from '../../core/immagine.js'
 import { trasportoDaRaw } from './casella.js'
-import { spedisci } from './spedizione.js'
+import { adattaAllegatiAlTrasporto, spedisci } from './spedizione.js'
 
 /**
  * Invio delle risposte.
@@ -135,13 +135,18 @@ export async function inviaRisposta(
   // sarebbe amazon-it, che di caselle non ne ha).
   const trasporto = trasportoDaRaw(ultimo.raw)
 
+  // Gli allegati come partiranno davvero: ridotti se la casella ha un
+  // limite più stretto. Si usa questa lista sia per spedire sia per
+  // registrare, così in cronologia resta il file che il cliente riceve.
+  const allegati = await adattaAllegatiAlTrasporto(trasporto, richiesta.allegati ?? [])
+
   const inviato = await spedisci(config, log, trasporto, {
     a: destinatario,
     oggetto,
     testo: richiesta.testo,
     inReplyTo: ultimo.rfc822_id,
     references,
-    ...(richiesta.allegati ? { allegati: richiesta.allegati } : {}),
+    ...(allegati.length > 0 ? { allegati } : {}),
   })
 
   const rfc822 = inviato.rfc822_id
@@ -166,7 +171,7 @@ export async function inviaRisposta(
   // Registriamo il file COSÌ COM'È PARTITO (dopo un'eventuale conversione
   // da normalize.ts), per poter mostrare in cronologia cosa il cliente ha
   // ricevuto davvero, non cosa l'agente aveva scelto.
-  for (const a of richiesta.allegati ?? []) {
+  for (const a of allegati) {
     const checksum = createHash('sha256').update(a.contenuto).digest('hex')
     let storage_path: string | null = null
     if (storageConfigurato(config)) {

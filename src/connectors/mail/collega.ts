@@ -7,7 +7,7 @@ import type { FilePronto } from '../../core/attachments/normalize.js'
 import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
 import { dimensioniImmagine } from '../../core/immagine.js'
 import { casellaPerTrasporto, trasportoDaRaw } from './casella.js'
-import { spedisci } from './spedizione.js'
+import { adattaAllegatiAlTrasporto, spedisci } from './spedizione.js'
 
 /**
  * Ticket collegati — "linked tickets" stile Zendesk (migrazione 0026).
@@ -119,11 +119,16 @@ export async function apriTicketCollegato(
 
   // Spedizione prima di aprire la transazione: è I/O di rete, stessa
   // regola già scritta in upsert.ts per gli allegati.
+  // Le foto inoltrate al corriere sono il caso tipico che supera il limite
+  // della casella Microsoft: si riducono qui, e si registra la versione
+  // davvero spedita.
+  const allegati = await adattaAllegatiAlTrasporto(trasporto, richiesta.allegati ?? [])
+
   const inviato = await spedisci(config, log, trasporto, {
     a: richiesta.destinatario,
     oggetto,
     testo: richiesta.testo,
-    ...(richiesta.allegati ? { allegati: richiesta.allegati } : {}),
+    ...(allegati.length > 0 ? { allegati } : {}),
   })
   const rfc822 = inviato.rfc822_id
 
@@ -157,7 +162,7 @@ export async function apriTicketCollegato(
     // COSÌ COME SONO PARTITI, per mostrare in cronologia cosa è stato
     // ricevuto, non cosa l'agente aveva scelto prima di un'eventuale
     // conversione.
-    for (const a of richiesta.allegati ?? []) {
+    for (const a of allegati) {
       const checksum = createHash('sha256').update(a.contenuto).digest('hex')
       let storage_path: string | null = null
       if (storageConfigurato(config)) {
