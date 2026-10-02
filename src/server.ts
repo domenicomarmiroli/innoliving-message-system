@@ -8,6 +8,7 @@ import { healthRoutes } from './routes/health.js'
 import { replyRoutes } from './routes/reply.js'
 import { collegaRoutes } from './routes/collega.js'
 import { draftRoutes } from './routes/draft.js'
+import { traduzioneRoutes } from './routes/traduzione.js'
 import { knowledgeRoutes } from './routes/knowledge.js'
 import { contattiRoutes } from './routes/contatti.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
@@ -47,6 +48,7 @@ export async function buildServer(config: Config) {
   await app.register(replyRoutes, { db, config })
   await app.register(collegaRoutes, { db, config })
   await app.register(draftRoutes, { db, config })
+  await app.register(traduzioneRoutes, { db, config })
   await app.register(knowledgeRoutes, { db, config })
   await app.register(contattiRoutes, { db, config })
 

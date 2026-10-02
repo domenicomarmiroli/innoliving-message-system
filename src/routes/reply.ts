@@ -43,6 +43,13 @@ const corpo = z.object({
   // due controparti (il cliente e l'operatore del marketplace stesso),
   // e l'agente sceglie come sul portale Mirakl. Vuoto/assente ⇒ cliente.
   mirakl_destinatari: z.array(z.enum(['CUSTOMER', 'OPERATOR'])).max(2).optional(),
+  // Risposta tradotta (anteprima da POST /threads/traduci): `testo` è la
+  // traduzione che parte davvero, `testo_originale` l'italiano scritto
+  // dall'operatore, `lingua` quella del testo spedito. L'italiano si
+  // conserva in message.body_text_it, così la cronologia resta leggibile
+  // per chi non conosce la lingua del cliente.
+  testo_originale: z.string().min(1).max(20_000).optional(),
+  lingua: z.string().regex(/^[a-z]{2}$/).optional(),
   // Riferimenti a file già caricati dall'interfaccia direttamente su
   // Supabase Storage (stesso bucket 'allegati', percorso a sua scelta):
   // il worker li scarica, li normalizza per canale e solo allora li spedisce.
@@ -176,9 +183,33 @@ export async function replyRoutes(
               testo: analizzato.data.testo,
               allegati: allegatiPronti,
             })
+      // Risposta tradotta: si conserva l'italiano dell'operatore accanto
+      // al testo spedito. Come per la bozza qui sotto, un problema qui non
+      // deve far fallire un invio già avvenuto: solo un log.
+      const tradotta =
+        !!analizzato.data.testo_originale && !!analizzato.data.lingua && analizzato.data.lingua !== 'it'
+      if (tradotta) {
+        try {
+          await db`
+            update message
+            set body_text_it = ${analizzato.data.testo_originale!}, lingua = ${analizzato.data.lingua!}
+            where id = ${esito.message_id}
+          `
+        } catch (erroreTraduzione) {
+          req.log.warn(
+            { message_id: esito.message_id, err: messaggioErrore(erroreTraduzione) },
+            "salvataggio dell'italiano originale fallito, invio già andato a buon fine",
+          )
+        }
+      }
+
       // Chiude il cerchio con la bozza AI, se questo invio ne veniva una:
       // non deve mai far fallire l'invio già avvenuto, quindi solo un log
       // se qualcosa non torna (bozza di un altro thread, già cancellata).
+      // La bozza è in italiano: il confronto va fatto con l'italiano
+      // dell'operatore, non con la traduzione — altrimenti ogni bozza
+      // usata e poi tradotta risulterebbe "modificata".
+      const testoDaConfrontare = tradotta ? analizzato.data.testo_originale! : analizzato.data.testo
       if (analizzato.data.draft_id) {
         try {
           const [bozza] = await db<{ draft_text: string | null }[]>`
@@ -186,10 +217,10 @@ export async function replyRoutes(
             where id = ${analizzato.data.draft_id} and thread_id = ${analizzato.data.thread_id}
           `
           if (bozza) {
-            const esitoBozza = calcolaEsito(bozza.draft_text ?? '', analizzato.data.testo)
+            const esitoBozza = calcolaEsito(bozza.draft_text ?? '', testoDaConfrontare)
             await db`
               update ai_draft
-              set outcome = ${esitoBozza}, final_text = ${analizzato.data.testo}, updated_at = now()
+              set outcome = ${esitoBozza}, final_text = ${testoDaConfrontare}, updated_at = now()
               where id = ${analizzato.data.draft_id}
             `
           } else {

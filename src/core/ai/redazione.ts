@@ -49,3 +49,62 @@ export function redigi(testo: string): EsitoRedazione {
 
   return { testo: risultato, trovati }
 }
+
+/**
+ * Oscuramento **reversibile**, per i testi che dopo il modello vanno al
+ * cliente: le nostre risposte da tradurre.
+ *
+ * `redigi()` basta per ciò che l'operatore deve solo leggere (la
+ * traduzione di un messaggio in arrivo: l'originale resta comunque
+ * visibile). Non basta per un testo da spedire: se l'operatore scrive
+ * un dato personale che il cliente deve ricevere, il modello non deve
+ * vederlo (regola 8) ma il testo tradotto non può arrivare al cliente
+ * con "[IBAN oscurato]" al suo posto.
+ *
+ * Quindi ogni dato diventa un segnaposto numerato (`⟦1⟧`), il modello
+ * ha l'istruzione di lasciarlo intatto, e `ripristina()` rimette il
+ * valore vero. Se un segnaposto manca o compare due volte, `ripristina()`
+ * **lancia invece di indovinare**: meglio una traduzione da rifare che
+ * una risposta partita senza il dato che serviva, o con il dato giusto
+ * nel punto sbagliato.
+ */
+export interface TestoProtetto {
+  testo: string
+  segnaposti: number
+  ripristina(tradotto: string): string
+}
+
+export function proteggi(testo: string): TestoProtetto {
+  const valori: string[] = []
+  const sostituisci = (corrispondenza: string): string => {
+    valori.push(corrispondenza)
+    return `⟦${valori.length}⟧`
+  }
+
+  // Stesso ordine di redigi(): il codice fiscale prima, perché le sue
+  // cifre non vengano mangiate dal pattern delle carte.
+  const protetto = testo
+    .replace(CODICE_FISCALE_RE, sostituisci)
+    .replace(IBAN_RE, sostituisci)
+    .replace(CARTA_RE, sostituisci)
+
+  return {
+    testo: protetto,
+    segnaposti: valori.length,
+    ripristina(tradotto: string): string {
+      let risultato = tradotto
+      for (let i = 0; i < valori.length; i += 1) {
+        const segnaposto = `⟦${i + 1}⟧`
+        const occorrenze = risultato.split(segnaposto).length - 1
+        if (occorrenze !== 1) {
+          throw new Error(
+            `La traduzione ha ${occorrenze === 0 ? 'perso' : 'duplicato'} un dato da ` +
+              'conservare (IBAN, carta o codice fiscale): riprova a tradurre.',
+          )
+        }
+        risultato = risultato.replace(segnaposto, valori[i]!)
+      }
+      return risultato
+    },
+  }
+}

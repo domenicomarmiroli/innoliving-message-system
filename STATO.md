@@ -1551,3 +1551,20 @@ solo per la sessione (`deadline-banner.tsx`, funzione pura
 future senza codice nuovo. **Da fare**: eseguire la 0028 su Supabase e
 verificare nel portale Azure la data esatta del secret (assunta
 2028-09-23).
+
+---
+
+## Traduzione dei messaggi — 02/10
+
+Codice pronto su entrambi i lati (dettagli in CLAUDE.md), 242 test
+verdi. **Da fare in quest'ordine**: eseguire la migrazione 0029, poi
+pubblicare interfaccia e worker. L'interfaccia NON va pubblicata prima
+della migrazione: legge colonne nuove e senza di esse non caricherebbe
+le conversazioni.
+
+**Attenzione per lo spegnimento di Gmail** (trovato lavorando qui):
+riaggancio, sincronizzazione Mirakl e ora la traduzione girano dentro il
+ciclo della casella Gmail (`mail/poll.ts`), che parte solo se le
+variabili `MAIL_*` sono impostate. Togliendole per spegnere Gmail si
+fermerebbero anche quei tre. Prima di spegnere Gmail vanno spostati in
+un ciclo indipendente dalla casella.

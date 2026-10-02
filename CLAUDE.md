@@ -1548,3 +1548,62 @@ con `transport='graph'` (solo dati). L'indirizzo sta in `MS_MAILBOX`,
 non nel database, come quello Gmail sta in `MAIL_USER`.
 230 test verdi (18 nuovi, fra cui quelli che bloccano la regola "si
 risponde dalla casella che ha ricevuto").
+
+### Traduzione dei messaggi (migrazione 0029, 02/10)
+Richiesto da Domenico: iniziano ad arrivare messaggi in altre lingue,
+soprattutto da Amazon. L'operatore deve leggerli in italiano e
+rispondere scrivendo in italiano, con il cliente che riceve la
+traduzione.
+
+**Convenzione dei dati** (`message.lingua`, `message.body_text_it`):
+`body_text` resta **sempre** il testo passato davvero fra noi e il
+cliente — l'originale del cliente in arrivo, la traduzione spedita in
+uscita — e `body_text_it` la versione italiana. Stessa regola degli
+allegati in uscita: si registra cosa il cliente ha ricevuto, non cosa
+l'operatore aveva in mente.
+
+**In arrivo: un giro periodico, non un passaggio nei connettori.**
+`traduciMessaggiInArrivo()` (`core/ai/traduzione.ts`) gira nel ciclo
+principale (`mail/poll.ts`, isolato come Mirakl) e prende i messaggi dei
+clienti con `lingua is null`: copre in un punto solo Gmail, casella
+Microsoft, Mirakl e form dei siti, senza toccare nessuna ingestione. Un
+fallimento lascia la riga com'era e si riprova al giro dopo. Finestra di
+7 giorni, 20 per giro, modello economico
+(`ANTHROPIC_MODEL_CLASSIFICAZIONE`): rileva la lingua e, se non è
+l'italiano, traduce in un'unica chiamata. `interpretaRilevamento()` è
+difensiva: JSON storto o codice lingua non valido = null e nuovo
+tentativo, mai un dato sbagliato salvato per sempre. Solo
+`author_kind='customer'`: le notifiche di sistema (Amazon in inglese)
+non fissano la lingua del cliente.
+
+**In uscita: anteprima, poi invio di ciò che si è visto.**
+`POST /threads/traduci` (`routes/traduzione.ts`) restituisce la
+traduzione **senza spedire**, con la policy del canale controllata **sul
+testo tradotto** — è quello che il marketplace riceve. L'invio resta
+`/threads/reply`, con `testo` = la traduzione vista in anteprima e i
+nuovi campi facoltativi `testo_originale`/`lingua`: si spedisce
+l'anteprima, non una seconda traduzione fatta al momento, che non
+sarebbe mai identica. Modello delle bozze (`ANTHROPIC_MODEL`): questo
+testo lo legge il cliente. Il confronto con una bozza AI
+(`ai_draft.outcome`) si fa sull'italiano, perché la bozza è in italiano.
+
+**Regola 8 in uscita: `proteggi()`** (`core/ai/redazione.ts`). In
+arrivo basta `redigi()` (la traduzione è da leggere, l'originale resta
+visibile). In uscita no: se l'operatore scrive un dato che il cliente
+deve ricevere, il modello non deve vederlo ma il testo spedito non può
+contenere "[IBAN oscurato]". Ogni dato diventa `⟦n⟧`, il modello lo
+lascia intatto, `ripristina()` rimette il valore — e **lancia** se un
+segnaposto manca o è duplicato: meglio una traduzione da rifare che una
+risposta senza il dato o con il dato nel punto sbagliato.
+
+**Lato Lovable**: la bolla mostra di default l'italiano ("Tradotto dal
+tedesco" / "Inviato in tedesco") con il comando per vedere l'originale;
+l'editor ha un selettore "Lingua di invio" (predefinito: la lingua del
+cliente), il pulsante "Traduci" mostra l'anteprima e diventa "Invia
+traduzione"; modificare l'italiano dopo aver tradotto annulla
+l'anteprima. Resta "Invia in italiano senza tradurre".
+
+**Ordine di rilascio obbligato**: prima la 0029, poi l'interfaccia —
+che legge le colonne nuove nella query dei messaggi e senza di esse non
+caricherebbe più le conversazioni. Il worker invece è tollerante (giro
+isolato, aggiornamento post-invio non bloccante).

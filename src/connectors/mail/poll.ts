@@ -4,6 +4,7 @@ import type { Logger } from '../../logger.js'
 import { credenzialiMancanti, leggiCasella, messaggioErrore } from './imap.js'
 import { riaggancia } from './riaggancia.js'
 import { sincronizzaMirakl } from '../mirakl/sync.js'
+import { traduciMessaggiInArrivo } from '../../core/ai/traduzione.js'
 
 /**
  * Il ciclo che tiene la casella sotto controllo.
@@ -64,12 +65,22 @@ export function avviaPolling(db: Db, log: Logger, config: Config): Ciclo | null 
         log.error({ err: messaggioErrore(errore) }, 'sincronizzazione Mirakl fallita')
       }
 
+      // Traduzione dei messaggi dei clienti non in italiano, da qualunque
+      // canale siano arrivati. Isolata come Mirakl: un modello che non
+      // risponde non deve far sembrare fallita la lettura della posta.
+      let tradotti = 0
+      try {
+        tradotti = await traduciMessaggiInArrivo(db, log, config)
+      } catch (errore) {
+        log.warn({ err: messaggioErrore(errore) }, 'traduzione dei messaggi in arrivo non riuscita')
+      }
+
       fallimenti = 0
       // Silenzio quando non c'è niente: un log al minuto che dice "zero"
       // rende illeggibile quello che conta.
-      if (esito.lette > 0 || ri.agganciate > 0 || mirakl > 0) {
+      if (esito.lette > 0 || ri.agganciate > 0 || mirakl > 0 || tradotti > 0) {
         log.info(
-          { ...esito, agganciate: ri.agganciate, mirakl_messaggi: mirakl },
+          { ...esito, agganciate: ri.agganciate, mirakl_messaggi: mirakl, tradotti },
           'giro completato',
         )
       }
