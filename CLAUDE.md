@@ -1607,3 +1607,30 @@ l'anteprima. Resta "Invia in italiano senza tradurre".
 che legge le colonne nuove nella query dei messaggi e senza di esse non
 caricherebbe più le conversazioni. Il worker invece è tollerante (giro
 isolato, aggiornamento post-invio non bloccante).
+
+### Allegati: popup di anteprima e inoltro nel ticket collegato (02/10)
+Richiesto da Domenico: gli allegati si aprivano in una nuova scheda di
+Chrome; servono un'anteprima veloce dentro il ticket, la possibilità di
+scriverci una nota interna, e di inoltrarli al corriere o all'assistenza
+nel ticket collegato.
+
+**Lato Lovable** (`attachment-viewer.tsx`): popup su tutti gli allegati
+del thread con frecce/tasti ← →; immagini grandi, PDF incorporati, HEIC e
+altri formati con "Scarica"; nota interna salvata con
+`createInternalNote()` come "Nota sull'allegato «nome»:" — senza
+ricollegare il file alla nota, che lo duplicherebbe nella scheda
+Allegati. "Inoltra a corriere/assistenza" apre il modulo del ticket
+collegato con l'allegato già selezionato; il modulo elenca tutti gli
+allegati del thread con miniatura, e quelli senza file (i 131 storici
+precedenti allo Storage) non sono selezionabili. Nessuna modifica al
+database: `/threads/collega` accettava già `allegati`.
+
+**Lato worker: il limite di Microsoft** (`adattaAllegatiAlTrasporto()`
+in `mail/spedizione.ts`). Graph accetta 4 MB sul corpo della richiesta,
+cioè sul MIME codificato in base64: restano circa 2 MB di allegati, e
+quattro foto da telefono inoltrate al corriere ne pesano dieci. Solo su
+Graph e solo se serve, le immagini più pesanti vengono ridotte a passi
+crescenti (2048 → 1024 px, JPEG); i PDF non si toccano e se non basta
+l'errore dice quanto pesa e cosa fare. `invia.ts` e `collega.ts`
+registrano il file davvero spedito, non quello scelto. Corretto anche il
+controllo del limite, che misurava il MIME grezzo invece del base64.

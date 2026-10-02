@@ -1568,3 +1568,8 @@ ciclo della casella Gmail (`mail/poll.ts`), che parte solo se le
 variabili `MAIL_*` sono impostate. Togliendole per spegnere Gmail si
 fermerebbero anche quei tre. Prima di spegnere Gmail vanno spostati in
 un ciclo indipendente dalla casella.
+
+**Allegati (02/10)**: popup di anteprima con nota interna e inoltro
+nel ticket collegato, pubblicati. Lato worker, riduzione automatica
+delle foto per stare nel limite di 4 MB di Graph (246 test verdi).
+Verificato solo il codice: da provare su un ticket reale con foto.
