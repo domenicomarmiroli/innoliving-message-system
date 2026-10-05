@@ -61,19 +61,68 @@ scritto (richiesta del 05/10).
   quello giusto, riga di registro in entrambi i casi, 503 leggibile se il
   database non risponde, nessuna PII in chiaro.
 
-### Per attivarla
+### Per attivarla (fatto il 05/10, verificato in `voice_log`)
 1. Eseguire `0030_voce.sql` nell'editor SQL di Supabase.
 2. Generare un secret di almeno 32 caratteri e metterlo in Render come
    `ELEVENLABS_TOOL_SECRET`.
 3. Verifica: `GET /voce/health` senza header → 401; con
    `x-voice-secret` → `{"ok":true}`; in `voice_log` una riga per ciascuna.
 
+## Fase 2 — verifica del cliente
+
+`POST /voce/strumenti/verifica-cliente`
+
+```json
+{ "conversation_id": "…", "numero_ordine": "407 6086160 1682752", "email": null, "cap": "20121" }
+```
+
+Risposte (sempre 200, tranne input malformato 400 e guasto 503):
+
+| Caso | Risposta |
+|---|---|
+| Verificato | `{ "verificato": true, "session_token": "…", "nome": "Mario", "brand": "…", "canale": "Amazon" }` |
+| Manca sia email sia CAP | `{ "verificato": false, "motivo": "dati_mancanti" }` — non conta come tentativo |
+| Numero inesistente | `motivo: "ordine_non_trovato"` |
+| Dati sbagliati | `motivo: "dati_non_corrispondenti"` |
+| Ordine senza email né CAP in archivio | `motivo: "dati_non_disponibili"` — l'agente apre un ticket |
+| Terzo fallimento nella stessa telefonata | `motivo: "troppi_tentativi"` |
+
+- **Il numero si confronta ridotto a lettere e cifre**, sia quello dettato
+  sia quelli in archivio (numero del canale e numero del negozio). Provato
+  sul database vero con i cinque formati in uso: Amazon dettato con spazi,
+  numero del sito con e senza prefisso, solo cifre, Mirakl dei due
+  operatori — un ordine trovato per ciascuno.
+- **Basta un dato**: email oppure CAP di spedizione. Su un rifiuto non
+  esce nessun dato dell'ordine, nemmeno il nome.
+- Dopo la verifica: solo il **nome di battesimo**, il marchio (attributo
+  `_brand` dell'ordine, quando il frontend lo scrive) e il canale.
+- Il token vale 30 minuti ed è legato a quell'ordine; in `voice_session`
+  c'è solo la sua impronta SHA-256.
+- I tentativi si contano da `voice_log.esito` della stessa conversazione.
+
+### Dati mancanti trovati preparando la fase 2
+- **L'email non veniva mai chiesta a Shopify.** Aggiunta alla query
+  (`connectors/shopify/campi.ts`, ora unica per backfill e giro periodico)
+  e salvata in `order.email` (migrazione 0031). È un dato cliente protetto:
+  se l'app Shopify non ha il permesso, la sincronizzazione prosegue senza
+  email (un avviso nel log) invece di fermarsi.
+- **Il CAP c'era solo sugli ordini sincronizzati dopo la 0013**: degli
+  ordini Amazon degli ultimi 90 giorni, 802 su 2.484. Dopo il deploy si
+  completano con `npm run shopify:sync -- --creati-dal AAAA-MM-GG`, che
+  ripassa gli ordini creati da quella data senza toccare il segnalibro
+  del giro periodico.
+- Sugli ordini dei marketplace l'email di Shopify è un alias del relay:
+  per quei clienti la verifica passa di fatto dal CAP.
+- Gli ordini eBay arrivano come canale `shopify` (fonte dell'app eBay) e
+  l'agente li chiamerebbe "sito": da sistemare nel riconoscimento del
+  canale, non qui.
+
 ## Stato avanzamento
 
 | Fase | Stato | Note |
 |---|---|---|
 | 1 – Fondamenta | ✅ codice e test (05/10) | Da applicare 0030 e impostare il secret su Render |
-| 2 – Verifica cliente | ⬜ | |
+| 2 – Verifica cliente | ✅ codice e test (05/10) | Da applicare 0031, deploy, poi riallineamento ordini |
 | 3 – Stato ordine e tracking | ⬜ | API eventi BRT da chiarire |
 | 4 – Ticket | ⬜ | |
 | 5 – Post-call | ⬜ | |

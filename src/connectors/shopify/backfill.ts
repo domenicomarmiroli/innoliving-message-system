@@ -4,27 +4,20 @@ import type { Logger } from '../../logger.js'
 import { daGraphQL } from './normalize.js'
 import { creaFornitoreToken } from './token.js'
 import { upsertOrdine } from './upsert.js'
+import { accessoEmail, campiOrdine, erroreSoloEmail } from './campi.js'
 
 const API_VERSION = '2025-07'
 
-const QUERY = `
+function query(conEmail: boolean): string {
+  return `
 query Ordini($first: Int!, $after: String, $query: String) {
   orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT) {
     pageInfo { hasNextPage endCursor }
-    nodes {
-      id name sourceName sourceIdentifier tags createdAt
-      displayFinancialStatus displayFulfillmentStatus
-      currentTotalPriceSet { shopMoney { amount currencyCode } }
-      customAttributes { key value }
-      lineItems(first: 50) {
-        nodes { title quantity sku originalUnitPriceSet { shopMoney { amount } } image { url } }
-      }
-      fulfillments(first: 1) { trackingInfo { number url company } }
-      shippingAddress { name phone address1 address2 city province zip country }
-      billingAddress { name phone address1 address2 city province zip country }
+    nodes {${campiOrdine(conEmail)}
     }
   }
 }`
+}
 
 /**
  * Recupero storico degli ordini.
@@ -70,7 +63,7 @@ export async function backfillShopify(
         'X-Shopify-Access-Token': await dammiToken(),
       },
       body: JSON.stringify({
-        query: QUERY,
+        query: query(accessoEmail.disponibile),
         variables: {
           first: opts.pageSize ?? 50,
           after,
@@ -92,6 +85,14 @@ export async function backfillShopify(
     const body = (await risposta.json()) as {
       data?: { orders?: { pageInfo: { hasNextPage: boolean; endCursor: string }; nodes: unknown[] } }
       errors?: unknown
+    }
+    if (body.errors && accessoEmail.disponibile && erroreSoloEmail(body.errors)) {
+      accessoEmail.disponibile = false
+      log.warn(
+        { errori: body.errors },
+        "Shopify non concede il campo email all'app: ordini sincronizzati senza email (verifica telefonica solo col CAP)",
+      )
+      continue
     }
     if (body.errors) throw new Error(`GraphQL: ${JSON.stringify(body.errors)}`)
 

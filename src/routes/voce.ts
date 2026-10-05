@@ -1,9 +1,41 @@
 import { timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import { z } from 'zod'
 
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { registraChiamataVoce } from '../connectors/voce/registro.js'
+import {
+  cercaOrdiniPerRiferimento,
+  creaSessione,
+  marchioDaRaw,
+  tentativiEsauriti,
+} from '../connectors/voce/sessione.js'
+import {
+  confrontaCredenziali,
+  etichettaCanale,
+  nomeDiBattesimo,
+  riduciRiferimento,
+} from '../core/voce/verifica.js'
+
+const testoFacoltativo = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullable()
+    .optional()
+    .transform((v) => (v ? v : null))
+
+const corpoVerifica = z.object({
+  conversation_id: z.string().trim().min(1).max(200),
+  numero_ordine: z.string().trim().min(1).max(100),
+  email: testoFacoltativo(200),
+  cap: testoFacoltativo(20),
+  // Accettato ma non usato qui: ElevenLabs può mandarlo come variabile di
+  // sistema. Finisce solo nel registro, mascherato.
+  caller_number: z.string().max(50).nullable().optional(),
+})
 
 /**
  * Rotte per l'agente vocale (ElevenLabs Agents, "server tools").
@@ -87,6 +119,61 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
       esito: esiti.get(req) ?? null,
       latency_ms: Math.round(reply.elapsedTime),
     })
+  })
+
+  // --- Fase 2: verifica di chi chiama -------------------------------------
+  // Le risposte di dominio (ordine non trovato, dati sbagliati) sono 200
+  // con `verificato: false` e un motivo: l'agente le deve leggere e dire,
+  // non trattarle come un guasto. Un rifiuto non restituisce MAI dati
+  // dell'ordine, nemmeno il nome.
+  app.post('/voce/strumenti/verifica-cliente', async (req, reply) => {
+    const analizzato = corpoVerifica.safeParse(req.body)
+    if (!analizzato.success) {
+      impostaEsitoVoce(req, 'richiesta_non_valida')
+      return reply.code(400).send({
+        errore: 'richiesta_non_valida',
+        dettagli: analizzato.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+      })
+    }
+    const dati = analizzato.data
+
+    if (!dati.email && !dati.cap) {
+      // Non conta come tentativo: manca una domanda, non una risposta sbagliata.
+      impostaEsitoVoce(req, 'dati_mancanti')
+      return reply.send({ verificato: false, motivo: 'dati_mancanti' })
+    }
+
+    try {
+      if (await tentativiEsauriti(db, dati.conversation_id)) {
+        impostaEsitoVoce(req, 'troppi_tentativi')
+        return reply.send({ verificato: false, motivo: 'troppi_tentativi' })
+      }
+
+      const ordini = await cercaOrdiniPerRiferimento(db, riduciRiferimento(dati.numero_ordine))
+      const esito = confrontaCredenziali(ordini, { email: dati.email, cap: dati.cap })
+      if (!esito.ok) {
+        impostaEsitoVoce(req, esito.motivo)
+        return reply.send({ verificato: false, motivo: esito.motivo })
+      }
+
+      const ordine = ordini.find((o) => o.id === esito.ordine.id)!
+      const token = await creaSessione(db, dati.conversation_id, ordine.id)
+      impostaEsitoVoce(req, 'verificato')
+      return reply.send({
+        verificato: true,
+        session_token: token,
+        nome: nomeDiBattesimo(ordine.nome),
+        brand: marchioDaRaw(ordine.raw),
+        canale: etichettaCanale(ordine.channel, ordine.operator),
+      })
+    } catch (errore) {
+      req.log.error(
+        { err: errore instanceof Error ? errore.message : String(errore) },
+        'verifica cliente fallita',
+      )
+      impostaEsitoVoce(req, 'errore')
+      return reply.code(503).send({ errore: 'servizio_non_disponibile' })
+    }
   })
 
   app.get('/voce/health', async (req, reply) => {

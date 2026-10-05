@@ -1584,3 +1584,9 @@ nel worker (rotte `/voce/*`), non in Supabase Edge Functions. Fase 1
 pronta, 258 test verdi. **Da fare**: eseguire la 0030 su Supabase e
 impostare `ELEVENLABS_TOOL_SECRET` (min 32 caratteri) su Render.
 Prossima: fase 2, verifica cliente sulla tabella `order`.
+
+**Fase 2 (05/10)**: verifica del cliente pronta, 278 test verdi. Trovato
+che l'email degli ordini non veniva mai scaricata da Shopify e che il CAP
+manca sugli ordini anteriori alla 0013. **Ordine obbligato**: migrazione
+0031 → deploy → `npm run shopify:sync -- --creati-dal 2025-10-01` dalla
+Shell di Render. Aperto: ordini eBay riconosciuti come canale `shopify`.

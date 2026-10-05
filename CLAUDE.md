@@ -1646,3 +1646,16 @@ per ogni richiesta, rifiutate comprese, scritta dopo la risposta e con la
 richiesta passata da `core/voce/oscura.ts` (regola 8). Senza
 `ELEVENLABS_TOOL_SECRET` le rotte non esistono. Le rotte successive
 impostano l'esito di dominio con `impostaEsitoVoce()`.
+
+**Verifica del cliente (fase 2)**: `POST /voce/strumenti/verifica-cliente`.
+Il numero d'ordine si confronta ridotto a lettere e cifre
+(`core/voce/verifica.ts`), contro `external_order_id` e `shopify_name`;
+solo cifre = anche un nome del negozio fatto di lettere + quelle cifre (il
+prefisso non sta nel codice). Basta email OPPURE CAP. Un rifiuto non
+restituisce dati dell'ordine. Il token (30 minuti, un solo ordine) si
+salva solo come impronta in `voice_session`; le fasi successive ricavano
+l'ordine SOLO da lì (`ordineDellaSessione()`), mai da un numero passato
+dall'agente. `order.email` (migrazione 0031) viene da
+`connectors/shopify/campi.ts`, la lista di campi ora condivisa fra
+backfill e giro periodico: se Shopify nega il campo email, si riprova
+senza e la sincronizzazione continua.

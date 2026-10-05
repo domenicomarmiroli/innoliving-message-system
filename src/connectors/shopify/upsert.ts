@@ -69,12 +69,12 @@ export async function upsertOrdine(
         channel, external_order_id, shopify_gid, shopify_name, operator, buyer_alias,
         placed_at, financial_status, fulfillment_status,
         tracking_number, tracking_url, carrier, total, currency,
-        shipping_address, billing_address, raw
+        email, shipping_address, billing_address, raw
       ) values (
         ${o.channel}, ${o.external_order_id}, ${o.shopify_gid}, ${o.shopify_name},
         ${o.operator}, ${o.buyer_alias}, ${o.placed_at}, ${o.financial_status},
         ${o.fulfillment_status}, ${o.tracking_number}, ${o.tracking_url}, ${o.carrier},
-        ${o.total}, ${o.currency},
+        ${o.total}, ${o.currency}, ${o.email},
         ${o.shipping_address ? tx.json(o.shipping_address as never) : null},
         ${o.billing_address ? tx.json(o.billing_address as never) : null},
         ${tx.json(o.raw as never)}
@@ -93,6 +93,7 @@ export async function upsertOrdine(
         carrier            = coalesce(excluded.carrier, "order".carrier),
         total              = excluded.total,
         currency           = excluded.currency,
+        email              = coalesce(excluded.email, "order".email),
         shipping_address   = coalesce(excluded.shipping_address, "order".shipping_address),
         billing_address    = coalesce(excluded.billing_address, "order".billing_address),
         raw                = excluded.raw,

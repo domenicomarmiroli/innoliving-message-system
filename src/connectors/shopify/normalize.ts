@@ -59,6 +59,11 @@ export interface OrdineCanonico {
   currency: string | null
   /** Ordine di servizio (ricambio, garanzia): non è una vendita. */
   is_service_order: boolean
+  /**
+   * Email dell'ordine, come la dà Shopify. Sugli ordini dei marketplace è
+   * di solito un alias del relay, non quella che il cliente conosce.
+   */
+  email: string | null
   shipping_address: IndirizzoCanonico | null
   billing_address: IndirizzoCanonico | null
   righe: RigaCanonica[]
@@ -81,6 +86,7 @@ interface Grezzo {
   tracking_number: string | null
   tracking_url: string | null
   carrier: string | null
+  email: string | null
   shipping_address: IndirizzoCanonico | null
   billing_address: IndirizzoCanonico | null
   righe: RigaCanonica[]
@@ -215,6 +221,7 @@ function componi(g: Grezzo): OrdineCanonico {
     total: g.total,
     currency: g.currency,
     is_service_order: isServizio(g.tags),
+    email: g.email,
     shipping_address: g.shipping_address,
     billing_address: g.billing_address,
     righe: g.righe,
@@ -269,6 +276,7 @@ export function daWebhook(payload: Record<string, unknown>): OrdineCanonico {
     tracking_number: str(primo['tracking_number']),
     tracking_url: str(primo['tracking_url']),
     carrier: str(primo['tracking_company']),
+    email: str(payload['email']) ?? str(payload['contact_email']),
     shipping_address: estraiIndirizzo(payload['shipping_address'] as Record<string, unknown> | null),
     billing_address: estraiIndirizzo(payload['billing_address'] as Record<string, unknown> | null),
     righe,
@@ -312,6 +320,7 @@ export function daGraphQL(node: Record<string, any>): OrdineCanonico {
     tracking_number: str(tracking.number),
     tracking_url: str(tracking.url),
     carrier: str(tracking.company),
+    email: str(node.email),
     shipping_address: estraiIndirizzo(node.shippingAddress),
     billing_address: estraiIndirizzo(node.billingAddress),
     righe,

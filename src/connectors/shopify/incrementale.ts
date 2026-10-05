@@ -4,6 +4,7 @@ import type { Logger } from '../../logger.js'
 import { daGraphQL } from './normalize.js'
 import { creaFornitoreToken } from './token.js'
 import { upsertOrdine } from './upsert.js'
+import { accessoEmail, campiOrdine, erroreSoloEmail } from './campi.js'
 
 const API_VERSION = '2025-07'
 
@@ -23,24 +24,16 @@ const API_VERSION = '2025-07'
  * esattamente il dato che serve a rispondere "dov'è il mio pacco".
  */
 
-const QUERY = `
+function query(conEmail: boolean): string {
+  return `
 query OrdiniAggiornati($first: Int!, $after: String, $query: String) {
   orders(first: $first, after: $after, query: $query, sortKey: UPDATED_AT) {
     pageInfo { hasNextPage endCursor }
-    nodes {
-      id name sourceName sourceIdentifier tags createdAt updatedAt
-      displayFinancialStatus displayFulfillmentStatus
-      currentTotalPriceSet { shopMoney { amount currencyCode } }
-      customAttributes { key value }
-      lineItems(first: 50) {
-        nodes { title quantity sku originalUnitPriceSet { shopMoney { amount } } image { url } }
-      }
-      fulfillments(first: 1) { trackingInfo { number url company } }
-      shippingAddress { name phone address1 address2 city province zip country }
-      billingAddress { name phone address1 address2 city province zip country }
+    nodes {${campiOrdine(conEmail)}
     }
   }
 }`
+}
 
 /**
  * Quanto si arretra rispetto all'inizio del giro precedente.
@@ -62,17 +55,33 @@ export interface EsitoIncrementale {
   da: string
 }
 
+/**
+ * `creatiDal`: riallineamento a mano degli ordini CREATI da una data, a
+ * prescindere da quando sono cambiati — serve quando si aggiunge un campo
+ * alla query (indirizzi, email) e gli ordini già in archivio vanno
+ * ripassati. In questo modo il segnalibro del giro periodico non si
+ * tocca: è un passaggio in più, non un cambio di rotta.
+ */
+export interface OpzioniIncrementale {
+  creatiDal?: string
+  pagineMax?: number
+}
+
 export async function sincronizzaOrdiniShopify(
   db: Db,
   log: Logger,
   config: Config,
+  opzioni: OpzioniIncrementale = {},
 ): Promise<EsitoIncrementale> {
   if (!config.SHOPIFY_SHOP) {
     throw new Error('SHOPIFY_SHOP non configurato: allineamento ordini saltato')
   }
 
   const inizioGiro = new Date()
-  const da = await leggiSegnalibro(db)
+  const manuale = opzioni.creatiDal !== undefined
+  const da = opzioni.creatiDal ?? (await leggiSegnalibro(db))
+  const filtro = manuale ? `created_at:>='${da}'` : `updated_at:>='${da}'`
+  const pagineMax = opzioni.pagineMax ?? PAGINE_MAX
   const dammiToken = creaFornitoreToken(config, log)
   const url = `https://${config.SHOPIFY_SHOP}/admin/api/${API_VERSION}/graphql.json`
 
@@ -88,8 +97,8 @@ export async function sincronizzaOrdiniShopify(
         'X-Shopify-Access-Token': await dammiToken(),
       },
       body: JSON.stringify({
-        query: QUERY,
-        variables: { first: 50, after, query: `updated_at:>='${da}'` },
+        query: query(accessoEmail.disponibile),
+        variables: { first: 50, after, query: filtro },
       }),
     })
 
@@ -111,6 +120,14 @@ export async function sincronizzaOrdiniShopify(
       }
       errors?: unknown
     }
+    if (body.errors && accessoEmail.disponibile && erroreSoloEmail(body.errors)) {
+      accessoEmail.disponibile = false
+      log.warn(
+        { errori: body.errors },
+        "Shopify non concede il campo email all'app: ordini sincronizzati senza email (verifica telefonica solo col CAP)",
+      )
+      continue
+    }
     if (body.errors) throw new Error(`GraphQL: ${JSON.stringify(body.errors)}`)
 
     const page = body.data?.orders
@@ -126,7 +143,7 @@ export async function sincronizzaOrdiniShopify(
     after = page.pageInfo.endCursor
 
     if (!page.pageInfo.hasNextPage) break
-    if (esito.pagine >= PAGINE_MAX) {
+    if (esito.pagine >= pagineMax) {
       // Un limite silenzioso si legge come "ho finito" quando non è vero.
       log.warn(
         { pagine: esito.pagine },
@@ -138,7 +155,9 @@ export async function sincronizzaOrdiniShopify(
     }
   }
 
-  // Il segnalibro si sposta solo se il giro è arrivato in fondo.
+  // Il segnalibro si sposta solo se il giro è arrivato in fondo, e mai
+  // per un riallineamento manuale.
+  if (manuale) return esito
   await salvaSegnalibro(db, new Date(inizioGiro.getTime() - SOVRAPPOSIZIONE_MS))
   return esito
 }
