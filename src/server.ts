@@ -11,6 +11,7 @@ import { draftRoutes } from './routes/draft.js'
 import { traduzioneRoutes } from './routes/traduzione.js'
 import { knowledgeRoutes } from './routes/knowledge.js'
 import { contattiRoutes } from './routes/contatti.js'
+import { voceRoutes } from './routes/voce.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
 import { avviaPolling } from './connectors/mail/poll.js'
 import { avviaPollingGraph } from './connectors/graph/poll.js'
@@ -51,6 +52,9 @@ export async function buildServer(config: Config) {
   await app.register(traduzioneRoutes, { db, config })
   await app.register(knowledgeRoutes, { db, config })
   await app.register(contattiRoutes, { db, config })
+  // Plugin incapsulato: i suoi hook (secret obbligatorio, registro in
+  // voice_log) valgono solo per le rotte /voce/*.
+  await app.register(voceRoutes, { db, config })
 
   // La casella si legge chiedendo, non aspettando: IMAP non ha notifiche.
   // Se le credenziali mancano il ciclo non parte e il resto funziona

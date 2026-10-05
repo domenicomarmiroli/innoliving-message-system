@@ -1634,3 +1634,15 @@ crescenti (2048 → 1024 px, JPEG); i PDF non si toccano e se non basta
 l'errore dice quanto pesa e cosa fare. `invia.ts` e `collega.ts`
 registrano il file davvero spedito, non quello scelto. Corretto anche il
 controllo del limite, che misurava il MIME grezzo invece del base64.
+
+### Agente vocale ElevenLabs (migrazione 0030, 05/10)
+Piano completo, decisioni e stato in `docs/elevenlabs/INTEGRAZIONE.md`.
+Il middleware sta qui (rotte `/voce/*`, `src/routes/voce.ts`), non in
+Edge Functions: gli ordini di tutti i canali sono già nella tabella
+`order` e il ticket si apre nel nostro database. Due regole sono in hook
+del plugin, così nessuna rotta futura le salta: `x-voice-secret`
+obbligatorio (401, confronto a tempo costante) e una riga in `voice_log`
+per ogni richiesta, rifiutate comprese, scritta dopo la risposta e con la
+richiesta passata da `core/voce/oscura.ts` (regola 8). Senza
+`ELEVENLABS_TOOL_SECRET` le rotte non esistono. Le rotte successive
+impostano l'esito di dominio con `impostaEsitoVoce()`.

@@ -77,6 +77,11 @@ const schema = z.object({
   // nell'URL: questo token autentica il chiamante, non sceglie il brand.
   CONTATTO_TOKEN: z.string().min(16).optional(),
 
+  // --- Agente vocale ElevenLabs (rotte /voce/*) -------------------------
+  // Secret condiviso che ElevenLabs manda nell'header `x-voice-secret` a
+  // ogni chiamata di uno strumento. Senza, le rotte non vengono registrate.
+  ELEVENLABS_TOOL_SECRET: z.string().min(32).optional(),
+
   // Per verificare la sessione di un agente loggato in Lovable: il
   // worker chiede a Supabase Auth di chi è il token, senza mai tenere un
   // segreto condiviso col browser. Stessi valori — non sensibili, sono

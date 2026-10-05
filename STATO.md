@@ -1573,3 +1573,14 @@ un ciclo indipendente dalla casella.
 nel ticket collegato, pubblicati. Lato worker, riduzione automatica
 delle foto per stare nel limite di 4 MB di Graph (246 test verdi).
 Verificato solo il codice: da provare su un ticket reale con foto.
+
+---
+
+## Agente vocale ElevenLabs — fase 1 — 05/10
+
+Piano adattato e stato avanzamento in `docs/elevenlabs/INTEGRAZIONE.md`
+(è quello da aggiornare, non la copia originale nei Download). Middleware
+nel worker (rotte `/voce/*`), non in Supabase Edge Functions. Fase 1
+pronta, 258 test verdi. **Da fare**: eseguire la 0030 su Supabase e
+impostare `ELEVENLABS_TOOL_SECRET` (min 32 caratteri) su Render.
+Prossima: fase 2, verifica cliente sulla tabella `order`.

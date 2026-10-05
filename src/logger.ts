@@ -5,7 +5,13 @@ export const logger = pino({
   base: { service: 'hub-messaggi-worker' },
   // Nessun dato personale nei log: aggiungere qui ogni campo sensibile.
   redact: {
-    paths: ['req.headers.authorization', 'req.headers.cookie', '*.iban', '*.secret_ref'],
+    paths: [
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'req.headers["x-voice-secret"]',
+      '*.iban',
+      '*.secret_ref',
+    ],
     censor: '[oscurato]',
   },
 })
