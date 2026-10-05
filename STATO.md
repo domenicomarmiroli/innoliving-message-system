@@ -1597,3 +1597,11 @@ ordini Amazon non hanno tracking su Shopify e che 782 ordini con fonte
 7 giorni viene dichiarato `sconosciuto`. Da chiedere a Domenico: come
 vengono spediti gli ordini Amazon (FBA?) e se c'è accesso al web service
 BRT.
+
+**Fase 4 + configurazione (05/10)**: apertura ticket dal telefono e
+numero breve per tutti i ticket (`thread.numero`, migrazione 0032 — da
+eseguire PRIMA del deploy). Guida per il pannello ElevenLabs in
+`docs/elevenlabs/CONFIGURAZIONE.md`. Domenico: tracking Amazon e ordini
+"non evasi" si sistemeranno col nuovo gestionale; eventi di consegna più
+avanti (BRT o Qapla'). **Lato Lovable da fare**: mostrare `thread.numero`
+nella lista e nel dettaglio del ticket, e renderlo cercabile.

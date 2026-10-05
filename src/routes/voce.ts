@@ -6,6 +6,7 @@ import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { registraChiamataVoce } from '../connectors/voce/registro.js'
 import { statoDellOrdine } from '../connectors/voce/ordine.js'
+import { apriTicketVoce } from '../connectors/voce/ticket.js'
 import {
   cercaOrdiniPerRiferimento,
   creaSessione,
@@ -88,6 +89,27 @@ function conversationIdDi(req: FastifyRequest): string | null {
   const v = daCorpo ?? daQuery ?? daHeader
   return typeof v === 'string' && v.trim() ? v.trim().slice(0, 200) : null
 }
+
+// ElevenLabs passa le variabili dinamiche non ancora valorizzate come
+// stringa vuota o col segnaposto letterale: per noi valgono "assente".
+const tokenFacoltativo = z
+  .string()
+  .max(200)
+  .nullable()
+  .optional()
+  .transform((v) => (v && v.trim() && !v.includes('{{') ? v.trim() : null))
+
+const corpoTicket = z.object({
+  conversation_id: z.string().trim().min(1).max(200),
+  session_token: tokenFacoltativo,
+  categoria: z.enum(['spedizione', 'difetto_prodotto', 'reso', 'garanzia', 'info', 'altro']).default('altro'),
+  priorita: z.enum(['normale', 'alta']).default('normale'),
+  descrizione: z.string().trim().min(1).max(5000),
+  prodotto: testoFacoltativo(300),
+  nome: testoFacoltativo(200),
+  contatto_richiamata: z.string().trim().min(3).max(200),
+  caller_number: tokenFacoltativo,
+})
 
 const corpoSessione = z.object({
   conversation_id: z.string().trim().min(1).max(200),
@@ -229,6 +251,52 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
       return reply.send(risposta.corpo)
     } catch (errore) {
       return guasto(req, reply, errore, 'stato ordine fallito')
+    }
+  })
+
+  // --- Fase 4: apertura ticket ------------------------------------------------
+  // Funziona anche senza verifica (il cliente può avere un problema che non
+  // riguarda un ordine, o non ricordarne il numero): in quel caso il
+  // ticket nasce senza ordine e lo dice. Un token non valido non blocca:
+  // vale come "non verificato", perché perdere la richiesta del cliente
+  // sarebbe peggio.
+  app.post('/voce/strumenti/crea-ticket', async (req, reply) => {
+    const analizzato = corpoTicket.safeParse(req.body)
+    if (!analizzato.success) return richiestaNonValida(req, reply, analizzato.error)
+    const dati = analizzato.data
+
+    try {
+      const risposta = await entroLimite(async () => {
+        const orderId = dati.session_token ? await ordineDellaSessione(db, dati.session_token) : null
+        const [ordine] = orderId
+          ? await db<{ riferimento: string }[]>`
+              select coalesce(shopify_name, external_order_id) as riferimento from "order" where id = ${orderId}
+            `
+          : []
+        const ticket = await apriTicketVoce(db, config, {
+          conversation_id: dati.conversation_id,
+          order_id: orderId,
+          riferimento_ordine: ordine?.riferimento ?? null,
+          categoria: dati.categoria,
+          priorita: dati.priorita,
+          descrizione: dati.descrizione,
+          prodotto: dati.prodotto,
+          nome: dati.nome,
+          contatto_richiamata: dati.contatto_richiamata,
+          numero_chiamante: dati.caller_number,
+        })
+        return {
+          esito: ticket.nuovo ? 'ticket_aperto' : 'ticket_aggiornato',
+          corpo: {
+            ticket_numero: String(ticket.numero),
+            messaggio: `Ticket ${ticket.numero} ${ticket.nuovo ? 'aperto' : 'aggiornato'}`,
+          },
+        }
+      })
+      impostaEsitoVoce(req, risposta.esito)
+      return reply.send(risposta.corpo)
+    } catch (errore) {
+      return guasto(req, reply, errore, 'apertura ticket telefonico fallita')
     }
   })
 

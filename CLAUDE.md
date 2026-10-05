@@ -1659,3 +1659,13 @@ dall'agente. `order.email` (migrazione 0031) viene da
 `connectors/shopify/campi.ts`, la lista di campi ora condivisa fra
 backfill e giro periodico: se Shopify nega il campo email, si riprova
 senza e la sincronizzazione continua.
+
+**Stato ordine e ticket (fasi 3-4)**: `stato-ordine` ricava l'ordine solo
+dalla sessione; un ordine "pagato e non evaso" da più di
+`GIORNI_PREPARAZIONE_CREDIBILI` (7) giorni è `sconosciuto`, perché sui
+dati veri centinaia di ordini Amazon restano non evasi su Shopify pur
+essendo spediti. `crea-ticket` apre un thread sul canale `telefono`
+(migrazione 0032), uno per `conversation_id`; l'email del cliente va in
+`raw.from` così la risposta passa dal normale `inviaRisposta()`.
+`thread.numero` (0032) è il numero breve di ogni ticket, assegnato dal
+default della colonna: nessun codice lo calcola.

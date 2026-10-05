@@ -165,17 +165,39 @@ oltre il quale risponde `servizio_non_disponibile` (503).
   sugli ordini già in archivio compaiono dopo un nuovo
   `npm run shopify:sync -- --creati-dal …`.
 
+## Fase 4 — apertura ticket
+
+`POST /voce/strumenti/crea-ticket` → `{ "ticket_numero": "10234", "messaggio": "Ticket 10234 aperto" }`.
+
+- Nuovo canale `telefono` (account `telefono-ai`, SLA 8 ore; 4 ore se
+  priorità alta) e **numero breve per tutti i ticket** (`thread.numero`,
+  da 10001, assegnato dal database): migrazione 0032.
+- Un ticket per telefonata (`external_thread_id` = `conversation_id`): una
+  seconda chiamata allo strumento aggiunge un messaggio, non un ticket.
+- Funziona anche senza verifica; con la verifica il ticket è legato
+  all'ordine e l'oggetto lo cita.
+- Tag: `telefono`, la categoria tradotta nella tassonomia esistente
+  (`prodotto-difettoso`, `reso`…) e `priorita-alta` se serve.
+- Se il contatto è un'email va in `raw.from`: l'operatore risponde dal
+  ticket per email (dalla casella Microsoft se configurata). Con il solo
+  telefono, la risposta è una richiamata (fase 5b).
+
+Configurazione su ElevenLabs: [CONFIGURAZIONE.md](CONFIGURAZIONE.md), prompt
+in [system-prompt.md](system-prompt.md). Il `session_token` passa da uno
+strumento all'altro come variabile dinamica assegnata dalla risposta: il
+modello non lo vede mai.
+
 ## Stato avanzamento
 
 | Fase | Stato | Note |
 |---|---|---|
 | 1 – Fondamenta | ✅ codice e test (05/10) | Da applicare 0030 e impostare il secret su Render |
-| 2 – Verifica cliente | ✅ codice e test (05/10) | Da applicare 0031, deploy, poi riallineamento ordini |
-| 3 – Stato ordine e tracking | 🟡 stato ordine fatto (05/10) | Eventi di consegna: serve il web service BRT. Ordini Amazon: da chiarire come vengono evasi |
-| 4 – Ticket | ⬜ | |
+| 2 – Verifica cliente | ✅ in produzione (05/10) | Ordini da ottobre 2025 riallineati: 3.919 con email |
+| 3 – Stato ordine e tracking | 🟡 stato ordine fatto (05/10) | Eventi di consegna: BRT o un servizio tipo Qapla', più avanti. Tracking Amazon: arriverà col nuovo gestionale |
+| 4 – Ticket | ✅ codice e test (05/10) | Migrazione 0032 da applicare prima del deploy |
 | 5 – Post-call | ⬜ | |
 | 5b – Richiamata vocale | ⬜ | Dopo la fase 7 per il collaudo |
-| 6 – Config agente | ⬜ | |
+| 6 – Config agente | 🟡 guida e prompt pronti (05/10) | Da configurare nel pannello ElevenLabs e provare nel simulatore |
 | 7 – Telefonia | ⏸ | Dopo i test nel simulatore |
 | 8 – Test e pilota | ⬜ | |
 | 9 – Estensioni | ⬜ | |
