@@ -12,14 +12,14 @@
  */
 export function campiOrdine(conEmail: boolean): string {
   return `
-      id name sourceName sourceIdentifier tags createdAt updatedAt${conEmail ? ' email' : ''}
+      id name sourceName sourceIdentifier tags createdAt updatedAt cancelledAt${conEmail ? ' email' : ''}
       displayFinancialStatus displayFulfillmentStatus
       currentTotalPriceSet { shopMoney { amount currencyCode } }
       customAttributes { key value }
       lineItems(first: 50) {
         nodes { title quantity sku originalUnitPriceSet { shopMoney { amount } } image { url } }
       }
-      fulfillments(first: 1) { trackingInfo { number url company } }
+      fulfillments(first: 1) { createdAt trackingInfo { number url company } }
       shippingAddress { name phone address1 address2 city province zip country }
       billingAddress { name phone address1 address2 city province zip country }`
 }

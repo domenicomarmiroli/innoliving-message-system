@@ -1590,3 +1590,10 @@ che l'email degli ordini non veniva mai scaricata da Shopify e che il CAP
 manca sugli ordini anteriori alla 0013. **Ordine obbligato**: migrazione
 0031 → deploy → `npm run shopify:sync -- --creati-dal 2025-10-01` dalla
 Shell di Render. Aperto: ordini eBay riconosciuti come canale `shopify`.
+
+**Fase 3 (05/10)**: stato ordine pronto (296 test). Trovato che gli
+ordini Amazon non hanno tracking su Shopify e che 782 ordini con fonte
+`amazon` restano "non evasi" per settimane: un ordine non evaso da più di
+7 giorni viene dichiarato `sconosciuto`. Da chiedere a Domenico: come
+vengono spediti gli ordini Amazon (FBA?) e se c'è accesso al web service
+BRT.

@@ -117,13 +117,61 @@ Risposte (sempre 200, tranne input malformato 400 e guasto 503):
   l'agente li chiamerebbe "sito": da sistemare nel riconoscimento del
   canale, non qui.
 
+## Fase 3 — stato dell'ordine
+
+`POST /voce/strumenti/stato-ordine` con `{ conversation_id, session_token }`.
+**Non accetta un numero d'ordine**: l'ordine viene solo dalla sessione
+della verifica.
+
+```json
+{
+  "stato": "spedito", "spedizione_parziale": false, "canale": "sito",
+  "data_ordine": "28 settembre", "data_spedizione": "30 settembre",
+  "corriere": "BRT", "tracking_disponibile": true, "numero_tracking": "…",
+  "articoli": ["Stufa X (1 pezzo)"],
+  "reso_richiesto_il": null, "rimborso": null
+}
+```
+
+Sessione scaduta o inventata → `{ "errore": "sessione_non_valida" }`:
+l'agente rifà la verifica. Ogni strumento ha un limite di 3,5 secondi,
+oltre il quale risponde `servizio_non_disponibile` (503).
+
+**Cosa dicono i dati veri (05/10, ultimi 60 giorni)**
+
+| Canale | Ordini | Con tracking |
+|---|---|---|
+| Amazon | 2.483 | 0 |
+| Sito | 93 | 72 (BRT, GLS) |
+| MediaWorld | 82 | 75 (BRT) |
+| TikTok | 47 | 45 (BRT) |
+| eBay | 28 | 23 (BRT) |
+
+- **Nessun evento di consegna** arriva su Shopify (niente "in transito",
+  "consegnato"): lo stato `consegnato` esiste ma oggi non viene mai
+  prodotto. Per giacenze e consegne serve il web service BRT.
+- **782 ordini Amazon con fonte `amazon`** (distinta da `amazon-it`)
+  restano "non evasi" su Shopify anche dopo settimane: 595 hanno più di
+  10 giorni. Probabilmente spediti da Amazon (FBA) senza aggiornare
+  Shopify. Per non far dire "in preparazione" a chi ha già ricevuto il
+  pacco, un ordine non evaso da più di **7 giorni** diventa `sconosciuto`
+  (`GIORNI_PREPARAZIONE_CREDIBILI` in `core/voce/stato.ts`) e l'agente
+  apre un ticket. Da chiarire con Domenico come vengono evasi gli ordini
+  Amazon, per dire la cosa giusta a quei clienti.
+- Ordini Leroy Merlin con corriere "Amazon Logistics US": quasi certamente
+  un valore sbagliato nell'integrazione, non il corriere vero.
+- La data di spedizione e l'annullamento vengono dai campi
+  `fulfillments.createdAt` e `cancelledAt`, aggiunti alla query il 05/10:
+  sugli ordini già in archivio compaiono dopo un nuovo
+  `npm run shopify:sync -- --creati-dal …`.
+
 ## Stato avanzamento
 
 | Fase | Stato | Note |
 |---|---|---|
 | 1 – Fondamenta | ✅ codice e test (05/10) | Da applicare 0030 e impostare il secret su Render |
 | 2 – Verifica cliente | ✅ codice e test (05/10) | Da applicare 0031, deploy, poi riallineamento ordini |
-| 3 – Stato ordine e tracking | ⬜ | API eventi BRT da chiarire |
+| 3 – Stato ordine e tracking | 🟡 stato ordine fatto (05/10) | Eventi di consegna: serve il web service BRT. Ordini Amazon: da chiarire come vengono evasi |
 | 4 – Ticket | ⬜ | |
 | 5 – Post-call | ⬜ | |
 | 5b – Richiamata vocale | ⬜ | Dopo la fase 7 per il collaudo |

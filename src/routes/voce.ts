@@ -1,14 +1,16 @@
 import { timingSafeEqual } from 'node:crypto'
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { registraChiamataVoce } from '../connectors/voce/registro.js'
+import { statoDellOrdine } from '../connectors/voce/ordine.js'
 import {
   cercaOrdiniPerRiferimento,
   creaSessione,
   marchioDaRaw,
+  ordineDellaSessione,
   tentativiEsauriti,
 } from '../connectors/voce/sessione.js'
 import {
@@ -87,6 +89,44 @@ function conversationIdDi(req: FastifyRequest): string | null {
   return typeof v === 'string' && v.trim() ? v.trim().slice(0, 200) : null
 }
 
+const corpoSessione = z.object({
+  conversation_id: z.string().trim().min(1).max(200),
+  session_token: z.string().trim().min(1).max(200),
+})
+
+/**
+ * Oltre questo tempo l'agente riceve "servizio non disponibile" invece di
+ * lasciare il cliente in silenzio al telefono: la regola del documento è
+ * 4 secondi per strumento, qui c'è il margine per la rete.
+ */
+export const LIMITE_MS = 3500
+
+export async function entroLimite<T>(lavoro: () => Promise<T>, ms = LIMITE_MS): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  const scadenza = new Promise<never>((_, rifiuta) => {
+    timer = setTimeout(() => rifiuta(new Error(`nessuna risposta entro ${ms} ms`)), ms)
+  })
+  try {
+    return await Promise.race([lavoro(), scadenza])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function richiestaNonValida(req: FastifyRequest, reply: FastifyReply, errore: z.ZodError) {
+  impostaEsitoVoce(req, 'richiesta_non_valida')
+  return reply.code(400).send({
+    errore: 'richiesta_non_valida',
+    dettagli: errore.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+  })
+}
+
+function guasto(req: FastifyRequest, reply: FastifyReply, errore: unknown, messaggio: string) {
+  req.log.error({ err: errore instanceof Error ? errore.message : String(errore) }, messaggio)
+  impostaEsitoVoce(req, 'errore')
+  return reply.code(503).send({ errore: 'servizio_non_disponibile' })
+}
+
 export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: Config }) {
   const { db, config } = opts
 
@@ -128,13 +168,7 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
   // dell'ordine, nemmeno il nome.
   app.post('/voce/strumenti/verifica-cliente', async (req, reply) => {
     const analizzato = corpoVerifica.safeParse(req.body)
-    if (!analizzato.success) {
-      impostaEsitoVoce(req, 'richiesta_non_valida')
-      return reply.code(400).send({
-        errore: 'richiesta_non_valida',
-        dettagli: analizzato.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
-      })
-    }
+    if (!analizzato.success) return richiestaNonValida(req, reply, analizzato.error)
     const dati = analizzato.data
 
     if (!dati.email && !dati.cap) {
@@ -144,35 +178,57 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
     }
 
     try {
-      if (await tentativiEsauriti(db, dati.conversation_id)) {
-        impostaEsitoVoce(req, 'troppi_tentativi')
-        return reply.send({ verificato: false, motivo: 'troppi_tentativi' })
-      }
+      const risposta = await entroLimite(async () => {
+        if (await tentativiEsauriti(db, dati.conversation_id)) {
+          return { esito: 'troppi_tentativi', corpo: { verificato: false, motivo: 'troppi_tentativi' } }
+        }
 
-      const ordini = await cercaOrdiniPerRiferimento(db, riduciRiferimento(dati.numero_ordine))
-      const esito = confrontaCredenziali(ordini, { email: dati.email, cap: dati.cap })
-      if (!esito.ok) {
-        impostaEsitoVoce(req, esito.motivo)
-        return reply.send({ verificato: false, motivo: esito.motivo })
-      }
+        const ordini = await cercaOrdiniPerRiferimento(db, riduciRiferimento(dati.numero_ordine))
+        const esito = confrontaCredenziali(ordini, { email: dati.email, cap: dati.cap })
+        if (!esito.ok) {
+          return { esito: esito.motivo, corpo: { verificato: false, motivo: esito.motivo } }
+        }
 
-      const ordine = ordini.find((o) => o.id === esito.ordine.id)!
-      const token = await creaSessione(db, dati.conversation_id, ordine.id)
-      impostaEsitoVoce(req, 'verificato')
-      return reply.send({
-        verificato: true,
-        session_token: token,
-        nome: nomeDiBattesimo(ordine.nome),
-        brand: marchioDaRaw(ordine.raw),
-        canale: etichettaCanale(ordine.channel, ordine.operator),
+        const ordine = ordini.find((o) => o.id === esito.ordine.id)!
+        const token = await creaSessione(db, dati.conversation_id, ordine.id)
+        return {
+          esito: 'verificato',
+          corpo: {
+            verificato: true,
+            session_token: token,
+            nome: nomeDiBattesimo(ordine.nome),
+            brand: marchioDaRaw(ordine.raw),
+            canale: etichettaCanale(ordine.channel, ordine.operator),
+          },
+        }
       })
+      impostaEsitoVoce(req, risposta.esito)
+      return reply.send(risposta.corpo)
     } catch (errore) {
-      req.log.error(
-        { err: errore instanceof Error ? errore.message : String(errore) },
-        'verifica cliente fallita',
-      )
-      impostaEsitoVoce(req, 'errore')
-      return reply.code(503).send({ errore: 'servizio_non_disponibile' })
+      return guasto(req, reply, errore, 'verifica cliente fallita')
+    }
+  })
+
+  // --- Fase 3: stato dell'ordine verificato --------------------------------
+  // L'ordine si ricava SOLO dal token della verifica: questo strumento non
+  // accetta un numero d'ordine, così l'agente non può chiedere di un
+  // ordine diverso da quello di chi ha superato la verifica.
+  app.post('/voce/strumenti/stato-ordine', async (req, reply) => {
+    const analizzato = corpoSessione.safeParse(req.body)
+    if (!analizzato.success) return richiestaNonValida(req, reply, analizzato.error)
+
+    try {
+      const risposta = await entroLimite(async () => {
+        const orderId = await ordineDellaSessione(db, analizzato.data.session_token)
+        if (!orderId) return { esito: 'sessione_non_valida', corpo: { errore: 'sessione_non_valida' } }
+        const stato = await statoDellOrdine(db, orderId)
+        if (!stato) return { esito: 'ordine_non_trovato', corpo: { errore: 'ordine_non_trovato' } }
+        return { esito: stato.stato, corpo: stato }
+      })
+      impostaEsitoVoce(req, risposta.esito)
+      return reply.send(risposta.corpo)
+    } catch (errore) {
+      return guasto(req, reply, errore, 'stato ordine fallito')
     }
   })
 
