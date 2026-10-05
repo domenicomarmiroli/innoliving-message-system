@@ -87,6 +87,20 @@ export function confrontaCredenziali(ordini: OrdineDaVerificare[], c: Credenzial
   return { ok: false, motivo: verificabile ? 'dati_non_corrispondenti' : 'dati_non_disponibili' }
 }
 
+/**
+ * Verifica senza numero d'ordine: fra gli ordini trovati per email (già
+ * dal più recente) vale il primo il cui CAP di spedizione corrisponde.
+ * Qui due ordini con gli stessi dati non sono un'ambiguità: è lo stesso
+ * cliente, e si parla dell'ultimo acquisto.
+ */
+export function ordineRecenteConCap(ordini: OrdineDaVerificare[], cap: string): EsitoConfronto {
+  if (ordini.length === 0) return { ok: false, motivo: 'ordine_non_trovato' }
+  const c = riduciCap(cap)
+  const trovato = ordini.find((o) => o.cap !== null && riduciCap(o.cap) === c)
+  if (trovato) return { ok: true, ordine: trovato }
+  return { ok: false, motivo: ordini.some((o) => o.cap !== null) ? 'dati_non_corrispondenti' : 'dati_non_disponibili' }
+}
+
 /** Solo il nome di battesimo, per salutare: mai il cognome al telefono. */
 export function nomeDiBattesimo(nomeCompleto: string | null | undefined): string | null {
   const primo = nomeCompleto?.trim().split(/\s+/)[0]

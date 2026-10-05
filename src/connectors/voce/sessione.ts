@@ -19,6 +19,9 @@ export interface OrdineTrovato {
   email: string | null
   cap: string | null
   nome: string | null
+  /** Il numero che il cliente conosce: quello del marketplace, o quello del negozio per il sito. */
+  riferimento: string
+  placed_at: Date | null
   raw: unknown
 }
 
@@ -40,7 +43,9 @@ export async function cercaOrdiniPerRiferimento(db: Db, ridotto: string): Promis
     select id, channel, operator, email,
            shipping_address->>'cap' as cap,
            shipping_address->>'nome' as nome,
-           raw
+           case when channel = 'shopify' then coalesce(shopify_name, external_order_id)
+                else external_order_id end as riferimento,
+           placed_at, raw
     from "order"
     where regexp_replace(upper(external_order_id), '[^A-Z0-9]', '', 'g') = ${ridotto}
        or regexp_replace(upper(coalesce(shopify_name, '')), '[^A-Z0-9]', '', 'g') = ${ridotto}
@@ -48,6 +53,27 @@ export async function cercaOrdiniPerRiferimento(db: Db, ridotto: string): Promis
            and regexp_replace(upper(coalesce(shopify_name, '')), '[^A-Z0-9]', '', 'g') ~ ${prefissoLettere}::text)
     order by placed_at desc nulls last
     limit 5
+  `
+}
+
+/**
+ * Il cliente del sito che non ha il numero d'ordine: gli ordini con quella
+ * email, dal più recente. La verifica poi richiede ANCHE il CAP (vedi la
+ * rotta): l'email da sola non basta, perché è il dato più facile da
+ * conoscere di un'altra persona.
+ */
+export async function cercaOrdiniPerEmail(db: Db, email: string): Promise<OrdineTrovato[]> {
+  return db<OrdineTrovato[]>`
+    select id, channel, operator, email,
+           shipping_address->>'cap' as cap,
+           shipping_address->>'nome' as nome,
+           case when channel = 'shopify' then coalesce(shopify_name, external_order_id)
+                else external_order_id end as riferimento,
+           placed_at, raw
+    from "order"
+    where lower(email) = ${email.trim().toLowerCase()}
+    order by placed_at desc nulls last
+    limit 10
   `
 }
 

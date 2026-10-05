@@ -7,6 +7,7 @@ import { voceRoutes } from '../src/routes/voce.js'
 import {
   confrontaCredenziali,
   nomeDiBattesimo,
+  ordineRecenteConCap,
   riduciRiferimento,
   type OrdineDaVerificare,
 } from '../src/core/voce/verifica.js'
@@ -57,6 +58,22 @@ describe('confrontaCredenziali', () => {
   it('due ordini con lo stesso numero: vince quello i cui dati corrispondono', () => {
     const r = confrontaCredenziali([{ id: 'x', email: null, cap: '00100' }, ordine], { cap: '20121' })
     expect(r).toEqual({ ok: true, ordine })
+  })
+})
+
+describe('ordineRecenteConCap: cliente del sito senza numero d’ordine', () => {
+  const vecchio: OrdineDaVerificare = { id: 'vecchio', email: 'a@b.it', cap: '20121' }
+  const nuovo: OrdineDaVerificare = { id: 'nuovo', email: 'a@b.it', cap: '20121' }
+  it("vale l'ordine più recente con il CAP giusto (la lista arriva già dal più recente)", () => {
+    expect(ordineRecenteConCap([nuovo, vecchio], '20121')).toEqual({ ok: true, ordine: nuovo })
+  })
+  it("salta un ordine recente spedito altrove e prende quello col CAP giusto", () => {
+    const altrove = { ...nuovo, id: 'altrove', cap: '00100' }
+    expect(ordineRecenteConCap([altrove, vecchio], '20121')).toEqual({ ok: true, ordine: vecchio })
+  })
+  it('email sconosciuta o CAP sbagliato: nessuna verifica', () => {
+    expect(ordineRecenteConCap([], '20121').ok).toBe(false)
+    expect(ordineRecenteConCap([nuovo], '00100')).toEqual({ ok: false, motivo: 'dati_non_corrispondenti' })
   })
 })
 
@@ -163,6 +180,21 @@ describe('POST /voce/strumenti/verifica-cliente', () => {
   it('senza email né CAP chiede il dato invece di contare un tentativo', async () => {
     const r = await chiama({ ordini: [ORDINE] }, { conversation_id: 'c1', numero_ordine: '4076086160' })
     expect(r.corpo).toEqual({ verificato: false, motivo: 'dati_mancanti' })
+  })
+
+  it('senza numero d’ordine: email E CAP verificano, e la risposta dice di quale ordine si parla', async () => {
+    const r = await chiama(
+      { ordini: [{ ...ORDINE, email: 'a@b.it', riferimento: 'INSH9066', placed_at: new Date('2026-10-02T10:00:00Z') }] },
+      { conversation_id: 'c1', email: 'a@b.it', cap: '20121' },
+    )
+    expect(r.corpo).toMatchObject({ verificato: true, numero_ordine: 'INSH9066' })
+    expect(r.corpo.data_ordine).toMatch(/ottobre/)
+  })
+
+  it('senza numero d’ordine la sola email non basta', async () => {
+    const r = await chiama({ ordini: [ORDINE] }, { conversation_id: 'c1', email: 'a@b.it' })
+    expect(r.corpo).toEqual({ verificato: false, motivo: 'dati_mancanti' })
+    expect(r.sessioni).toHaveLength(0)
   })
 
   it('senza conversation_id è una richiesta non valida', async () => {

@@ -8,16 +8,20 @@ import { registraChiamataVoce } from '../connectors/voce/registro.js'
 import { statoDellOrdine } from '../connectors/voce/ordine.js'
 import { apriTicketVoce } from '../connectors/voce/ticket.js'
 import {
+  cercaOrdiniPerEmail,
   cercaOrdiniPerRiferimento,
   creaSessione,
   marchioDaRaw,
   ordineDellaSessione,
   tentativiEsauriti,
+  type OrdineTrovato,
 } from '../connectors/voce/sessione.js'
+import { dataParlata } from '../core/voce/stato.js'
 import {
   confrontaCredenziali,
   etichettaCanale,
   nomeDiBattesimo,
+  ordineRecenteConCap,
   riduciRiferimento,
 } from '../core/voce/verifica.js'
 
@@ -32,7 +36,8 @@ const testoFacoltativo = (max: number) =>
 
 const corpoVerifica = z.object({
   conversation_id: z.string().trim().min(1).max(200),
-  numero_ordine: z.string().trim().min(1).max(100),
+  // Facoltativo: il cliente del sito può non averlo, e allora servono email E CAP.
+  numero_ordine: testoFacoltativo(100),
   email: testoFacoltativo(200),
   cap: testoFacoltativo(20),
   // Accettato ma non usato qui: ElevenLabs può mandarlo come variabile di
@@ -193,7 +198,7 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
     if (!analizzato.success) return richiestaNonValida(req, reply, analizzato.error)
     const dati = analizzato.data
 
-    if (!dati.email && !dati.cap) {
+    if ((!dati.email && !dati.cap) || (!dati.numero_ordine && !(dati.email && dati.cap))) {
       // Non conta come tentativo: manca una domanda, non una risposta sbagliata.
       impostaEsitoVoce(req, 'dati_mancanti')
       return reply.send({ verificato: false, motivo: 'dati_mancanti' })
@@ -205,13 +210,25 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
           return { esito: 'troppi_tentativi', corpo: { verificato: false, motivo: 'troppi_tentativi' } }
         }
 
-        const ordini = await cercaOrdiniPerRiferimento(db, riduciRiferimento(dati.numero_ordine))
-        const esito = confrontaCredenziali(ordini, { email: dati.email, cap: dati.cap })
-        if (!esito.ok) {
-          return { esito: esito.motivo, corpo: { verificato: false, motivo: esito.motivo } }
+        let ordine: OrdineTrovato
+        if (dati.numero_ordine) {
+          const ordini = await cercaOrdiniPerRiferimento(db, riduciRiferimento(dati.numero_ordine))
+          const esito = confrontaCredenziali(ordini, { email: dati.email, cap: dati.cap })
+          if (!esito.ok) {
+            return { esito: esito.motivo, corpo: { verificato: false, motivo: esito.motivo } }
+          }
+          ordine = ordini.find((o) => o.id === esito.ordine.id)!
+        } else {
+          // Senza numero: email E CAP devono corrispondere, e vale l'ordine
+          // più recente fra quelli che li hanno entrambi.
+          const ordini = await cercaOrdiniPerEmail(db, dati.email!)
+          const scelto = ordineRecenteConCap(ordini, dati.cap!)
+          if (!scelto.ok) {
+            return { esito: scelto.motivo, corpo: { verificato: false, motivo: scelto.motivo } }
+          }
+          ordine = ordini.find((o) => o.id === scelto.ordine.id)!
         }
 
-        const ordine = ordini.find((o) => o.id === esito.ordine.id)!
         const token = await creaSessione(db, dati.conversation_id, ordine.id)
         return {
           esito: 'verificato',
@@ -221,6 +238,10 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
             nome: nomeDiBattesimo(ordine.nome),
             brand: marchioDaRaw(ordine.raw),
             canale: etichettaCanale(ordine.channel, ordine.operator),
+            // Per confermare col cliente di quale ordine si parla, soprattutto
+            // quando è stato trovato dall'email.
+            numero_ordine: ordine.riferimento,
+            data_ordine: dataParlata(ordine.placed_at),
           },
         }
       })
