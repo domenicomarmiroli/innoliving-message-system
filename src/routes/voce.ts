@@ -8,6 +8,13 @@ import { registraChiamataVoce } from '../connectors/voce/registro.js'
 import { statoDellOrdine } from '../connectors/voce/ordine.js'
 import { apriTicketVoce } from '../connectors/voce/ticket.js'
 import {
+  cercaProdottiPim,
+  famigliePim,
+  pimConfigurato,
+  problemiProdottoPim,
+  schedaProdottoPim,
+} from '../connectors/pim/assistenza.js'
+import {
   cercaOrdiniPerEmail,
   cercaOrdiniPerRiferimento,
   creaSessione,
@@ -114,6 +121,19 @@ const corpoTicket = z.object({
   nome: testoFacoltativo(200),
   contatto_richiamata: z.string().trim().min(3).max(200),
   caller_number: tokenFacoltativo,
+})
+
+const corpoCercaProdotto = z.object({
+  conversation_id: z.string().trim().min(1).max(200),
+  // Nome, codice, EAN o il bisogno del cliente con le sue parole.
+  testo: testoFacoltativo(300),
+  famiglia: testoFacoltativo(100),
+  session_token: tokenFacoltativo,
+})
+
+const corpoSku = z.object({
+  conversation_id: z.string().trim().min(1).max(200),
+  sku: z.string().trim().min(1).max(100),
 })
 
 const corpoSessione = z.object({
@@ -325,6 +345,81 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
       return reply.send(risposta.corpo)
     } catch (errore) {
       return guasto(req, reply, errore, 'apertura ticket telefonico fallita')
+    }
+  })
+
+  // --- Prodotti dal PIM: informazioni di primo livello -----------------------
+  // Solo dati del PIM, già pronti: l'agente non deve integrarli con ciò
+  // che "sa". Se il PIM non risponde, 503 come ogni guasto, e l'agente
+  // apre un ticket.
+  const senzaPim = (req: FastifyRequest, reply: FastifyReply) => {
+    impostaEsitoVoce(req, 'pim_non_configurato')
+    return reply.code(503).send({ errore: 'servizio_non_disponibile' })
+  }
+
+  app.post('/voce/strumenti/cerca-prodotto', async (req, reply) => {
+    const analizzato = corpoCercaProdotto.safeParse(req.body)
+    if (!analizzato.success) return richiestaNonValida(req, reply, analizzato.error)
+    if (!pimConfigurato(config)) return senzaPim(req, reply)
+    const dati = analizzato.data
+
+    try {
+      const risposta = await entroLimite(async () => {
+        // Il cliente già verificato parla quasi sempre di ciò che ha
+        // comprato: quei prodotti vengono proposti per primi.
+        const orderId = dati.session_token ? await ordineDellaSessione(db, dati.session_token) : null
+        const prodottiOrdine = orderId
+          ? await db<{ sku: string | null; titolo: string | null }[]>`
+              select sku, titolo from order_line where order_id = ${orderId} and sku is not null
+            `
+          : []
+        const prodotti = dati.testo ? await cercaProdottiPim(config, dati.testo, dati.famiglia, 5) : []
+        const famiglie = prodotti.length === 0 ? await famigliePim(config) : undefined
+        return {
+          esito: prodotti.length > 0 ? 'trovati' : 'nessun_risultato',
+          corpo: {
+            prodotti,
+            ...(prodottiOrdine.length > 0 ? { prodotti_ordine_verificato: prodottiOrdine } : {}),
+            ...(famiglie ? { famiglie_disponibili: famiglie } : {}),
+          },
+        }
+      })
+      impostaEsitoVoce(req, risposta.esito)
+      return reply.send(risposta.corpo)
+    } catch (errore) {
+      return guasto(req, reply, errore, 'ricerca prodotto nel PIM fallita')
+    }
+  })
+
+  app.post('/voce/strumenti/scheda-prodotto', async (req, reply) => {
+    const analizzato = corpoSku.safeParse(req.body)
+    if (!analizzato.success) return richiestaNonValida(req, reply, analizzato.error)
+    if (!pimConfigurato(config)) return senzaPim(req, reply)
+
+    try {
+      const scheda = await entroLimite(() => schedaProdottoPim(config, analizzato.data.sku))
+      if (!scheda) {
+        impostaEsitoVoce(req, 'prodotto_non_trovato')
+        return reply.send({ errore: 'prodotto_non_trovato' })
+      }
+      impostaEsitoVoce(req, 'trovato')
+      return reply.send(scheda)
+    } catch (errore) {
+      return guasto(req, reply, errore, 'scheda prodotto dal PIM fallita')
+    }
+  })
+
+  app.post('/voce/strumenti/problemi-prodotto', async (req, reply) => {
+    const analizzato = corpoSku.safeParse(req.body)
+    if (!analizzato.success) return richiestaNonValida(req, reply, analizzato.error)
+    if (!pimConfigurato(config)) return senzaPim(req, reply)
+
+    try {
+      const problemi = await entroLimite(() => problemiProdottoPim(config, analizzato.data.sku))
+      impostaEsitoVoce(req, problemi.length > 0 ? 'problemi_trovati' : 'nessun_problema_noto')
+      return reply.send({ problemi })
+    } catch (errore) {
+      return guasto(req, reply, errore, 'problemi noti dal PIM falliti')
     }
   })
 

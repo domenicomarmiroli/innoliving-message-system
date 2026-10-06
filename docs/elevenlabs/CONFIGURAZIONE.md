@@ -141,3 +141,130 @@ Serve a vedere la trascrizione di ogni telefonata dal ticket, in un popup.
 
 Firma verificata come fa l'SDK ufficiale: header `ElevenLabs-Signature`
 `t=<secondi>,v0=<hmac-sha256 di "t.corpo">`, tolleranza di 30 minuti.
+
+## Strumenti prodotto (dal PIM)
+
+Tre strumenti in più, stesso secret degli altri. JSON pronti da incollare
+in **Aggiungi strumento** (il formato è quello già accettato dal pannello).
+
+### `cerca_prodotto`
+```json
+{
+  "type": "webhook",
+  "name": "cerca_prodotto",
+  "description": "Cerca prodotti nel catalogo per nome, modello, codice o per il bisogno del cliente (es. 'stufetta per il bagno'). Restituisce fino a 5 prodotti con sku e nome. Se il cliente ha superato la verifica restituisce anche i prodotti del suo ordine. Se non trova nulla restituisce le famiglie di prodotti disponibili.",
+  "response_timeout_secs": 5,
+  "api_schema": {
+    "url": "https://hub-messaggi-worker.onrender.com/voce/strumenti/cerca-prodotto",
+    "method": "POST",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": {
+      "id": "body",
+      "type": "object",
+      "description": "Cosa cerca il cliente.",
+      "required": true,
+      "value_type": "llm_prompt",
+      "properties": [
+        { "id": "conversation_id", "type": "string", "description": "", "dynamic_variable": "system__conversation_id", "constant_value": "", "value_type": "dynamic_variable", "required": true },
+        { "id": "testo", "type": "string", "description": "Nome o modello del prodotto come detto dal cliente, oppure il suo bisogno con le sue parole più le parole chiave del tipo di prodotto", "dynamic_variable": "", "constant_value": "", "value_type": "llm_prompt", "required": false, "enum": null },
+        { "id": "famiglia", "type": "string", "description": "Famiglia di prodotti, solo se presa dall'elenco famiglie_disponibili di una risposta precedente", "dynamic_variable": "", "constant_value": "", "value_type": "llm_prompt", "required": false, "enum": null },
+        { "id": "session_token", "type": "string", "description": "", "dynamic_variable": "session_token", "constant_value": "", "value_type": "dynamic_variable", "required": false }
+      ]
+    },
+    "request_headers": [ { "type": "secret", "name": "x-voice-secret", "secret_id": "4eZ9NNmpbpUHDx7OppKV" } ],
+    "content_type": "application/json",
+    "auth_connection": null,
+    "mtls_auth_connection": null,
+    "response_filter": null
+  },
+  "follow_redirects": false,
+  "follow_redirects_allowed_domains": [],
+  "dynamic_variables": { "dynamic_variable_placeholders": {} },
+  "assignments": [],
+  "interruption_mode": "allow",
+  "tool_call_sound": null,
+  "tool_call_sound_behavior": "auto",
+  "response_mocks": []
+}
+```
+
+### `scheda_prodotto`
+```json
+{
+  "type": "webhook",
+  "name": "scheda_prodotto",
+  "description": "Restituisce la scheda di un prodotto: nome, marchio, descrizione, caratteristiche, dati tecnici, garanzia standard in mesi, misure e peso della confezione, altre varianti. Usalo con lo sku trovato da cerca_prodotto. Rispondi solo con questi dati.",
+  "response_timeout_secs": 5,
+  "api_schema": {
+    "url": "https://hub-messaggi-worker.onrender.com/voce/strumenti/scheda-prodotto",
+    "method": "POST",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": {
+      "id": "body",
+      "type": "object",
+      "description": "Il prodotto di cui leggere la scheda.",
+      "required": true,
+      "value_type": "llm_prompt",
+      "properties": [
+        { "id": "conversation_id", "type": "string", "description": "", "dynamic_variable": "system__conversation_id", "constant_value": "", "value_type": "dynamic_variable", "required": true },
+        { "id": "sku", "type": "string", "description": "Lo sku esatto restituito da cerca_prodotto", "dynamic_variable": "", "constant_value": "", "value_type": "llm_prompt", "required": true, "enum": null }
+      ]
+    },
+    "request_headers": [ { "type": "secret", "name": "x-voice-secret", "secret_id": "4eZ9NNmpbpUHDx7OppKV" } ],
+    "content_type": "application/json",
+    "auth_connection": null,
+    "mtls_auth_connection": null,
+    "response_filter": null
+  },
+  "follow_redirects": false,
+  "follow_redirects_allowed_domains": [],
+  "dynamic_variables": { "dynamic_variable_placeholders": {} },
+  "assignments": [],
+  "interruption_mode": "allow",
+  "tool_call_sound": null,
+  "tool_call_sound_behavior": "auto",
+  "response_mocks": []
+}
+```
+
+### `problemi_prodotto`
+```json
+{
+  "type": "webhook",
+  "name": "problemi_prodotto",
+  "description": "Restituisce i problemi noti di un prodotto con le soluzioni da suggerire. Usalo quando il cliente descrive un malfunzionamento. Non elencare i problemi al cliente: se il suo problema corrisponde a un sintomo, indica la soluzione scritta.",
+  "response_timeout_secs": 5,
+  "api_schema": {
+    "url": "https://hub-messaggi-worker.onrender.com/voce/strumenti/problemi-prodotto",
+    "method": "POST",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": {
+      "id": "body",
+      "type": "object",
+      "description": "Il prodotto con il problema.",
+      "required": true,
+      "value_type": "llm_prompt",
+      "properties": [
+        { "id": "conversation_id", "type": "string", "description": "", "dynamic_variable": "system__conversation_id", "constant_value": "", "value_type": "dynamic_variable", "required": true },
+        { "id": "sku", "type": "string", "description": "Lo sku esatto restituito da cerca_prodotto", "dynamic_variable": "", "constant_value": "", "value_type": "llm_prompt", "required": true, "enum": null }
+      ]
+    },
+    "request_headers": [ { "type": "secret", "name": "x-voice-secret", "secret_id": "4eZ9NNmpbpUHDx7OppKV" } ],
+    "content_type": "application/json",
+    "auth_connection": null,
+    "mtls_auth_connection": null,
+    "response_filter": null
+  },
+  "follow_redirects": false,
+  "follow_redirects_allowed_domains": [],
+  "dynamic_variables": { "dynamic_variable_placeholders": {} },
+  "assignments": [],
+  "interruption_mode": "allow",
+  "tool_call_sound": null,
+  "tool_call_sound_behavior": "auto",
+  "response_mocks": []
+}
+```

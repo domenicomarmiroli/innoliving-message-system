@@ -92,6 +92,12 @@ const schema = z.object({
   // Webhook). Senza, la rotta /voce/webhook/fine-chiamata non esiste.
   ELEVENLABS_WEBHOOK_SECRET: z.string().min(16).optional(),
 
+  // --- PIM (altro progetto Supabase), sola lettura per l'assistenza ------
+  // Connection string del session pooler del PIM con il ruolo
+  // `hub_assistenza` (migrazione 0225 del PIM): può solo eseguire le
+  // funzioni assistenza_*. Mai un utente con più diritti di questo.
+  PIM_DB_URL: z.string().min(1).optional(),
+
   // Per verificare la sessione di un agente loggato in Lovable: il
   // worker chiede a Supabase Auth di chi è il token, senza mai tenere un
   // segreto condiviso col browser. Stessi valori — non sensibili, sono

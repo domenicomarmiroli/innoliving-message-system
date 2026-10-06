@@ -1605,3 +1605,13 @@ eseguire PRIMA del deploy). Guida per il pannello ElevenLabs in
 "non evasi" si sistemeranno col nuovo gestionale; eventi di consegna più
 avanti (BRT o Qapla'). **Lato Lovable da fare**: mostrare `thread.numero`
 nella lista e nel dettaglio del ticket, e renderlo cercabile.
+
+**Prodotti dal PIM (06/10)**: tre strumenti per l'agente vocale
+(caratteristiche, confronto, consiglio per bisogno, problemi noti), 343
+test verdi. **Da fare in ordine**: migrazione 0225 nel progetto PIM;
+password al ruolo `hub_assistenza`; `PIM_DB_URL` su Render; i tre
+strumenti su ElevenLabs (JSON in `docs/elevenlabs/CONFIGURAZIONE.md`) e
+il prompt aggiornato. Lato PIM resta da fare il modulo Lovable per
+inserire i problemi noti. Dati del PIM ancora sottili: attributi tecnici
+quasi vuoti, nessun grado IP.
+

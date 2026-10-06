@@ -1797,3 +1797,17 @@ ora i costi del webhook in colonne dedicate:
 La dashboard Lovable "Telefonate" legge direttamente `voice_call`
 (policy della 0036). Prima chiamata di test: 104 s, 915 crediti
 (572 voce + 343 modello), circa $0,091.
+
+**Prodotti dal PIM (06/10)**: `cerca-prodotto`, `scheda-prodotto`,
+`problemi-prodotto` leggono il PIM (altro progetto Supabase) via
+`PIM_DB_URL`, con il ruolo `hub_assistenza` della migrazione 0225 del
+PIM, che può SOLO eseguire le funzioni `assistenza_*` (JSON già pronto,
+solo prodotti attivi, niente prezzi/costi). Il worker inoltra e non
+interpreta: la logica sta nel PIM, per la sua regola 3. La ricerca è
+testuale in italiano con parole in OR (un bisogno detto al telefono non
+contiene tutte le parole del prodotto): ~1,1 s su tutto il catalogo,
+misurato il 06/10. I problemi noti (`problemi_noti` nel PIM, per
+prodotto/gruppo/famiglia) non si elencano al cliente: l'agente indica
+la soluzione solo se il sintomo descritto corrisponde. Senza
+`PIM_DB_URL` gli strumenti rispondono 503 e l'agente apre un ticket.
+
