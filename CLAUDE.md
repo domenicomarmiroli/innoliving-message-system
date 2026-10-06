@@ -1685,7 +1685,7 @@ segmento). Quel tool legge la lista `packages` di Zoho Inventory: il
 vettore sta in **`delivery_method`** (nella lista non esiste un campo
 `carrier`), più `tracking_number`, `shipment_date` e `status`
 (`not_shipped`/`shipped`/`delivered`), filtrati per `AMZS`.
-Si aggiornano **tutti** gli ordini Amazon della finestra di 15 giorni,
+Si aggiornano **tutti** gli ordini Amazon della finestra di 30 giorni,
 non solo quelli con un ticket: lo stato serve anche all'agente vocale.
 Idempotente: si scrive solo se il numero o lo stato cambiano. L'upsert
 Shopify fa `coalesce` sul tracking e non lo cancella.

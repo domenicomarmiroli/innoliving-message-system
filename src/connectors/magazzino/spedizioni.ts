@@ -107,7 +107,7 @@ export function aggiornamentiDaSpedizioni(spedizioni: SpedizioneZoho[]): Aggiorn
 }
 
 /** Quanti giorni indietro rileggere a ogni giro: nessun segnalibro fra i due database. */
-const GIORNI_FINESTRA = 15
+const GIORNI_FINESTRA = 30
 
 export async function recuperaSpedizioni(config: Config): Promise<SpedizioneZoho[]> {
   if (!config.MAGAZZINO_API_URL || !config.MAGAZZINO_API_TOKEN) {
