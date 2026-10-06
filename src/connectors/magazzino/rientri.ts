@@ -67,7 +67,77 @@ export async function recuperaRientri(config: Config): Promise<Rientro[]> {
 export interface EsitoRientri {
   controllati: number
   agganciati: number
+  /** Ticket aperti da zero: rientro di un ordine su cui il cliente non ha mai scritto. */
+  aperti: number
   errori: number
+}
+
+export const TAG_RIENTRO_SENZA_CONTATTO = 'rientro-senza-contatto'
+
+/**
+ * Si aprono ticket nuovi solo per rientri recenti: l'endpoint restituisce
+ * 60 giorni di scansioni, e al primo giro aprire un ticket per ogni
+ * rientro di due mesi fa (rimborsi in gran parte già emessi) riempirebbe
+ * la coda di lavoro già fatto.
+ */
+const GIORNI_APERTURA = 7
+
+export function entroFinestraApertura(scansione: string, oggi: Date = new Date()): boolean {
+  const t = new Date(scansione).getTime()
+  return !Number.isNaN(t) && (oggi.getTime() - t) / 86_400_000 <= GIORNI_APERTURA
+}
+
+export function testoRientroSenzaContatto(numero: string, barcode: string | null): string {
+  return (
+    `Pacco dell'ordine ${numero} rientrato in logistica${barcode ? ` (collo ${barcode})` : ''}. ` +
+    'Il cliente non ci ha scritto: verificare il motivo del rientro ' +
+    "(per esempio rifiuto alla consegna) ed emettere il rimborso se dovuto."
+  )
+}
+
+/**
+ * Ticket nuovo sull'ordine, con la STESSA chiave usata da resi, avvisi e
+ * annullamenti (`ordine:<id>`): se poi il cliente scrive, il messaggio
+ * finisce in questa conversazione. Ordine segnaposto se non è ancora
+ * arrivato da Shopify, come in resi.ts. L'account è quello Amazon (il
+ * riferimento AMZS è sempre un ordine Amazon), scelto per genere, non per
+ * codice.
+ */
+async function apriTicketRientro(db: Db, numero: string, rientro: Rientro): Promise<string | null> {
+  return db.begin(async (tx) => {
+    const [account] = await tx<{ id: string; sla_minutes: number }[]>`
+      select id, sla_minutes from channel_account where kind = 'amazon' order by code limit 1
+    `
+    if (!account) return null
+    const [ordine] = await tx<{ id: string }[]>`
+      insert into "order" (channel, external_order_id)
+      values ('amazon', ${numero})
+      on conflict (channel, external_order_id) do update set updated_at = now()
+      returning id
+    `
+    const scadenza = new Date(Date.now() + account.sla_minutes * 60_000)
+    const [thread] = await tx<{ id: string; created: boolean }[]>`
+      insert into thread (
+        account_id, external_thread_id, order_id, subject, state, due_at, tags
+      ) values (
+        ${account.id}, ${`ordine:${ordine!.id}`}, ${ordine!.id},
+        ${`Rientro in magazzino — ordine ${numero}`}, 'open', ${scadenza},
+        ${[TAG_PACCO_RIENTRATO, TAG_RIENTRO_SENZA_CONTATTO]}
+      )
+      on conflict (account_id, external_thread_id)
+        where external_thread_id is not null
+      do update set updated_at = now()
+      returning id, (xmax = 0) as created
+    `
+    // Una conversazione con questa chiave c'era già (senza ordine
+    // collegato nella ricerca sopra): non si duplica la nota.
+    if (!thread!.created) return null
+    await tx`
+      insert into message (thread_id, direction, author_kind, body_text, interno, sent_at)
+      values (${thread!.id}, 'out', 'agent', ${testoRientroSenzaContatto(numero, rientro.barcode)}, true, now())
+    `
+    return thread!.id
+  })
 }
 
 /**
@@ -83,7 +153,7 @@ export async function elaboraRientri(
   log: Logger,
   rientri: Rientro[],
 ): Promise<EsitoRientri> {
-  const esito: EsitoRientri = { controllati: 0, agganciati: 0, errori: 0 }
+  const esito: EsitoRientri = { controllati: 0, agganciati: 0, aperti: 0, errori: 0 }
 
   for (const rientro of rientri) {
     esito.controllati += 1
@@ -99,7 +169,20 @@ export async function elaboraRientri(
         order by t.last_inbound_at desc nulls last
         limit 1
       `
-      if (!thread || thread.tags.includes(TAG_PACCO_RIENTRATO)) continue
+      if (thread?.tags.includes(TAG_PACCO_RIENTRATO)) continue
+
+      if (!thread) {
+        // Nessuna conversazione: il cliente non ci ha mai scritto (caso
+        // reale 06/10: pacco rifiutato alla consegna e reso dal corriere).
+        // Il rimborso va emesso lo stesso, quindi serve un ticket.
+        if (!entroFinestraApertura(rientro.created_at)) continue
+        const aperto = await apriTicketRientro(db, numero, rientro)
+        if (aperto) {
+          esito.aperti += 1
+          log.info({ thread_id: aperto, ordine: numero }, 'pacco rientrato senza conversazione: ticket aperto')
+        }
+        continue
+      }
 
       await db.begin(async (tx) => {
         await tx`

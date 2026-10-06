@@ -1748,3 +1748,14 @@ classificazione no: parte una sola volta, al primo messaggio. Ora
 `classificaTicketSenzaCategoria()` (`core/ai/intento.ts`), nel ciclo
 principale accanto alla traduzione, riprova i ticket degli ultimi 14
 giorni ancora senza tag, al massimo 10 per giro.
+
+### Rientro senza conversazione: si apre il ticket (06/10)
+Caso reale: il cliente rifiuta il pacco, il corriere lo riporta in
+magazzino, "Utilities Magazzino" lo scansiona, ma il cliente non ci ha mai
+scritto. Il rimborso va emesso lo stesso. Prima `elaboraRientri()`
+saltava i rientri senza un ticket; ora ne apre uno sull'account Amazon
+(scelto per `kind`), con la chiave `ordine:<id>` di resi e annullamenti,
+ordine segnaposto se serve, tag `pacco-rientrato-logistica` +
+`rientro-senza-contatto`, nota interna con collo e istruzioni.
+Solo per scansioni degli ultimi 7 giorni (`GIORNI_APERTURA`): l'endpoint
+ne restituisce 60, e lo storico ha rimborsi in gran parte già emessi.

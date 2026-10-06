@@ -41,7 +41,7 @@ export function avviaControlloRientri(
     try {
       const rientri = await recuperaRientri(config)
       const esito = await elaboraRientri(db, log, rientri)
-      if (esito.agganciati > 0) {
+      if (esito.agganciati > 0 || esito.aperti > 0) {
         log.info(esito, 'rientri magazzino controllati')
       }
     } catch (errore) {
