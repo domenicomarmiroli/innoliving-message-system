@@ -193,6 +193,12 @@ export async function giroTrackingBrt(
 
       await db`
         update "order" set
+          -- Uno stato nuovo annulla il "gestita" dell'operatore (0038): le
+          -- espressioni a destra leggono i valori di PRIMA dell'update.
+          spedizione_gestita_at      = case when spedizione_stato is distinct from ${pagina.stato}
+                                            then null else spedizione_gestita_at end,
+          spedizione_gestita_da      = case when spedizione_stato is distinct from ${pagina.stato}
+                                            then null else spedizione_gestita_da end,
           spedizione_stato           = ${pagina.stato},
           tracking_eventi            = ${db.json(pagina.eventi as unknown as Parameters<typeof db.json>[0])},
           tracking_consegna_prevista = ${pagina.consegna_prevista}::date,

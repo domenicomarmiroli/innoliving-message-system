@@ -100,6 +100,10 @@ create table "order" (
   tracking_consegna_prevista date,
   tracking_giacenza          jsonb,
   tracking_letto_at          timestamptz,
+  -- "Gestita" dall'operatore nella vista Spedizioni con problemi (0038);
+  -- azzerata dal worker quando lo stato BRT cambia.
+  spedizione_gestita_at      timestamptz,
+  spedizione_gestita_da      uuid references agent(id) on delete set null,
   -- Spedizione di RESO (dal cliente a noi), da Amazon RETURN_REQUEST:
   -- distinta dalla spedizione in uscita qui sopra.
   reso_carrier          text,
