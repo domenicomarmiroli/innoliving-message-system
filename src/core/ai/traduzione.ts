@@ -12,9 +12,10 @@ import { proteggi, redigi } from './redazione.js'
  *   Modello economico (`ANTHROPIC_MODEL_CLASSIFICAZIONE`): serve a
  *   capire, non a scrivere, e gira su ogni messaggio.
  * - **In uscita**: l'operatore scrive in italiano, questa funzione
- *   produce la versione nella lingua del cliente. Modello delle bozze
- *   (`ANTHROPIC_MODEL`): questo testo lo legge il cliente, e la qualità
- *   conta più del costo. **Non spedisce niente**: la traduzione torna
+ *   produce la versione nella lingua del cliente. Anche qui il modello
+ *   economico (`ANTHROPIC_MODEL_CLASSIFICAZIONE`), scelta di Domenico
+ *   (06/10): una traduzione di un messaggio di assistenza non richiede il
+ *   modello delle bozze. **Non spedisce niente**: la traduzione torna
  *   all'interfaccia come anteprima, e parte solo ciò che l'operatore ha
  *   visto.
  *
