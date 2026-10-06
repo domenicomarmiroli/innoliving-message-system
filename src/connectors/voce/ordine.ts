@@ -25,6 +25,13 @@ export interface StatoParlato {
   corriere: string | null
   tracking_disponibile: boolean
   numero_tracking: string | null
+  /**
+   * Ordine Amazon FBA: spedito da Amazon dal suo magazzino. Tracking e
+   * assistenza su quella consegna li gestisce Amazon, non noi: l'agente
+   * indirizza il cliente lì invece di aprire un ticket che non possiamo
+   * risolvere.
+   */
+  gestito_da_amazon: boolean
   articoli: string[]
   reso_richiesto_il: string | null
   rimborso: { importo: string; data: string | null } | null
@@ -45,6 +52,7 @@ interface Riga {
   annullato_il: string | null
   spedito_il: string | null
   spedizione_stato: string | null
+  fba: boolean
 }
 
 export function importoParlato(importo: string | number, valuta: string | null): string {
@@ -60,7 +68,10 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
            rimborso_totale::text as rimborso_totale, rimborso_emesso_at, currency,
            coalesce(raw->>'cancelledAt', raw->>'cancelled_at') as annullato_il,
            coalesce(spedizione_data::text, raw->'fulfillments'->0->>'createdAt', raw->'fulfillments'->0->>'created_at') as spedito_il,
-           spedizione_stato
+           spedizione_stato,
+           -- I tag arrivano come array (GraphQL) o come stringa separata da
+           -- virgole (webhook REST): si accettano entrambe le forme.
+           coalesce(raw->'tags' ? 'FBA' or raw->>'tags' ~ '(^|,)[[:space:]]*FBA[[:space:]]*(,|$)', false) as fba
     from "order" where id = ${orderId}
   `
   if (!o) return null
@@ -87,6 +98,7 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
     corriere: corriereParlato(o.carrier),
     tracking_disponibile: !!o.tracking_number,
     numero_tracking: o.tracking_number,
+    gestito_da_amazon: o.channel === 'amazon' && o.fba,
     articoli: articoliParlati(righe),
     reso_richiesto_il: dataParlata(o.reso_richiesto_at),
     rimborso:

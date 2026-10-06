@@ -128,6 +128,7 @@ della verifica.
   "stato": "spedito", "spedizione_parziale": false, "canale": "sito",
   "data_ordine": "28 settembre", "data_spedizione": "30 settembre",
   "corriere": "BRT", "tracking_disponibile": true, "numero_tracking": "…",
+  "gestito_da_amazon": false,
   "articoli": ["Stufa X (1 pezzo)"],
   "reso_richiesto_il": null, "rimborso": null
 }
@@ -147,17 +148,20 @@ oltre il quale risponde `servizio_non_disponibile` (503).
 | TikTok | 47 | 45 (BRT) |
 | eBay | 28 | 23 (BRT) |
 
-- **Nessun evento di consegna** arriva su Shopify (niente "in transito",
-  "consegnato"): lo stato `consegnato` esiste ma oggi non viene mai
-  prodotto. Per giacenze e consegne serve il web service BRT.
-- **782 ordini Amazon con fonte `amazon`** (distinta da `amazon-it`)
-  restano "non evasi" su Shopify anche dopo settimane: 595 hanno più di
-  10 giorni. Probabilmente spediti da Amazon (FBA) senza aggiornare
-  Shopify. Per non far dire "in preparazione" a chi ha già ricevuto il
-  pacco, un ordine non evaso da più di **7 giorni** diventa `sconosciuto`
-  (`GIORNI_PREPARAZIONE_CREDIBILI` in `core/voce/stato.ts`) e l'agente
-  apre un ticket. Da chiarire con Domenico come vengono evasi gli ordini
-  Amazon, per dire la cosa giusta a quei clienti.
+- **Aggiornato il 06/10 — stato dal gestionale.** Gli ordini Amazon
+  spediti da noi (tag Shopify `FBM`) prendono tracking e stato del pacco
+  dai pacchetti Zoho (`order.spedizione_stato`, migrazione 0033):
+  `statoOrdine()` li fa prevalere su Shopify, quindi ora esce anche
+  `consegnato`. Al primo giro: 427 ordini FBM su 470 coperti.
+- **Ordini FBA** (tag `FBA`, spediti da Amazon): nessun pacchetto Zoho,
+  e il customer care della consegna lo fa Amazon. La risposta porta
+  `gestito_da_amazon: true` e il prompt indirizza il cliente ad Amazon.
+- Per gli ordini del sito e degli altri marketplace `consegnato` resta
+  non disponibile: Shopify non riceve l'evento di consegna. Gli eventi
+  intermedi (giacenza, in consegna) richiederebbero un servizio di
+  tracking: l'API BRT vuole il segnacollo, che non abbiamo.
+- Resta valida la regola dei 7 giorni (`GIORNI_PREPARAZIONE_CREDIBILI`)
+  per gli ordini senza dato del gestionale.
 - Ordini Leroy Merlin con corriere "Amazon Logistics US": quasi certamente
   un valore sbagliato nell'integrazione, non il corriere vero.
 - La data di spedizione e l'annullamento vengono dai campi
