@@ -49,3 +49,11 @@ describe('estraiChiamata', () => {
     expect(estraiChiamata({ type: 'call_initiation_failure', data: { conversation_id: 'c' } })).toBeNull()
   })
 })
+
+describe('notaChiamata', () => {
+  it("inizia con lo stesso prefisso delle note dell'agente, che l'interfaccia riconosce", async () => {
+    const { notaChiamata } = await import('../src/core/voce/fine-chiamata.js')
+    expect(notaChiamata(104)).toBe("Il cliente ha chiamato l'assistente vocale. Durata 1:44. Nessuna nuova richiesta lasciata: la trascrizione è disponibile.")
+    expect(notaChiamata(null).startsWith("Il cliente ha chiamato l'assistente vocale.")).toBe(true)
+  })
+})

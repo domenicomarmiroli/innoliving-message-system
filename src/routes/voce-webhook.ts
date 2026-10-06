@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
-import { estraiChiamata, verificaFirmaElevenLabs } from '../core/voce/fine-chiamata.js'
+import { estraiChiamata, notaChiamata, verificaFirmaElevenLabs } from '../core/voce/fine-chiamata.js'
 
 /**
  * `POST /voce/webhook/fine-chiamata` — il webhook "post-call" di
@@ -87,6 +87,22 @@ export async function voceWebhookRoutes(app: FastifyInstance, opts: { db: Db; co
           raw            = excluded.raw,
           updated_at     = now()
       `
+      // Se nella chiamata l'agente non ha scritto niente nel ticket (ha solo
+      // riferito la pratica), una nota breve la rende visibile scorrendo la
+      // conversazione. Stesso prefisso delle note dell'agente: l'interfaccia
+      // ci mette accanto "Vedi trascrizione". Idempotente sulla chiave.
+      if (thread) {
+        await db`
+          insert into message (thread_id, direction, author_kind, external_id, body_text, interno, sent_at)
+          select ${thread.id}, 'out', 'agent', ${`${chiamata.conversation_id}:chiamata`},
+                 ${notaChiamata(chiamata.durata_secondi)}, true, coalesce(${chiamata.iniziata_at}, now())
+          where not exists (
+            select 1 from message
+            where thread_id = ${thread.id} and external_id like ${`${chiamata.conversation_id}:%`}
+          )
+          on conflict (thread_id, external_id) do nothing
+        `
+      }
       req.log.info(
         { conversation_id: chiamata.conversation_id, thread_id: thread?.id ?? null, battute: chiamata.trascrizione.length },
         'trascrizione della telefonata salvata',

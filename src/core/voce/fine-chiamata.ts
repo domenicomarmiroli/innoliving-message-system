@@ -88,3 +88,12 @@ export function estraiChiamata(payload: unknown): DatiChiamata | null {
     trascrizione,
   }
 }
+
+/** La nota breve nel ticket: inizia come le note dell'agente, così l'interfaccia offre "Vedi trascrizione". */
+export function notaChiamata(durataSecondi: number | null): string {
+  const durata =
+    durataSecondi !== null
+      ? ` Durata ${Math.floor(durataSecondi / 60)}:${String(Math.floor(durataSecondi % 60)).padStart(2, '0')}.`
+      : ''
+  return `Il cliente ha chiamato l'assistente vocale.${durata} Nessuna nuova richiesta lasciata: la trascrizione è disponibile.`
+}
