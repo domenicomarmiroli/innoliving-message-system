@@ -17,7 +17,10 @@ export type StatoOrdine =
   | 'in_attesa_pagamento'
   | 'in_preparazione'
   | 'spedito'
+  | 'in_consegna'
   | 'consegnato'
+  /** Giacenza o evento di consegna fallita letto da BRT. */
+  | 'problema_consegna'
   | 'annullato'
   | 'rimborsato'
   | 'sconosciuto'
@@ -27,7 +30,7 @@ export interface DatiStato {
   fulfillment_status: string | null
   annullato_il: string | null
   placed_at?: Date | string | null
-  /** Dal pacchetto del gestionale: 'non_spedito' | 'spedito' | 'consegnato'. */
+  /** Da Zoho (0033) o dalla pagina BRT (0034): vedi order_spedizione_stato_check. */
   spedizione_stato?: string | null
 }
 
@@ -69,8 +72,18 @@ export function statoOrdine(
   if (pagamento === 'refunded') return { stato: 'rimborsato', spedizione_parziale: false }
   // Il gestionale vince su Shopify: per gli ordini Amazon Shopify resta
   // "non evaso" anche a pacco consegnato.
-  if (d.spedizione_stato === 'consegnato') return { stato: 'consegnato', spedizione_parziale: false }
-  if (d.spedizione_stato === 'spedito') return { stato: 'spedito', spedizione_parziale: false }
+  switch (d.spedizione_stato) {
+    case 'consegnato':
+      return { stato: 'consegnato', spedizione_parziale: false }
+    case 'in_consegna':
+      return { stato: 'in_consegna', spedizione_parziale: false }
+    case 'giacenza':
+    case 'problema':
+      return { stato: 'problema_consegna', spedizione_parziale: false }
+    case 'spedito':
+    case 'in_transito':
+      return { stato: 'spedito', spedizione_parziale: false }
+  }
   if (SPEDITO.has(evasione)) return { stato: 'spedito', spedizione_parziale: false }
   if (SPEDITO_IN_PARTE.has(evasione)) return { stato: 'spedito', spedizione_parziale: true }
   if (pagamento === 'pending') return { stato: 'in_attesa_pagamento', spedizione_parziale: false }

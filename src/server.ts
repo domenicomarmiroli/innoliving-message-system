@@ -17,6 +17,7 @@ import { avviaPolling } from './connectors/mail/poll.js'
 import { avviaPollingGraph } from './connectors/graph/poll.js'
 import { avviaAllineamentoOrdini } from './connectors/shopify/periodico.js'
 import { avviaControlloRientri } from './connectors/magazzino/periodico.js'
+import { avviaTrackingBrt } from './connectors/brt/periodico.js'
 
 export async function buildServer(config: Config) {
   const app = Fastify({
@@ -77,11 +78,16 @@ export async function buildServer(config: Config) {
   // reso Amazon autorizzato è arrivato davvero e riapre il ticket.
   const rientri = avviaControlloRientri(db, logger, config)
 
+  // Stato delle spedizioni BRT dalla pagina pubblica, una volta al giorno
+  // per spedizione finché non risulta consegnata.
+  const trackingBrt = avviaTrackingBrt(db, logger, config)
+
   app.addHook('onClose', async () => {
     casella?.ferma()
     casellaMicrosoft?.ferma()
     ordini?.ferma()
     rientri?.ferma()
+    trackingBrt?.ferma()
     await db.end({ timeout: 5 })
   })
 

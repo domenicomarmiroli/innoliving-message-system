@@ -55,6 +55,13 @@ const schema = z.object({
   // reale: mezz'ora è un buon compromesso fra reattività e carico.
   MAGAZZINO_SYNC_MINUTES: z.coerce.number().int().positive().default(30),
 
+  // --- Tracking BRT dalla pagina pubblica (connectors/brt) ---------------
+  // Ogni quante ore rileggere una spedizione non ancora consegnata.
+  // 0 = lettura spenta.
+  BRT_TRACKING_ORE: z.coerce.number().int().min(0).default(24),
+  // Pausa fra una pagina e l'altra: è un sito pubblico, non un'API.
+  BRT_TRACKING_PAUSA_MS: z.coerce.number().int().min(500).default(2000),
+
   MS_TENANT_ID: z.string().min(1).optional(),
   MS_CLIENT_ID: z.string().min(1).optional(),
   MS_CLIENT_SECRET: z.string().min(1).optional(),

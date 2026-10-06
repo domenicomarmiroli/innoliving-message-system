@@ -154,14 +154,24 @@ export async function elaboraSpedizioni(
           tracking_number = ${a.tracking_number},
           carrier         = coalesce(${a.carrier}, carrier),
           tracking_url    = coalesce(${a.tracking_url}, tracking_url),
-          spedizione_stato = coalesce(${a.stato}, spedizione_stato),
+          -- Zoho conosce solo spedito/consegnato: non deve coprire uno
+          -- stato più fine già letto da BRT (in consegna, giacenza...).
+          spedizione_stato = case
+            when ${a.stato}::text = 'consegnato'
+              or spedizione_stato is null
+              or spedizione_stato in ('non_spedito', 'spedito')
+            then coalesce(${a.stato}, spedizione_stato)
+            else spedizione_stato
+          end,
           spedizione_data  = coalesce(${a.data_spedizione}::date, spedizione_data),
           spedizione_aggiornata_at = now(),
           updated_at      = now()
         where channel = 'amazon'
           and external_order_id = ${a.numero_ordine}
           and (tracking_number is distinct from ${a.tracking_number}
-               or (${a.stato}::text is not null and spedizione_stato is distinct from ${a.stato}))
+               or (${a.stato}::text is not null and spedizione_stato is distinct from ${a.stato}
+                   and (${a.stato}::text = 'consegnato' or spedizione_stato is null
+                        or spedizione_stato in ('non_spedito', 'spedito'))))
       `
       esito.aggiornati += righe.count
     } catch (errore) {

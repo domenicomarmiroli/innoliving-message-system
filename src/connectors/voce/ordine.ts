@@ -22,6 +22,8 @@ export interface StatoParlato {
   canale: string
   data_ordine: string | null
   data_spedizione: string | null
+  /** Dalla pagina BRT, solo per le spedizioni non ancora consegnate. */
+  consegna_prevista: string | null
   corriere: string | null
   tracking_disponibile: boolean
   numero_tracking: string | null
@@ -53,6 +55,7 @@ interface Riga {
   spedito_il: string | null
   spedizione_stato: string | null
   fba: boolean
+  tracking_consegna_prevista: string | null
 }
 
 export function importoParlato(importo: string | number, valuta: string | null): string {
@@ -69,6 +72,7 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
            coalesce(raw->>'cancelledAt', raw->>'cancelled_at') as annullato_il,
            coalesce(spedizione_data::text, raw->'fulfillments'->0->>'createdAt', raw->'fulfillments'->0->>'created_at') as spedito_il,
            spedizione_stato,
+           tracking_consegna_prevista::text as tracking_consegna_prevista,
            -- I tag arrivano come array (GraphQL) o come stringa separata da
            -- virgole (webhook REST): si accettano entrambe le forme.
            coalesce(raw->'tags' ? 'FBA' or raw->>'tags' ~ '(^|,)[[:space:]]*FBA[[:space:]]*(,|$)', false) as fba
@@ -87,7 +91,7 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
     placed_at: o.placed_at,
     spedizione_stato: o.spedizione_stato,
   })
-  const spedito = stato === 'spedito' || stato === 'consegnato'
+  const spedito = stato === 'spedito' || stato === 'in_consegna' || stato === 'consegnato' || stato === 'problema_consegna'
 
   return {
     stato,
@@ -95,6 +99,7 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
     canale: etichettaCanale(o.channel, o.operator),
     data_ordine: dataParlata(o.placed_at),
     data_spedizione: spedito ? dataParlata(o.spedito_il) : null,
+    consegna_prevista: stato === 'spedito' || stato === 'in_consegna' ? dataParlata(o.tracking_consegna_prevista) : null,
     corriere: corriereParlato(o.carrier),
     tracking_disponibile: !!o.tracking_number,
     numero_tracking: o.tracking_number,

@@ -54,6 +54,13 @@ describe('statoOrdine', () => {
     expect(statoOrdine({ ...amazon, spedizione_stato: 'spedito' }, oggi).stato).toBe('spedito')
     expect(statoOrdine({ ...amazon, spedizione_stato: 'consegnato', annullato_il: '2026-09-02' }, oggi).stato).toBe('annullato')
   })
+  it('gli stati fini letti da BRT', () => {
+    const o = { financial_status: 'paid', fulfillment_status: 'fulfilled', annullato_il: null, placed_at: ieri }
+    expect(statoOrdine({ ...o, spedizione_stato: 'in_consegna' }, oggi).stato).toBe('in_consegna')
+    expect(statoOrdine({ ...o, spedizione_stato: 'giacenza' }, oggi).stato).toBe('problema_consegna')
+    expect(statoOrdine({ ...o, spedizione_stato: 'problema' }, oggi).stato).toBe('problema_consegna')
+    expect(statoOrdine({ ...o, spedizione_stato: 'in_transito' }, oggi).stato).toBe('spedito')
+  })
 })
 
 describe('valori da dire al telefono', () => {

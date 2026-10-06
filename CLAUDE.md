@@ -1701,3 +1701,36 @@ BRT lo accetta (verificato), e `linkTracciamento()` la usa come
 `tracking_url`. Lo stato evento per evento in tempo reale resta da fare:
 servirebbe un servizio multi-corriere o un servizio BRT per numero di
 spedizione.
+
+### Tracking BRT dalla pagina pubblica (migrazione 0034, 06/10)
+È un ripiego dichiarato, in attesa di un servizio di tracking via API
+(Domenico: "in futuro attiveremo un servizio più accurato"). L'API REST
+di BRT vuole il segnacollo, che non abbiamo. La pagina pubblica
+`vas.brt.it/vas/sped_det_show.hsm?...&Nspediz=<12 cifre>` accetta invece
+il numero di spedizione, e contiene eventi, consegna stimata e giacenza
+(nessun dato personale del destinatario).
+
+- `connectors/brt/pagina.ts` è la parte pura: `leggiPagina()` legge le
+  tabelle per id di etichetta (`diz_386` per gli eventi, `diz_149` per
+  la giacenza), `statoDaEventi()` riassume lo stato. "Consegnata" vince
+  su tutto: una giacenza risolta resta nella pagina anche dopo la
+  consegna. Gli esemplari reali sono in `test/fixtures/brt/`.
+- `connectors/brt/tracking.ts`: un giro ogni ora. Prende le spedizioni
+  BRT a 12 cifre non consegnate degli ultimi 45 giorni, di tutti i canali,
+  e rilegge ciascuna ogni `BRT_TRACKING_ORE` (default 24, 0 = spento).
+  Le pagine si leggono una alla volta, con una pausa di
+  `BRT_TRACKING_PAUSA_MS` (default 2000), al massimo 400 per giro. Dopo
+  3 errori di fila il giro si ferma fino all'ora dopo. La pagina va
+  decodificata in Latin-1: BRT non dichiara il charset.
+- Avvisi solo al **cambio** di stato verso `giacenza`/`problema`: se
+  l'ordine ha un ticket, nota interna con l'evento BRT, tag
+  `spedizione-giacenza`/`spedizione-problema` e ticket riaperto. Senza
+  ticket, lo stato resta sull'ordine e l'interfaccia lo elenca.
+- Una pagina non riconosciuta (BRT l'ha cambiata) produce una riga per
+  giro in `ingest_anomaly` (`brt_pagina_non_riconosciuta`), mai uno
+  stato inventato.
+- Zoho (0033) non sovrascrive più uno stato BRT più fine: applica il suo
+  stato solo se è `consegnato` o se lo stato attuale è nullo,
+  `non_spedito` o `spedito`.
+- Agente vocale: nuovi stati `in_consegna` e `problema_consegna`
+  (giacenza o problema), più `consegna_prevista`.
