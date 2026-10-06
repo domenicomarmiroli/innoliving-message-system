@@ -45,6 +45,13 @@ export interface DatiChiamata {
   durata_secondi: number | null
   iniziata_at: Date | null
   trascrizione: BattutaTrascrizione[]
+  costo_crediti: number | null
+  crediti_voce: number | null
+  crediti_llm: number | null
+  /** Stima in dollari di ElevenLabs: platform_price + llm_price. */
+  costo_usd: number | null
+  /** dev_discount: chiamata di test dal simulatore, scontata. */
+  chiamata_test: boolean | null
 }
 
 const testo = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
@@ -76,6 +83,10 @@ export function estraiChiamata(payload: unknown): DatiChiamata | null {
   const metadata = (d['metadata'] ?? {}) as Record<string, unknown>
   const analysis = (d['analysis'] ?? {}) as Record<string, unknown>
   const inizio = numero(metadata['start_time_unix_secs'])
+  const charging = (metadata['charging'] ?? {}) as Record<string, unknown>
+  const prezzoVoce = numero(charging['platform_price'])
+  const prezzoLlm = numero(charging['llm_price'])
+  const intero = (v: unknown) => (numero(v) !== null ? Math.round(numero(v)!) : null)
 
   const trascrizione: BattutaTrascrizione[] = []
   for (const b of Array.isArray(d['transcript']) ? (d['transcript'] as Record<string, unknown>[]) : []) {
@@ -97,6 +108,11 @@ export function estraiChiamata(payload: unknown): DatiChiamata | null {
     durata_secondi: numero(metadata['call_duration_secs']),
     iniziata_at: inizio !== null ? new Date(inizio * 1000) : null,
     trascrizione,
+    costo_crediti: intero(metadata['cost']),
+    crediti_voce: intero(charging['call_charge']),
+    crediti_llm: intero(charging['llm_charge']),
+    costo_usd: prezzoVoce === null && prezzoLlm === null ? null : (prezzoVoce ?? 0) + (prezzoLlm ?? 0),
+    chiamata_test: typeof charging['dev_discount'] === 'boolean' ? (charging['dev_discount'] as boolean) : null,
   }
 }
 

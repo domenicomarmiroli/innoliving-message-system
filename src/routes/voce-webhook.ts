@@ -69,12 +69,21 @@ export async function voceWebhookRoutes(app: FastifyInstance, opts: { db: Db; co
       await db`
         insert into voice_call (
           conversation_id, agent_ref, summary, outcome, durata_secondi, iniziata_at,
-          trascrizione, thread_id, raw
+          trascrizione, thread_id, raw,
+          costo_crediti, crediti_voce, crediti_llm, costo_usd, chiamata_test,
+          verificato, ticket_aperto
         ) values (
           ${chiamata.conversation_id}, ${chiamata.agent_ref}, ${chiamata.riassunto}, ${chiamata.esito},
           ${chiamata.durata_secondi}, ${chiamata.iniziata_at},
           ${db.json(chiamata.trascrizione as unknown as Parameters<typeof db.json>[0])},
-          ${thread?.id ?? null}, ${db.json(req.body as Parameters<typeof db.json>[0])}
+          ${thread?.id ?? null}, ${db.json(req.body as Parameters<typeof db.json>[0])},
+          ${chiamata.costo_crediti}, ${chiamata.crediti_voce}, ${chiamata.crediti_llm},
+          ${chiamata.costo_usd}, ${chiamata.chiamata_test},
+          exists (select 1 from voice_session where conversation_id = ${chiamata.conversation_id}),
+          exists (
+            select 1 from thread t join channel_account ca on ca.id = t.account_id
+            where ca.kind = 'telefono' and t.external_thread_id = ${chiamata.conversation_id}
+          )
         )
         on conflict (conversation_id) do update set
           agent_ref      = excluded.agent_ref,
@@ -85,6 +94,13 @@ export async function voceWebhookRoutes(app: FastifyInstance, opts: { db: Db; co
           trascrizione   = excluded.trascrizione,
           thread_id      = coalesce(excluded.thread_id, voice_call.thread_id),
           raw            = excluded.raw,
+          costo_crediti  = excluded.costo_crediti,
+          crediti_voce   = excluded.crediti_voce,
+          crediti_llm    = excluded.crediti_llm,
+          costo_usd      = excluded.costo_usd,
+          chiamata_test  = excluded.chiamata_test,
+          verificato     = excluded.verificato,
+          ticket_aperto  = excluded.ticket_aperto,
           updated_at     = now()
       `
       // Se nella chiamata l'agente non ha scritto niente nel ticket (ha solo

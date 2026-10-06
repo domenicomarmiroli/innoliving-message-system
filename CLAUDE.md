@@ -1784,3 +1784,16 @@ esistente con la nota interna di quella conversazione. Gli operatori la
 leggono via RLS (policy della 0036) in un popup Lovable. Senza
 `ELEVENLABS_WEBHOOK_SECRET` la rotta non esiste. `db/schema.sql` non
 contiene ancora le tabelle `voice_*` (0030): da riallineare.
+
+**Costi e dashboard vocale (migrazione 0037, 06/10).** `voice_call` ha
+ora i costi del webhook in colonne dedicate:
+- `costo_crediti` (`metadata.cost`);
+- `crediti_voce` e `crediti_llm` (`charging.call_charge` e
+  `charging.llm_charge`);
+- `costo_usd` (`platform_price + llm_price`, la stima di ElevenLabs);
+- `chiamata_test` (`dev_discount`: chiamate dal simulatore, scontate);
+- `verificato` e `ticket_aperto`.
+
+La dashboard Lovable "Telefonate" legge direttamente `voice_call`
+(policy della 0036). Prima chiamata di test: 104 s, 915 crediti
+(572 voce + 343 modello), circa $0,091.

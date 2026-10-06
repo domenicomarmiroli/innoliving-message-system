@@ -34,11 +34,20 @@ describe('estraiChiamata', () => {
           { role: 'user', message: 'Non mi è arrivato il pacco.', time_in_call_secs: 4 },
           { role: 'agent', message: null, tool_calls: [{}], time_in_call_secs: 9 },
         ],
-        metadata: { start_time_unix_secs: 1791299900, call_duration_secs: 95 },
+        metadata: {
+          start_time_unix_secs: 1791299900,
+          call_duration_secs: 95,
+          cost: 915,
+          charging: { call_charge: 572, llm_charge: 343, platform_price: 0.0567, llm_price: 0.0342, dev_discount: true },
+        },
         analysis: { call_successful: 'success', transcript_summary: 'Rimborso già emesso.' },
       },
     })
-    expect(c).toMatchObject({ conversation_id: 'conv_1', esito: 'success', durata_secondi: 95, riassunto: 'Rimborso già emesso.' })
+    expect(c).toMatchObject({
+      conversation_id: 'conv_1', esito: 'success', durata_secondi: 95, riassunto: 'Rimborso già emesso.',
+      costo_crediti: 915, crediti_voce: 572, crediti_llm: 343, chiamata_test: true,
+    })
+    expect(c?.costo_usd).toBeCloseTo(0.0909, 4)
     expect(c?.trascrizione).toEqual([
       { ruolo: 'agente', testo: 'Buongiorno, come posso aiutarla?', secondo: 0 },
       { ruolo: 'cliente', testo: 'Non mi è arrivato il pacco.', secondo: 4 },
