@@ -30,7 +30,7 @@ values (
       "bimaritaly.it": "bimar italy punto it",
       "innoliving.it": "innoliving punto it",
       "viceversa.it": "viceversa punto it",
-      "inshopping.it": "in shopping punto it"
+      "inshopping.it": "inshopping punto it"
     }
   }'::jsonb
 )
