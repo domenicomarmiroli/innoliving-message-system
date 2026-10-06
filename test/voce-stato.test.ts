@@ -43,10 +43,16 @@ describe('statoOrdine', () => {
   it('un valore mai visto non diventa uno stato inventato', () => {
     expect(s('paid', 'qualcosa_di_nuovo').stato).toBe('sconosciuto')
   })
-  it('non dice mai "consegnato": non abbiamo il dato della consegna', () => {
+  it('senza il dato del gestionale non dice mai "consegnato"', () => {
     for (const f of ['fulfilled', 'partially_fulfilled', 'unfulfilled']) {
       expect(s('paid', f).stato).not.toBe('consegnato')
     }
+  })
+  it('il pacchetto Zoho vince su Shopify, che per Amazon resta "non evaso" da settimane', () => {
+    const amazon = { financial_status: 'paid', fulfillment_status: 'unfulfilled', annullato_il: null, placed_at: '2026-09-01T10:00:00Z' }
+    expect(statoOrdine({ ...amazon, spedizione_stato: 'consegnato' }, oggi).stato).toBe('consegnato')
+    expect(statoOrdine({ ...amazon, spedizione_stato: 'spedito' }, oggi).stato).toBe('spedito')
+    expect(statoOrdine({ ...amazon, spedizione_stato: 'consegnato', annullato_il: '2026-09-02' }, oggi).stato).toBe('annullato')
   })
 })
 

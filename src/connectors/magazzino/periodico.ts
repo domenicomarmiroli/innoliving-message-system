@@ -2,6 +2,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { recuperaRientri, elaboraRientri } from './rientri.js'
+import { recuperaSpedizioni, elaboraSpedizioni } from './spedizioni.js'
 
 /**
  * Il giro periodico che controlla i rientri in magazzino.
@@ -49,6 +50,21 @@ export function avviaControlloRientri(
       log.error(
         { err: errore instanceof Error ? errore.message : String(errore) },
         'controllo rientri magazzino fallito',
+      )
+    }
+    // Il tracking degli ordini Amazon viene dallo stesso tool (pacchetti
+    // Zoho): try separato, un errore sui rientri non deve fermarlo né
+    // viceversa.
+    try {
+      const spedizioni = await recuperaSpedizioni(config)
+      const esito = await elaboraSpedizioni(db, log, spedizioni)
+      if (esito.aggiornati > 0 || esito.errori > 0) {
+        log.info(esito, 'tracking ordini Amazon aggiornati da Zoho')
+      }
+    } catch (errore) {
+      log.error(
+        { err: errore instanceof Error ? errore.message : String(errore) },
+        'lettura spedizioni Zoho fallita',
       )
     } finally {
       if (!fermato) timer = setTimeout(() => void giro(), intervallo)

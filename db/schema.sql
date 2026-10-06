@@ -87,6 +87,11 @@ create table "order" (
   tracking_number    text,
   tracking_url       text,
   carrier            text,
+  -- Dal pacchetto del gestionale Zoho (migrazione 0033): 'non_spedito' |
+  -- 'spedito' | 'consegnato'. NULL = nessun dato, vale lo stato Shopify.
+  spedizione_stato         text check (spedizione_stato is null or spedizione_stato in ('non_spedito', 'spedito', 'consegnato')),
+  spedizione_data          date,
+  spedizione_aggiornata_at timestamptz,
   -- Spedizione di RESO (dal cliente a noi), da Amazon RETURN_REQUEST:
   -- distinta dalla spedizione in uscita qui sopra.
   reso_carrier          text,

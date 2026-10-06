@@ -1669,3 +1669,35 @@ essendo spediti. `crea-ticket` apre un thread sul canale `telefono`
 `raw.from` così la risposta passa dal normale `inviaRisposta()`.
 `thread.numero` (0032) è il numero breve di ogni ticket, assegnato dal
 default della colonna: nessun codice lo calcola.
+
+### Tracking degli ordini Amazon da Zoho (migrazione 0033, 06/10)
+Shopify riceve gli ordini Amazon da Marketplace Connect con
+`trackingInfo: []`: 2.041 ordini Amazon su 2.041 negli ultimi 30 giorni
+senza tracking, e tutti i ticket aperti erano su ordini Amazon. La
+spedizione la crea il gestionale Zoho, nel **pacchetto** dell'ordine di
+vendita `AMZS<numero Amazon>`.
+
+`src/connectors/magazzino/spedizioni.ts`, nello stesso giro dei rientri
+(`periodico.ts`, ma in un `try` separato), legge `GET
+/api/public/spedizioni` di "Utilities Magazzino" (stesso token di
+`/rientri`; l'URL si ricava da `MAGAZZINO_API_URL` sostituendo l'ultimo
+segmento). Quel tool legge la lista `packages` di Zoho Inventory: il
+vettore sta in **`delivery_method`** (nella lista non esiste un campo
+`carrier`), più `tracking_number`, `shipment_date` e `status`
+(`not_shipped`/`shipped`/`delivered`), filtrati per `AMZS`.
+Si aggiornano **tutti** gli ordini Amazon della finestra di 15 giorni,
+non solo quelli con un ticket: lo stato serve anche all'agente vocale.
+Idempotente: si scrive solo se il numero o lo stato cambiano. L'upsert
+Shopify fa `coalesce` sul tracking e non lo cancella.
+
+`order.spedizione_stato`/`spedizione_data` (0033): `statoOrdine()`
+(`core/voce/stato.ts`) li fa prevalere su `fulfillment_status`, quindi
+l'agente vocale ora può dire "consegnato".
+
+**BRT**: l'API REST di tracking cerca solo per `trackingByParcelID` (15
+caratteri), che esiste solo nella risposta di creazione della spedizione.
+Noi abbiamo solo il numero di spedizione a 12 cifre. La pagina pubblica
+BRT lo accetta (verificato), e `linkTracciamento()` la usa come
+`tracking_url`. Lo stato evento per evento in tempo reale resta da fare:
+servirebbe un servizio multi-corriere o un servizio BRT per numero di
+spedizione.

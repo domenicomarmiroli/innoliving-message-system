@@ -44,6 +44,7 @@ interface Riga {
   currency: string | null
   annullato_il: string | null
   spedito_il: string | null
+  spedizione_stato: string | null
 }
 
 export function importoParlato(importo: string | number, valuta: string | null): string {
@@ -58,7 +59,8 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
            carrier, tracking_number, reso_richiesto_at,
            rimborso_totale::text as rimborso_totale, rimborso_emesso_at, currency,
            coalesce(raw->>'cancelledAt', raw->>'cancelled_at') as annullato_il,
-           coalesce(raw->'fulfillments'->0->>'createdAt', raw->'fulfillments'->0->>'created_at') as spedito_il
+           coalesce(spedizione_data::text, raw->'fulfillments'->0->>'createdAt', raw->'fulfillments'->0->>'created_at') as spedito_il,
+           spedizione_stato
     from "order" where id = ${orderId}
   `
   if (!o) return null
@@ -72,6 +74,7 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
     fulfillment_status: o.fulfillment_status,
     annullato_il: o.annullato_il,
     placed_at: o.placed_at,
+    spedizione_stato: o.spedizione_stato,
   })
   const spedito = stato === 'spedito' || stato === 'consegnato'
 

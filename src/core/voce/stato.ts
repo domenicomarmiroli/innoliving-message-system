@@ -7,10 +7,10 @@
  * interpretare: ogni interpretazione lasciata al modello è un'occasione
  * di dire una cosa non vera.
  *
- * "consegnato" esiste fra gli stati ma oggi non viene mai prodotto: né
- * Shopify né i marketplace ci passano l'avvenuta consegna (verificato il
- * 05/10, nessun evento di spedizione sugli ordini BRT). Meglio "spedito"
- * per un pacco già arrivato che "consegnato" per uno ancora in giro.
+ * "consegnato" viene solo dal gestionale (`order.spedizione_stato`, dal
+ * pacchetto Zoho, migrazione 0033): né Shopify né i marketplace ci passano
+ * l'avvenuta consegna (verificato il 05/10). Senza quel dato, meglio
+ * "spedito" per un pacco già arrivato che "consegnato" per uno in giro.
  */
 
 export type StatoOrdine =
@@ -27,6 +27,8 @@ export interface DatiStato {
   fulfillment_status: string | null
   annullato_il: string | null
   placed_at?: Date | string | null
+  /** Dal pacchetto del gestionale: 'non_spedito' | 'spedito' | 'consegnato'. */
+  spedizione_stato?: string | null
 }
 
 /**
@@ -65,6 +67,10 @@ export function statoOrdine(
     return { stato: 'annullato', spedizione_parziale: false }
   }
   if (pagamento === 'refunded') return { stato: 'rimborsato', spedizione_parziale: false }
+  // Il gestionale vince su Shopify: per gli ordini Amazon Shopify resta
+  // "non evaso" anche a pacco consegnato.
+  if (d.spedizione_stato === 'consegnato') return { stato: 'consegnato', spedizione_parziale: false }
+  if (d.spedizione_stato === 'spedito') return { stato: 'spedito', spedizione_parziale: false }
   if (SPEDITO.has(evasione)) return { stato: 'spedito', spedizione_parziale: false }
   if (SPEDITO_IN_PARTE.has(evasione)) return { stato: 'spedito', spedizione_parziale: true }
   if (pagamento === 'pending') return { stato: 'in_attesa_pagamento', spedizione_parziale: false }
