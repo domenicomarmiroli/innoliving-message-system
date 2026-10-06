@@ -51,6 +51,16 @@ const testo = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : nu
 const numero = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
 /**
+ * Toglie i tag di tono della sintesi vocale (`[professional]`, `[warm]`…):
+ * guidano la voce, non sono parole dette, e nel popup per l'operatore
+ * sarebbero rumore. Solo parole fra parentesi quadre all'inizio di una
+ * frase o isolate: un "[DA VERIFICARE]" scritto in maiuscolo resta.
+ */
+export function senzaTagVoce(t: string): string {
+  return t.replace(/\[[a-z][a-z ,-]{0,30}\]\s*/g, '').replace(/\s{2,}/g, ' ').trim() || t
+}
+
+/**
  * Dal payload `post_call_transcription` ai dati che servono. Le battute
  * senza testo (solo chiamate a strumenti) si saltano: in un popup per
  * l'operatore non dicono niente. null se non è una trascrizione o manca
@@ -69,7 +79,8 @@ export function estraiChiamata(payload: unknown): DatiChiamata | null {
 
   const trascrizione: BattutaTrascrizione[] = []
   for (const b of Array.isArray(d['transcript']) ? (d['transcript'] as Record<string, unknown>[]) : []) {
-    const messaggio = testo(b['message'])
+    const grezzo = testo(b['message'])
+    const messaggio = grezzo && b['role'] === 'agent' ? senzaTagVoce(grezzo) : grezzo
     if (!messaggio) continue
     trascrizione.push({
       ruolo: b['role'] === 'agent' ? 'agente' : 'cliente',

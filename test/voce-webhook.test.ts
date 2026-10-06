@@ -57,3 +57,12 @@ describe('notaChiamata', () => {
     expect(notaChiamata(null).startsWith("Il cliente ha chiamato l'assistente vocale.")).toBe(true)
   })
 })
+
+describe('senzaTagVoce', () => {
+  it('toglie i tag di tono ma non il testo né i segnaposto in maiuscolo', async () => {
+    const { senzaTagVoce } = await import('../src/core/voce/fine-chiamata.js')
+    expect(senzaTagVoce('[professional] Buongiorno, sono Sabrina.')).toBe('Buongiorno, sono Sabrina.')
+    expect(senzaTagVoce('[warm] Grazie Stefania. [reassuring] Il rimborso è stato emesso.')).toBe('Grazie Stefania. Il rimborso è stato emesso.')
+    expect(senzaTagVoce('Dato [DA VERIFICARE] da controllare')).toBe('Dato [DA VERIFICARE] da controllare')
+  })
+})
