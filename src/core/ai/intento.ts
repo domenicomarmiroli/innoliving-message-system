@@ -141,3 +141,41 @@ export async function classificaEsalvaIntento(
     )
   }
 }
+
+/**
+ * Recupero dei ticket rimasti senza categoria, a ogni giro.
+ *
+ * La classificazione parte una volta sola, al primo messaggio. Se in quel
+ * momento il modello non risponde (successo davvero: dal 3 al 6/10 la
+ * chiave Anthropic non era valida) il ticket resterebbe senza categoria
+ * per sempre, e senza categoria non riceve niente dalla knowledge base.
+ * Stessa idea di `riaggancia.ts`: ciò che non è riuscito si riprova al
+ * giro dopo. Finestra corta e pochi per giro: è un recupero, non un
+ * backfill dello storico (per quello c'è `intento:backfill`).
+ */
+const GIORNI_RECUPERO = 14
+const MASSIMO_PER_GIRO = 10
+
+export async function classificaTicketSenzaCategoria(db: Db, log: Logger, config: Config): Promise<number> {
+  if (!config.ANTHROPIC_API_KEY) return 0
+  const daFare = await db<{ id: string; primo_testo: string }[]>`
+    select t.id, m.body_text as primo_testo
+    from thread t
+    join lateral (
+      select body_text
+      from message
+      where thread_id = t.id and direction = 'in' and author_kind = 'customer'
+        and interno = false and body_text is not null and body_text <> ''
+      order by sent_at asc
+      limit 1
+    ) m on true
+    where (t.tags = '{}'::text[] or t.tags is null)
+      and t.created_at > now() - make_interval(days => ${GIORNI_RECUPERO})
+    order by t.created_at desc
+    limit ${MASSIMO_PER_GIRO}
+  `
+  for (const t of daFare) {
+    await classificaEsalvaIntento(db, log, config, t.id, t.primo_testo)
+  }
+  return daFare.length
+}

@@ -1734,3 +1734,17 @@ il numero di spedizione, e contiene eventi, consegna stimata e giacenza
   `non_spedito` o `spedito`.
 - Agente vocale: nuovi stati `in_consegna` e `problema_consegna`
   (giacenza o problema), più `consegna_prevista`.
+
+### Chiave Anthropic non valida, e recupero della classificazione (06/10)
+Dal 3 al 6/10 la chiave Anthropic su Render non era valida (401), e in
+quei giorni si sono fermati traduzioni, bozze e classificazione. La
+prima chiave nuova iniziava con `sk-ant-usr-`, cioè legata a un utente
+nella nuova console, e veniva rifiutata anche lei. Funziona la chiave
+**"Non collegato (chiave legacy)"**, `sk-ant-api03-…`. Attenzione alla
+scadenza proposta dalla console (30 giorni di default).
+
+Le traduzioni si sono recuperate da sole (giro su `lingua is null`). La
+classificazione no: parte una sola volta, al primo messaggio. Ora
+`classificaTicketSenzaCategoria()` (`core/ai/intento.ts`), nel ciclo
+principale accanto alla traduzione, riprova i ticket degli ultimi 14
+giorni ancora senza tag, al massimo 10 per giro.

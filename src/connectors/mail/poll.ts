@@ -5,6 +5,7 @@ import { credenzialiMancanti, leggiCasella, messaggioErrore } from './imap.js'
 import { riaggancia } from './riaggancia.js'
 import { sincronizzaMirakl } from '../mirakl/sync.js'
 import { traduciMessaggiInArrivo } from '../../core/ai/traduzione.js'
+import { classificaTicketSenzaCategoria } from '../../core/ai/intento.js'
 
 /**
  * Il ciclo che tiene la casella sotto controllo.
@@ -73,6 +74,13 @@ export function avviaPolling(db: Db, log: Logger, config: Config): Ciclo | null 
         tradotti = await traduciMessaggiInArrivo(db, log, config)
       } catch (errore) {
         log.warn({ err: messaggioErrore(errore) }, 'traduzione dei messaggi in arrivo non riuscita')
+      }
+
+      // Ticket rimasti senza categoria perché il modello non rispondeva.
+      try {
+        await classificaTicketSenzaCategoria(db, log, config)
+      } catch (errore) {
+        log.warn({ err: messaggioErrore(errore) }, 'recupero della classificazione non riuscito')
       }
 
       fallimenti = 0
