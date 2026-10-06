@@ -1583,8 +1583,8 @@ testo tradotto** — è quello che il marketplace riceve. L'invio resta
 `/threads/reply`, con `testo` = la traduzione vista in anteprima e i
 nuovi campi facoltativi `testo_originale`/`lingua`: si spedisce
 l'anteprima, non una seconda traduzione fatta al momento, che non
-sarebbe mai identica. Modello delle bozze (`ANTHROPIC_MODEL`): questo
-testo lo legge il cliente. Il confronto con una bozza AI
+sarebbe mai identica. Modello economico (`ANTHROPIC_MODEL_CLASSIFICAZIONE`), come in
+arrivo (scelta di Domenico, 06/10). Il confronto con una bozza AI
 (`ai_draft.outcome`) si fa sull'italiano, perché la bozza è in italiano.
 
 **Regola 8 in uscita: `proteggi()`** (`core/ai/redazione.ts`). In
