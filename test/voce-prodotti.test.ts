@@ -5,6 +5,7 @@ import { parseConfig } from '../src/config.js'
 import type { Db } from '../src/db/index.js'
 import { voceRoutes } from '../src/routes/voce.js'
 import { impostaClientPimPerTest } from '../src/connectors/pim/assistenza.js'
+import { doveAcquistare } from '../src/core/voce/acquisto.js'
 
 const SECRET = 'segreto-di-prova-lungo-almeno-trentadue-caratteri'
 
@@ -14,6 +15,8 @@ function dbHub(sessioneValida: boolean) {
     const sql = strings.join('?')
     if (sql.includes('from voice_session')) return Promise.resolve(sessioneValida ? [{ order_id: 'o1' }] : [])
     if (sql.includes('from order_line')) return Promise.resolve([{ sku: 'INB-HF190', titolo: 'Stufetta bagno' }])
+    if (sql.includes('voce_siti_acquisto'))
+      return Promise.resolve([{ value: { per_marchio: { M: 'marchio.it' }, sempre: 'outlet.it', pronuncia: { 'outlet.it': 'outlet punto it' } } }])
     return Promise.resolve([])
   }
   return Object.assign(fn, { json: (x: unknown) => x }) as unknown as Db
@@ -45,6 +48,20 @@ async function chiama(url: string, corpo: Record<string, unknown>, opzioni: { pi
 
 afterEach(() => impostaClientPimPerTest(null))
 
+describe('doveAcquistare', () => {
+  const conf = { per_marchio: { Bimar: 'a.it', Altro: 'outlet.it' }, sempre: 'outlet.it', pronuncia: { 'a.it': 'a punto it' } }
+  it('sito del marchio, poi quello di sempre', () => {
+    expect(doveAcquistare(conf, 'bimar').map((s) => s.sito)).toEqual(['a.it', 'outlet.it'])
+  })
+  it('marchio senza sito: solo quello di sempre', () => {
+    expect(doveAcquistare(conf, 'Sconosciuto').map((s) => s.sito)).toEqual(['outlet.it'])
+  })
+  it('nessun doppione se coincidono, nessun sito senza configurazione', () => {
+    expect(doveAcquistare(conf, 'Altro').map((s) => s.sito)).toEqual(['outlet.it'])
+    expect(doveAcquistare(null, 'Bimar')).toEqual([])
+  })
+})
+
 describe('strumenti prodotto dal PIM', () => {
   it('cerca-prodotto passa al PIM il bisogno e la famiglia, e restituisce i candidati', async () => {
     const chiamate = pimFinto({
@@ -75,10 +92,16 @@ describe('strumenti prodotto dal PIM', () => {
   })
 
   it('scheda-prodotto inoltra la scheda del PIM così com’è', async () => {
-    const scheda = { sku: 'INB-HF190', nome: 'Stufetta', garanzia_mesi: 24, caratteristiche: ['2000 W'] }
+    const scheda = { sku: 'INB-HF190', nome: 'Stufetta', marchio: 'M', garanzia_mesi: 24, caratteristiche: ['2000 W'] }
     pimFinto({ assistenza_scheda_prodotto: scheda })
     const r = await chiama('/voce/strumenti/scheda-prodotto', { conversation_id: 'c1', sku: 'INB-HF190' })
-    expect(r.corpo).toEqual(scheda)
+    expect(r.corpo).toEqual({
+      ...scheda,
+      dove_acquistare: [
+        { sito: 'marchio.it', si_pronuncia: 'marchio.it' },
+        { sito: 'outlet.it', si_pronuncia: 'outlet punto it' },
+      ],
+    })
   })
 
   it('prodotto non attivo o inesistente: lo dice, senza inventare', async () => {

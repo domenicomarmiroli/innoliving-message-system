@@ -1615,3 +1615,8 @@ il prompt aggiornato. Lato PIM resta da fare il modulo Lovable per
 inserire i problemi noti. Dati del PIM ancora sottili: attributi tecnici
 quasi vuoti, nessun grado IP.
 
+**Siti di acquisto (06/10)**: la scheda prodotto restituisce
+`dove_acquistare` (sito del marchio + outlet, da
+`app_config.voce_siti_acquisto`, migrazione 0039). Nato da un test vero:
+col solo prompt l'agente aveva indicato il sito di un altro marchio.
+

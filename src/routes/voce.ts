@@ -7,6 +7,7 @@ import type { Db } from '../db/index.js'
 import { registraChiamataVoce } from '../connectors/voce/registro.js'
 import { statoDellOrdine } from '../connectors/voce/ordine.js'
 import { apriTicketVoce } from '../connectors/voce/ticket.js'
+import { doveAcquistare, type SitiAcquisto } from '../core/voce/acquisto.js'
 import {
   cercaProdottiPim,
   famigliePim,
@@ -397,13 +398,21 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
     if (!pimConfigurato(config)) return senzaPim(req, reply)
 
     try {
-      const scheda = await entroLimite(() => schedaProdottoPim(config, analizzato.data.sku))
+      const [scheda, [siti]] = await entroLimite(() =>
+        Promise.all([
+          schedaProdottoPim(config, analizzato.data.sku),
+          db<{ value: SitiAcquisto }[]>`select value from app_config where key = 'voce_siti_acquisto'`,
+        ]),
+      )
       if (!scheda) {
         impostaEsitoVoce(req, 'prodotto_non_trovato')
         return reply.send({ errore: 'prodotto_non_trovato' })
       }
       impostaEsitoVoce(req, 'trovato')
-      return reply.send(scheda)
+      // I siti vengono dati con la scheda: l'agente non deve ricordarsi
+      // quale sito va con quale marchio.
+      const marchio = typeof scheda.marchio === 'string' ? scheda.marchio : null
+      return reply.send({ ...scheda, dove_acquistare: doveAcquistare(siti?.value, marchio) })
     } catch (errore) {
       return guasto(req, reply, errore, 'scheda prodotto dal PIM fallita')
     }
