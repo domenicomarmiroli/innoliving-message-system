@@ -1771,3 +1771,16 @@ sicurezza rilegge le spedizioni "consegnate" con eventi di reso. Gli
 ordini che Zoho dà come consegnati si leggono da BRT una volta, perché
 Zoho non distingue le due consegne. Zoho non sovrascrive più
 giacenza/problema/rientrato.
+
+### Trascrizione delle telefonate (migrazione 0036, 06/10)
+`POST /voce/webhook/fine-chiamata` (`routes/voce-webhook.ts`) riceve il
+webhook "post-call" di ElevenLabs. È un plugin separato dagli strumenti
+`/voce/*`: qui si autentica con la firma HMAC di ElevenLabs. Il formato
+della firma non è documentato ed è stato letto dal codice dell'SDK
+(`core/voce/fine-chiamata.ts`). La trascrizione va in
+`voice_call.trascrizione`, ed è collegata al ticket della telefonata:
+quello con `external_thread_id = conversation_id`, oppure il ticket
+esistente con la nota interna di quella conversazione. Gli operatori la
+leggono via RLS (policy della 0036) in un popup Lovable. Senza
+`ELEVENLABS_WEBHOOK_SECRET` la rotta non esiste. `db/schema.sql` non
+contiene ancora le tabelle `voice_*` (0030): da riallineare.

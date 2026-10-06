@@ -12,6 +12,7 @@ import { traduzioneRoutes } from './routes/traduzione.js'
 import { knowledgeRoutes } from './routes/knowledge.js'
 import { contattiRoutes } from './routes/contatti.js'
 import { voceRoutes } from './routes/voce.js'
+import { voceWebhookRoutes } from './routes/voce-webhook.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
 import { avviaPolling } from './connectors/mail/poll.js'
 import { avviaPollingGraph } from './connectors/graph/poll.js'
@@ -56,6 +57,8 @@ export async function buildServer(config: Config) {
   // Plugin incapsulato: i suoi hook (secret obbligatorio, registro in
   // voice_log) valgono solo per le rotte /voce/*.
   await app.register(voceRoutes, { db, config })
+  // Fine chiamata: firma HMAC di ElevenLabs, fuori dal plugin degli strumenti.
+  await app.register(voceWebhookRoutes, { db, config })
 
   // La casella si legge chiedendo, non aspettando: IMAP non ha notifiche.
   // Se le credenziali mancano il ciclo non parte e il resto funziona

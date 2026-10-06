@@ -1,0 +1,93 @@
+import type { FastifyInstance } from 'fastify'
+
+import type { Config } from '../config.js'
+import type { Db } from '../db/index.js'
+import { estraiChiamata, verificaFirmaElevenLabs } from '../core/voce/fine-chiamata.js'
+
+/**
+ * `POST /voce/webhook/fine-chiamata` — il webhook "post-call" di
+ * ElevenLabs. Plugin separato da `voce.ts`: qui l'autenticazione è la
+ * firma HMAC di ElevenLabs, non l'header `x-voice-secret` degli strumenti.
+ *
+ * Salva la trascrizione in `voice_call` e la collega al ticket della
+ * telefonata: quello aperto dall'agente (chiave `conversation_id`) o, se la
+ * telefonata è finita come nota in un ticket esistente, quello che ha la
+ * nota con quella chiave. L'interfaccia la mostra in un popup dal ticket.
+ *
+ * Idempotente sul `conversation_id`: ElevenLabs può ritentare con lo
+ * stesso payload. Senza `ELEVENLABS_WEBHOOK_SECRET` la rotta non esiste.
+ */
+export async function voceWebhookRoutes(app: FastifyInstance, opts: { db: Db; config: Config }) {
+  const { db, config } = opts
+  const segreto = config.ELEVENLABS_WEBHOOK_SECRET
+  if (!segreto) return
+
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+    ;(req as { rawBody?: Buffer }).rawBody = body as Buffer
+    try {
+      done(null, JSON.parse((body as Buffer).toString('utf8')))
+    } catch (err) {
+      done(err as Error, undefined)
+    }
+  })
+
+  app.post('/voce/webhook/fine-chiamata', async (req, reply) => {
+    const grezzo = (req as { rawBody?: Buffer }).rawBody
+    const firma = req.headers['elevenlabs-signature']
+    if (!grezzo || !verificaFirmaElevenLabs(typeof firma === 'string' ? firma : undefined, grezzo, segreto)) {
+      req.log.warn('webhook di fine chiamata con firma non valida')
+      return reply.code(401).send({ errore: 'firma non valida' })
+    }
+
+    // Audio e chiamate non riuscite arrivano allo stesso indirizzo: per
+    // ora servono solo le trascrizioni. 200, altrimenti ElevenLabs conta
+    // un fallimento e dopo dieci disattiva il webhook.
+    const chiamata = estraiChiamata(req.body)
+    if (!chiamata) return reply.code(200).send({ ok: true, ignorato: true })
+
+    try {
+      const [thread] = await db<{ id: string }[]>`
+        select t.id from thread t
+        join channel_account ca on ca.id = t.account_id
+        where ca.kind = 'telefono' and t.external_thread_id = ${chiamata.conversation_id}
+        union all
+        select m.thread_id from message m
+        where m.interno and m.external_id like ${`${chiamata.conversation_id}:%`}
+        limit 1
+      `
+      await db`
+        insert into voice_call (
+          conversation_id, agent_ref, summary, outcome, durata_secondi, iniziata_at,
+          trascrizione, thread_id, raw
+        ) values (
+          ${chiamata.conversation_id}, ${chiamata.agent_ref}, ${chiamata.riassunto}, ${chiamata.esito},
+          ${chiamata.durata_secondi}, ${chiamata.iniziata_at},
+          ${db.json(chiamata.trascrizione as unknown as Parameters<typeof db.json>[0])},
+          ${thread?.id ?? null}, ${db.json(req.body as Parameters<typeof db.json>[0])}
+        )
+        on conflict (conversation_id) do update set
+          agent_ref      = excluded.agent_ref,
+          summary        = excluded.summary,
+          outcome        = excluded.outcome,
+          durata_secondi = excluded.durata_secondi,
+          iniziata_at    = excluded.iniziata_at,
+          trascrizione   = excluded.trascrizione,
+          thread_id      = coalesce(excluded.thread_id, voice_call.thread_id),
+          raw            = excluded.raw,
+          updated_at     = now()
+      `
+      req.log.info(
+        { conversation_id: chiamata.conversation_id, thread_id: thread?.id ?? null, battute: chiamata.trascrizione.length },
+        'trascrizione della telefonata salvata',
+      )
+      return reply.code(200).send({ ok: true })
+    } catch (errore) {
+      req.log.error(
+        { err: errore instanceof Error ? errore.message : String(errore) },
+        'salvataggio della trascrizione fallito',
+      )
+      // 500: con i ritentativi attivi ElevenLabs riprova.
+      return reply.code(500).send({ errore: 'salvataggio non riuscito' })
+    }
+  })
+}

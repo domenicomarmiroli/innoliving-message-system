@@ -199,7 +199,7 @@ modello non lo vede mai.
 | 2 – Verifica cliente | ✅ in produzione (05/10) | Ordini da ottobre 2025 riallineati: 3.919 con email |
 | 3 – Stato ordine e tracking | 🟡 stato ordine fatto (05/10) | Eventi di consegna: BRT o un servizio tipo Qapla', più avanti. Tracking Amazon: arriverà col nuovo gestionale |
 | 4 – Ticket | ✅ codice e test (05/10) | Migrazione 0032 da applicare prima del deploy |
-| 5 – Post-call | ⬜ | |
+| 5 – Post-call | 🟡 | Trascrizione salvata in `voice_call` e mostrata in un popup dal ticket (06/10). Manca il ticket di ripiego per le chiamate finite senza ticket. |
 | 5b – Richiamata vocale | ⬜ | Dopo la fase 7 per il collaudo |
 | 6 – Config agente | 🟡 guida e prompt pronti (05/10) | Da configurare nel pannello ElevenLabs e provare nel simulatore |
 | 7 – Telefonia | ⏸ | Dopo i test nel simulatore |

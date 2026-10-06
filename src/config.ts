@@ -88,6 +88,9 @@ const schema = z.object({
   // Secret condiviso che ElevenLabs manda nell'header `x-voice-secret` a
   // ogni chiamata di uno strumento. Senza, le rotte non vengono registrate.
   ELEVENLABS_TOOL_SECRET: z.string().min(32).optional(),
+  // Secret del webhook di fine chiamata (ElevenLabs → Impostazioni →
+  // Webhook). Senza, la rotta /voce/webhook/fine-chiamata non esiste.
+  ELEVENLABS_WEBHOOK_SECRET: z.string().min(16).optional(),
 
   // Per verificare la sessione di un agente loggato in Lovable: il
   // worker chiede a Supabase Auth di chi è il token, senza mai tenere un

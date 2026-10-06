@@ -126,3 +126,18 @@ Usare ordini veri. Scenari minimi:
 Ogni chiamata agli strumenti lascia una riga in `voice_log` (con i dati
 personali oscurati): se qualcosa non va, si guarda lì l'esito e la
 latenza.
+
+## Webhook di fine chiamata (trascrizioni)
+
+Serve a vedere la trascrizione di ogni telefonata dal ticket, in un popup.
+
+1. ElevenLabs → **Agents → Settings** (impostazioni del workspace) →
+   **Post-call webhook** → crea un webhook con URL
+   `https://hub-messaggi-worker.onrender.com/voce/webhook/fine-chiamata`.
+2. Lascia spento **Send audio data**: l'audio non serve e pesa molto.
+3. Attiva i **ritentativi** (retries) se l'opzione è disponibile.
+4. Copia il **secret** generato e mettilo su Render in
+   `ELEVENLABS_WEBHOOK_SECRET`. Non va scritto in chat.
+
+Firma verificata come fa l'SDK ufficiale: header `ElevenLabs-Signature`
+`t=<secondi>,v0=<hmac-sha256 di "t.corpo">`, tolleranza di 30 minuti.
