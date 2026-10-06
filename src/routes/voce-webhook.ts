@@ -53,6 +53,17 @@ export async function voceWebhookRoutes(app: FastifyInstance, opts: { db: Db; co
         union all
         select m.thread_id from message m
         where m.interno and m.external_id like ${`${chiamata.conversation_id}:%`}
+        union all
+        -- Nessun ticket toccato dalla chiamata (caso reale 06/10: l'agente
+        -- ha solo riferito la pratica già aperta): il ticket dell'ordine
+        -- verificato in quella conversazione.
+        select x.id from (
+          select t.id from voice_session vs
+          join thread t on t.order_id = vs.order_id and t.linked_thread_id is null
+          where vs.conversation_id = ${chiamata.conversation_id}
+          order by (t.state <> 'closed') desc, t.last_inbound_at desc nulls last
+          limit 1
+        ) x
         limit 1
       `
       await db`

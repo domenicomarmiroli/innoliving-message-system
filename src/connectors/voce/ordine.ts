@@ -2,6 +2,7 @@ import type { Db } from '../../db/index.js'
 import { etichettaCanale } from '../../core/voce/verifica.js'
 import {
   articoliParlati,
+  cifrePerCifra,
   corriereParlato,
   dataParlata,
   statoOrdine,
@@ -38,7 +39,13 @@ export interface StatoParlato {
    * La pratica già aperta su quest'ordine (qualunque canale), se c'è:
    * l'agente non deve presentare come nuova una richiesta già in carico.
    */
-  ticket_in_corso: { numero: string; stato: 'aperto' | 'in_attesa'; aperto_il: string | null } | null
+  ticket_in_corso: {
+    numero: string
+    /** Da dire così: le cifre separate. */
+    numero_da_dettare: string
+    stato: 'aperto' | 'in_attesa'
+    aperto_il: string | null
+  } | null
   articoli: string[]
   reso_richiesto_il: string | null
   rimborso: { importo: string; data: string | null } | null
@@ -119,6 +126,7 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
     ticket_in_corso: pratica
       ? {
           numero: pratica.numero,
+          numero_da_dettare: cifrePerCifra(pratica.numero),
           stato: pratica.state.startsWith('pending') ? 'in_attesa' : 'aperto',
           aperto_il: dataParlata(pratica.created_at),
         }

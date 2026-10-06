@@ -16,7 +16,7 @@ import {
   tentativiEsauriti,
   type OrdineTrovato,
 } from '../connectors/voce/sessione.js'
-import { dataParlata } from '../core/voce/stato.js'
+import { cifrePerCifra, dataParlata } from '../core/voce/stato.js'
 import {
   confrontaCredenziali,
   etichettaCanale,
@@ -310,6 +310,7 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
           esito: ticket.esistente ? 'ticket_esistente_aggiornato' : ticket.nuovo ? 'ticket_aperto' : 'ticket_aggiornato',
           corpo: {
             ticket_numero: String(ticket.numero),
+            ticket_numero_da_dettare: cifrePerCifra(ticket.numero),
             // true = la richiesta è stata aggiunta a una pratica già aperta
             // su quest'ordine: l'agente lo dice al cliente invece di
             // presentarla come nuova.

@@ -174,3 +174,11 @@ describe('POST /voce/strumenti/stato-ordine', () => {
     expect(r.status).toBe(400)
   })
 })
+
+describe('cifrePerCifra', () => {
+  it('il numero della pratica diviso in cifre, perché la voce non lo legga come un intero', async () => {
+    const { cifrePerCifra } = await import('../src/core/voce/stato.js')
+    expect(cifrePerCifra('12026')).toBe('1 2 0 2 6')
+    expect(cifrePerCifra(10234)).toBe('1 0 2 3 4')
+  })
+})

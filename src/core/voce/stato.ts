@@ -140,3 +140,13 @@ export function corriereParlato(carrier: string | null): string | null {
   if (!c) return null
   return c.length <= 4 ? c.toUpperCase() : c
 }
+
+/**
+ * "12026" → "1 2 0 2 6". Caso reale 06/10: la sintesi vocale leggeva il
+ * numero della pratica come un intero ("dodicimila e ventisei") e il
+ * cliente ha capito due numeri diversi. Si passa all'agente la forma già
+ * divisa, da dire così com'è.
+ */
+export function cifrePerCifra(numero: string | number): string {
+  return String(numero).replace(/\D/g, '').split('').join(' ')
+}
