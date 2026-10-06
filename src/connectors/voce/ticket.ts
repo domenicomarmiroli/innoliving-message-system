@@ -88,7 +88,16 @@ export async function apriTicketVoce(
   db: Db,
   config: Config,
   r: RichiestaTicketVoce,
-): Promise<{ numero: number; thread_id: string; nuovo: boolean }> {
+): Promise<{ numero: number; thread_id: string; nuovo: boolean; esistente: boolean }> {
+  // Ordine verificato con una conversazione già in corso (caso reale 06/10:
+  // il cliente chiama per un ordine che ha già un ticket Amazon): la
+  // telefonata va lì, non in un ticket parallelo che l'operatore
+  // scoprirebbe per caso.
+  if (r.order_id) {
+    const esistente = await aggiungiAlTicketDellOrdine(db, r)
+    if (esistente) return esistente
+  }
+
   const [account] = await db<{ id: string; sla_minutes: number }[]>`
     select id, sla_minutes from channel_account
     where kind = 'telefono' and active
@@ -149,6 +158,58 @@ export async function apriTicketVoce(
       on conflict (thread_id, external_id) do nothing
     `
 
-    return { numero: Number(thread!.numero), thread_id: thread!.id, nuovo: thread!.nuovo }
+    return { numero: Number(thread!.numero), thread_id: thread!.id, nuovo: thread!.nuovo, esistente: false }
+  })
+}
+
+/** Un ticket chiuso da più di così non si riapre per una nuova telefonata: è un'altra storia. */
+const GIORNI_RIAPERTURA = 30
+
+export function notaTelefonata(testo: string): string {
+  return `Il cliente ha chiamato l'assistente vocale.
+
+${testo}`
+}
+
+/**
+ * La telefonata entra come NOTA INTERNA nel ticket esistente, non come
+ * messaggio del cliente: `inviaRisposta()` risponde all'ultimo messaggio
+ * del cliente, e un messaggio con l'email lasciata al telefono farebbe
+ * partire la risposta lì invece che verso l'alias del marketplace (stesso
+ * difetto del bug del 10/09). Il contatto resta scritto nella nota.
+ */
+async function aggiungiAlTicketDellOrdine(
+  db: Db,
+  r: RichiestaTicketVoce,
+): Promise<{ numero: number; thread_id: string; nuovo: boolean; esistente: boolean } | null> {
+  const testo = notaTelefonata(testoTicketVoce(r))
+  const chiave = `${r.conversation_id}:${createHash('sha256').update(testo).digest('hex').slice(0, 16)}`
+  const scadenza = new Date(Date.now() + (r.priorita === 'alta' ? SLA_ALTA_MINUTI : 24 * 60) * 60_000)
+
+  return db.begin(async (tx) => {
+    const [t] = await tx<{ id: string; numero: string }[]>`
+      select t.id, t.numero::text as numero
+      from thread t
+      where t.order_id = ${r.order_id}
+        and t.linked_thread_id is null
+        and (t.state <> 'closed' or t.closed_at > now() - make_interval(days => ${GIORNI_RIAPERTURA}))
+      order by (t.state <> 'closed') desc, t.last_inbound_at desc nulls last, t.created_at desc
+      limit 1
+    `
+    if (!t) return null
+    await tx`
+      insert into message (thread_id, direction, author_kind, external_id, body_text, interno, sent_at)
+      values (${t.id}, 'out', 'agent', ${chiave}, ${testo}, true, now())
+      on conflict (thread_id, external_id) do nothing
+    `
+    await tx`
+      update thread set
+        state      = case when state = 'new' then state else 'open' end,
+        tags       = (select array(select distinct unnest(tags || ${tagTicketVoce(r.categoria, r.priorita)}::text[]))),
+        due_at     = least(coalesce(due_at, ${scadenza}), ${scadenza}),
+        updated_at = now()
+      where id = ${t.id}
+    `
+    return { numero: Number(t.numero), thread_id: t.id, nuovo: false, esistente: true }
   })
 }

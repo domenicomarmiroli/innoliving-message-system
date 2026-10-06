@@ -307,10 +307,16 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
           numero_chiamante: dati.caller_number,
         })
         return {
-          esito: ticket.nuovo ? 'ticket_aperto' : 'ticket_aggiornato',
+          esito: ticket.esistente ? 'ticket_esistente_aggiornato' : ticket.nuovo ? 'ticket_aperto' : 'ticket_aggiornato',
           corpo: {
             ticket_numero: String(ticket.numero),
-            messaggio: `Ticket ${ticket.numero} ${ticket.nuovo ? 'aperto' : 'aggiornato'}`,
+            // true = la richiesta è stata aggiunta a una pratica già aperta
+            // su quest'ordine: l'agente lo dice al cliente invece di
+            // presentarla come nuova.
+            ticket_esistente: ticket.esistente,
+            messaggio: ticket.esistente
+              ? `Aggiunto alla pratica ${ticket.numero} già aperta per quest'ordine`
+              : `Ticket ${ticket.numero} ${ticket.nuovo ? 'aperto' : 'aggiornato'}`,
           },
         }
       })

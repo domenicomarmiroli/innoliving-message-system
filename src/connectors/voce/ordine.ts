@@ -34,6 +34,11 @@ export interface StatoParlato {
    * risolvere.
    */
   gestito_da_amazon: boolean
+  /**
+   * La pratica già aperta su quest'ordine (qualunque canale), se c'è:
+   * l'agente non deve presentare come nuova una richiesta già in carico.
+   */
+  ticket_in_corso: { numero: string; stato: 'aperto' | 'in_attesa'; aperto_il: string | null } | null
   articoli: string[]
   reso_richiesto_il: string | null
   rimborso: { importo: string; data: string | null } | null
@@ -80,6 +85,13 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
   `
   if (!o) return null
 
+  const [pratica] = await db<{ numero: string; state: string; created_at: Date }[]>`
+    select numero::text as numero, state, created_at from thread
+    where order_id = ${orderId} and state <> 'closed' and linked_thread_id is null
+    order by last_inbound_at desc nulls last, created_at desc
+    limit 1
+  `
+
   const righe = await db<{ titolo: string | null; quantita: number | null }[]>`
     select titolo, quantita from order_line where order_id = ${orderId} order by titolo
   `
@@ -104,6 +116,13 @@ export async function statoDellOrdine(db: Db, orderId: string): Promise<StatoPar
     tracking_disponibile: !!o.tracking_number,
     numero_tracking: o.tracking_number,
     gestito_da_amazon: o.channel === 'amazon' && o.fba,
+    ticket_in_corso: pratica
+      ? {
+          numero: pratica.numero,
+          stato: pratica.state.startsWith('pending') ? 'in_attesa' : 'aperto',
+          aperto_il: dataParlata(pratica.created_at),
+        }
+      : null,
     articoli: articoliParlati(righe),
     reso_richiesto_il: dataParlata(o.reso_richiesto_at),
     rimborso:

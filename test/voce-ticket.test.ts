@@ -102,7 +102,7 @@ describe('POST /voce/strumenti/crea-ticket', () => {
   it('restituisce il numero breve da dettare al cliente', async () => {
     const r = await chiama(false, richiesta)
     expect(r.status).toBe(200)
-    expect(r.corpo).toEqual({ ticket_numero: '10234', messaggio: 'Ticket 10234 aperto' })
+    expect(r.corpo).toEqual({ ticket_numero: '10234', ticket_esistente: false, messaggio: 'Ticket 10234 aperto' })
   })
 
   it("con una sessione valida il ticket è legato all'ordine verificato", async () => {
@@ -129,5 +129,12 @@ describe('POST /voce/strumenti/crea-ticket', () => {
   it('senza descrizione o contatto è una richiesta non valida', async () => {
     const r = await chiama(false, { conversation_id: 'c', categoria: 'altro' })
     expect(r.status).toBe(400)
+  })
+})
+
+describe('notaTelefonata', () => {
+  it('nel ticket esistente la telefonata entra come nota riconoscibile', async () => {
+    const { notaTelefonata } = await import('../src/connectors/voce/ticket.js')
+    expect(notaTelefonata('Non mi è arrivato il pacco.')).toMatch(/^Il cliente ha chiamato l'assistente vocale\.\n\nNon mi è arrivato il pacco\.$/)
   })
 })
