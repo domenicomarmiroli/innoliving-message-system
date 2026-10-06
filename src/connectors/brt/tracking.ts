@@ -118,7 +118,11 @@ export async function giroTrackingBrt(
     select id, tracking_number, spedizione_stato
     from "order"
     where tracking_number ~ '^[0-9]{12}$'
-      and (carrier ilike 'brt%' or carrier ilike '%bartolini%' or tracking_url ilike '%brt.it%')
+      -- "Amazon Logistics US" con un numero di 12 cifre è un'etichetta
+      -- sbagliata alla fonte (06/10: 10 ordini Mirakl, numeri BRT veri):
+      -- i tracking Amazon Logistics non sono mai solo cifre.
+      and (carrier ilike 'brt%' or carrier ilike '%bartolini%' or tracking_url ilike '%brt.it%'
+           or carrier ilike 'amazon logistics%')
       and spedizione_stato is distinct from 'consegnato'
       and coalesce(placed_at, created_at) > now() - make_interval(days => ${GIORNI_FINESTRA})
       and (tracking_letto_at is null
@@ -175,6 +179,10 @@ export async function giroTrackingBrt(
           tracking_giacenza          = ${pagina.giacenza ? db.json(pagina.giacenza as unknown as Parameters<typeof db.json>[0]) : null},
           tracking_letto_at          = now(),
           spedizione_aggiornata_at   = now(),
+          -- BRT ha trovato la spedizione: è sua, anche se la fonte la
+          -- chiamava in un altro modo.
+          carrier                    = 'BRT',
+          tracking_url               = ${urlPaginaBrt(o.tracking_number)},
           updated_at                 = now()
         where id = ${o.id}
       `
