@@ -1759,3 +1759,15 @@ ordine segnaposto se serve, tag `pacco-rientrato-logistica` +
 `rientro-senza-contatto`, nota interna con collo e istruzioni.
 Solo per scansioni degli ultimi 7 giorni (`GIORNI_APERTURA`): l'endpoint
 ne restituisce 60, e lo storico ha rimborsi in gran parte già emessi.
+
+**Reso al mittente (migrazione 0035, 06/10).** Caso reale 066061609726:
+RIFIUTA SENZA MOTIVAZIONE → giacenza con disposizione RIENTRO → RESO
+MITTENTE → CONSEGNATA, ma consegnata a noi. Risultava "consegnato".
+`rientrataAlMittente()` (`brt/pagina.ts`) dà lo stato `rientrato`
+("Reso mittente" in rosso nell'interfaccia). Ha la precedenza su tutto
+ed è uno stato finale. Parte un avviso con il tag `spedizione-rientrata`
+e, per la voce, lo stato `problema_consegna`. A ogni giro la rete di
+sicurezza rilegge le spedizioni "consegnate" con eventi di reso. Gli
+ordini che Zoho dà come consegnati si leggono da BRT una volta, perché
+Zoho non distingue le due consegne. Zoho non sovrascrive più
+giacenza/problema/rientrato.

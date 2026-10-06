@@ -79,6 +79,7 @@ export function statoOrdine(
       return { stato: 'in_consegna', spedizione_parziale: false }
     case 'giacenza':
     case 'problema':
+    case 'rientrato':
       return { stato: 'problema_consegna', spedizione_parziale: false }
     case 'spedito':
     case 'in_transito':

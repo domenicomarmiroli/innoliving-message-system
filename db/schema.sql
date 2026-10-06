@@ -91,7 +91,7 @@ create table "order" (
   -- dato, vale lo stato Shopify.
   spedizione_stato         text check (spedizione_stato is null or spedizione_stato in (
                              'non_spedito', 'spedito', 'in_transito', 'in_consegna',
-                             'consegnato', 'giacenza', 'problema')),
+                             'consegnato', 'giacenza', 'problema', 'rientrato')),
   spedizione_data          date,
   spedizione_aggiornata_at timestamptz,
   -- Dalla pagina pubblica BRT (0034): eventi dal più recente, consegna

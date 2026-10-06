@@ -48,6 +48,14 @@ describe('statoDaEventi', () => {
       }),
     ).toBe('giacenza')
   })
+  it('rifiutata e tornata al mittente: "reso mittente" anche con ultimo evento è CONSEGNATA', () => {
+    // Sequenza reale (06/10, 066061609726), dal più recente.
+    const eventi = ev('CONSEGNATA', 'IN CONSEGNA', 'PARTITA', 'RESO MITTENTE', 'RIFIUTA SENZA MOTIVAZIONE', 'IN CONSEGNA', 'ARRIVATA IN FILIALE', 'PARTITA', 'RITIRATA')
+    expect(statoDaEventi(eventi, null)).toBe('rientrato')
+    expect(
+      statoDaEventi(ev('CONSEGNATA'), { numero: '25 / 8329', aperta_il: '2026-09-30', stato: 'Disposizioni in esecuzione', motivazione: 'RIFIUTA SENZA MOTIVAZIONE', disposizioni: 'RIENTRO' }),
+    ).toBe('rientrato')
+  })
   it('in consegna, in transito, solo dati trasmessi', () => {
     expect(statoDaEventi(ev('IN CONSEGNA', 'ARRIVATA IN FILIALE'), null)).toBe('in_consegna')
     expect(statoDaEventi(ev('PARTITA', 'RITIRATA'), null)).toBe('in_transito')

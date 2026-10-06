@@ -33,6 +33,8 @@ export interface GiacenzaBrt {
 
 export type StatoBrt =
   | 'spedito'
+  /** Tornato al mittente (rifiutato, non consegnabile): l'ultimo "CONSEGNATA" è la riconsegna a noi. */
+  | 'rientrato'
   | 'in_transito'
   | 'in_consegna'
   | 'consegnato'
@@ -101,12 +103,27 @@ const CONSEGNATA = /^CONSEGNAT[AO]/
 
 /**
  * Lo stato riassunto, dall'ultimo evento e dalla giacenza. Ordine delle
- * regole: consegnata vince su tutto (una giacenza risolta resta nella
- * pagina anche dopo la consegna, come nell'esemplare reale); poi giacenza
+ * regole: rientro al mittente prima di tutto; poi consegnata (una giacenza
+ * risolta resta nella pagina anche dopo la consegna, come nell'esemplare
+ * reale); poi giacenza
  * ancora aperta; poi un ultimo evento problematico.
  */
+const RIENTRO = /RESO (AL )?MITT|RIENTR|RITORNO AL MITT|RESTITUIT/
+
+/**
+ * Tornata al mittente? Caso reale (06/10, 066061609726): RIFIUTA SENZA
+ * MOTIVAZIONE → giacenza con disposizione RIENTRO → RESO MITTENTE →
+ * CONSEGNATA. Quell'ultimo "CONSEGNATA" è la riconsegna a noi, non al
+ * cliente: senza questa regola lo stato diceva "consegnato".
+ */
+export function rientrataAlMittente(eventi: EventoBrt[], giacenza: GiacenzaBrt | null): boolean {
+  if (eventi.some((e) => RIENTRO.test(e.evento.toUpperCase()))) return true
+  return RIENTRO.test((giacenza?.disposizioni ?? '').toUpperCase())
+}
+
 export function statoDaEventi(eventi: EventoBrt[], giacenza: GiacenzaBrt | null): StatoBrt {
   const ultimo = eventi[0]?.evento.toUpperCase() ?? ''
+  if (rientrataAlMittente(eventi, giacenza)) return 'rientrato'
   if (CONSEGNATA.test(ultimo)) return 'consegnato'
   if (giacenza && !/evas|chius|risolt/i.test(giacenza.stato ?? '')) return 'giacenza'
   if (/GIACENZA/.test(ultimo)) return 'giacenza'

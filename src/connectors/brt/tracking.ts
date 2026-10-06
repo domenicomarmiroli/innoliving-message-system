@@ -18,13 +18,14 @@ import { leggiPagina, urlPaginaBrt, type EventoBrt, type StatoBrt } from './pagi
 
 export const TAG_GIACENZA = 'spedizione-giacenza'
 export const TAG_PROBLEMA = 'spedizione-problema'
+export const TAG_RIENTRATO = 'spedizione-rientrata'
 
 const GIORNI_FINESTRA = 45
 const MASSIMO_PER_GIRO = 400
 /** Dopo tante risposte di errore di fila, il sito non ci vuole: ci si ferma fino al giro dopo. */
 const ERRORI_DI_FILA_MASSIMI = 3
 
-const STATI_DI_AVVISO: ReadonlySet<StatoBrt> = new Set(['giacenza', 'problema'])
+const STATI_DI_AVVISO: ReadonlySet<StatoBrt> = new Set(['giacenza', 'problema', 'rientrato'])
 
 export interface EsitoGiroBrt {
   letti: number
@@ -44,7 +45,12 @@ interface DaLeggere {
 
 /** Il testo della nota interna: l'evento come lo scrive BRT, con data e filiale. */
 export function testoAvviso(stato: StatoBrt, evento: EventoBrt | undefined, numero: string): string {
-  const titolo = stato === 'giacenza' ? 'Spedizione BRT in giacenza' : 'Problema nella consegna BRT'
+  const titolo =
+    stato === 'giacenza'
+      ? 'Spedizione BRT in giacenza'
+      : stato === 'rientrato'
+        ? 'Spedizione BRT rientrata al mittente: il cliente non ha ricevuto il pacco, verificare rimborso o rispedizione'
+        : 'Problema nella consegna BRT'
   if (!evento) return `${titolo} (spedizione ${numero}).`
   const quando = evento.data.split('-').reverse().join('/') + (evento.ora ? ` ${evento.ora}` : '')
   return `${titolo}: «${evento.evento}» — ${quando}${evento.filiale ? `, ${evento.filiale}` : ''} (spedizione ${numero}).`
@@ -75,7 +81,7 @@ async function avvisa(
   evento: EventoBrt | undefined,
   numero: string,
 ): Promise<boolean> {
-  const tag = stato === 'giacenza' ? TAG_GIACENZA : TAG_PROBLEMA
+  const tag = stato === 'giacenza' ? TAG_GIACENZA : stato === 'rientrato' ? TAG_RIENTRATO : TAG_PROBLEMA
   const [thread] = await db<{ id: string }[]>`
     select id from thread
     where order_id = ${orderId}
@@ -114,6 +120,16 @@ export async function giroTrackingBrt(
     letti: 0, aggiornati: 0, non_trovati: 0, non_riconosciuti: 0, avvisi: 0, errori: 0, interrotto: false,
   }
 
+  // Rete di sicurezza: una spedizione segnata "consegnata" i cui eventi
+  // parlano di reso al mittente si rilegge (è il bug del 06/10, e vale per
+  // ogni regola di riconoscimento aggiunta in futuro).
+  await db`
+    update "order" set tracking_letto_at = null
+    where spedizione_stato = 'consegnato'
+      and tracking_eventi::text ~* 'RESO (AL )?MITT|RIENTR'
+      and tracking_letto_at is not null
+  `
+
   const daLeggere = await db<DaLeggere[]>`
     select id, tracking_number, spedizione_stato
     from "order"
@@ -123,7 +139,11 @@ export async function giroTrackingBrt(
       -- i tracking Amazon Logistics non sono mai solo cifre.
       and (carrier ilike 'brt%' or carrier ilike '%bartolini%' or tracking_url ilike '%brt.it%'
            or carrier ilike 'amazon logistics%')
-      and spedizione_stato is distinct from 'consegnato'
+      -- "consegnato" letto solo da Zoho (mai da BRT) si legge una volta:
+      -- Zoho non distingue la consegna al cliente dal rientro a noi.
+      and (spedizione_stato is null
+           or spedizione_stato not in ('consegnato', 'rientrato')
+           or (spedizione_stato = 'consegnato' and tracking_letto_at is null))
       and coalesce(placed_at, created_at) > now() - make_interval(days => ${GIORNI_FINESTRA})
       and (tracking_letto_at is null
            or tracking_letto_at < now() - make_interval(hours => ${config.BRT_TRACKING_ORE}))
