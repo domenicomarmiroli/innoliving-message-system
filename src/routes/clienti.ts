@@ -444,13 +444,18 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
     if (!z.string().uuid().safeParse(id).success || !chiaveValida(id, chiaveLink, chiave!)) {
       return reply.code(404).send({ errore: 'richiesta non trovata' })
     }
-    const [t] = await db<{ numero: string; aperto_il: Date; in_attesa_garanzia: boolean; registrata: boolean; prodotto: string | null }[]>`
+    // `email`: per precompilare l'accesso al portale. Chi ha la chiave ha
+    // ricevuto l'email a quell'indirizzo, quindi non rivela niente di nuovo.
+    const [t] = await db<{ numero: string; aperto_il: Date; in_attesa_garanzia: boolean; registrata: boolean; prodotto: string | null; email: string | null }[]>`
       select t.numero::text as numero, t.created_at as aperto_il,
              ${TAG_ATTESA_REGISTRAZIONE} = any(t.tags) as in_attesa_garanzia,
              ${TAG_GARANZIA_REGISTRATA} = any(t.tags) as registrata,
              (select m.raw->>'prodotto' from message m
                where m.thread_id = t.id and m.author_kind = 'customer'
-               order by m.sent_at asc limit 1) as prodotto
+               order by m.sent_at asc limit 1) as prodotto,
+             (select m.raw->>'from' from message m
+               where m.thread_id = t.id and m.author_kind = 'customer' and m.raw->>'from' like '%@%'
+               order by m.sent_at asc limit 1) as email
       from thread t where t.id = ${id}
     `
     if (!t) return reply.code(404).send({ errore: 'richiesta non trovata' })
