@@ -1620,3 +1620,10 @@ quasi vuoti, nessun grado IP.
 `app_config.voce_siti_acquisto`, migrazione 0039). Nato da un test vero:
 col solo prompt l'agente aveva indicato il sito di un altro marchio.
 
+
+**Costi Anthropic fuori controllo (07/10)**: la traduzione in arrivo
+ritraduceva a ogni giro 4 newsletter in inglese troppo lunghe (risposta
+troncata a 2500 token, JSON illeggibile, riga mai segnata). Stima
+~35-40 $ al giorno su Haiku. Corretto in `core/ai/traduzione.ts`
+(ingresso a 4000 caratteri, abbandono dopo 2 fallimenti). Da fare:
+escludere i domini delle newsletter in `app_config.mail_ingest`.
