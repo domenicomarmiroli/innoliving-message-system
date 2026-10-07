@@ -55,11 +55,15 @@ export function nomeLingua(codice: string): string {
  * superava i 2500 token di risposta, il JSON arrivava troncato, la riga
  * restava `lingua is null` e veniva ripagata a ogni giro — caso reale
  * 02-07/10, quattro newsletter in inglese ritradotte ogni due minuti e
- * mezzo per giorni. 4000 caratteri sono circa 1000-1300 token in
- * italiano: margine ampio.
+ * mezzo per giorni. 4000 caratteri di testo normale sono 1000-1300
+ * token, ma non bastava: una newsletter piena di link di tracciamento
+ * (07/10) arriva a ~2900 token in 4000 caratteri, e la traduzione ne
+ * occupa altrettanti. Il tetto di risposta deve stare sopra il peggior
+ * ingresso possibile (circa un token per carattere), non sopra il caso
+ * medio: si paga una volta sola invece che a ogni riavvio.
  */
 const MAX_CARATTERI_INGRESSO = 4000
-const MAX_TOKEN_TRADUZIONE = 2500
+const MAX_TOKEN_TRADUZIONE = 6000
 
 /**
  * Tentativi falliti per messaggio, nella vita del processo. Un messaggio
@@ -184,6 +188,21 @@ export async function traduciPerCliente(
 const GIORNI_FINESTRA = 7
 const PER_GIRO = 20
 
+/**
+ * Newsletter e email promozionali finite in coda: non si traducono. Non
+ * c'è nessun cliente da capire, e sono proprio i testi lunghi e pieni di
+ * link che costano di più. Gli header (List-Unsubscribe) non sono salvati
+ * in `raw`, quindi si riconoscono dall'invito a disiscriversi, che un
+ * cliente vero non scrive. Il filtro sta nella query: una newsletter non
+ * occupa i posti del giro.
+ */
+export const SEGNALI_NEWSLETTER =
+  'unsubscribe|opt[ -]?out|disiscriv|annulla(re)? l.iscrizione|cancella(re)? l.iscrizione|désinscri|desinscri|désabonn|desabonn|abmelden|abbestellen|darse de baja|cancelar (la )?suscripci'
+
+export function sembraNewsletter(testo: string): boolean {
+  return new RegExp(SEGNALI_NEWSLETTER, 'i').test(testo)
+}
+
 export async function traduciMessaggiInArrivo(db: Db, log: Logger, config: Config): Promise<number> {
   if (!config.ANTHROPIC_API_KEY) return 0
 
@@ -195,6 +214,7 @@ export async function traduciMessaggiInArrivo(db: Db, log: Logger, config: Confi
       and lingua is null
       and body_text is not null
       and length(trim(body_text)) > 0
+      and body_text !~* ${SEGNALI_NEWSLETTER}
       and created_at > now() - ${`${GIORNI_FINESTRA} days`}::interval
     order by created_at desc
     limit ${PER_GIRO}
