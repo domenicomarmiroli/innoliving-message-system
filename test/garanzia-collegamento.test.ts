@@ -27,7 +27,7 @@ describe('collegamento garanzia', () => {
     expect(e.oggetto).toContain('12345')
     expect(e.testo).toContain('Gentile Mario,')
     expect(e.testo).toContain('1. Apra questo link: https://x/y')
-    expect(e.testo).toContain('non deve riscrivere nulla')
+    expect(e.testo).toContain('si collega da sola alla richiesta')
   })
   it('il messaggio nel ticket elenca solo i dati presenti', () => {
     expect(testoRegistrazione({ prodotto: 'Friggitrice INN-798', data_acquisto: '12/03/2026', codice: '' })).toBe(
