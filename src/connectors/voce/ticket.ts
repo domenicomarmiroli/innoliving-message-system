@@ -44,6 +44,16 @@ const ETICHETTA_CATEGORIA: Record<CategoriaVoce, string> = {
 /** SLA di un ticket ad alta priorità: lo stesso bucket "urgente" degli avvisi A-to-Z. */
 const SLA_ALTA_MINUTI = 240
 
+/**
+ * La scadenza di un ticket che torna in coda (messaggio dall'area cliente,
+ * garanzia registrata sul portale): la priorità alta decisa al telefono
+ * non si perde. Caso reale 07/10, ticket 12119: un forno "esploso",
+ * priorità alta, tornato in coda con la scadenza normale di 8 ore.
+ */
+export function minutiSla(slaAccount: number, tags: string[] | null | undefined): number {
+  return tags?.includes('priorita-alta') ? Math.min(SLA_ALTA_MINUTI, slaAccount) : slaAccount
+}
+
 export interface RichiestaTicketVoce {
   conversation_id: string
   order_id: string | null

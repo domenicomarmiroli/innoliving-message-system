@@ -12,6 +12,7 @@ import {
   chiaveValida,
   testoRegistrazione,
 } from '../core/garanzia/collegamento.js'
+import { minutiSla } from '../connectors/voce/ticket.js'
 import {
   LIMITE_CORPO_RICHIESTA,
   preparaAllegatiCliente,
@@ -241,8 +242,8 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
     }
     const email = normalizzaEmail(c.data.email)
 
-    const [t] = await db<{ id: string; numero: string; subject: string | null; account_code: string; sla_minutes: number }[]>`
-      select t.id, t.numero::text as numero, t.subject, ca.code as account_code, ca.sla_minutes
+    const [t] = await db<{ id: string; numero: string; subject: string | null; account_code: string; sla_minutes: number; tags: string[] }[]>`
+      select t.id, t.numero::text as numero, t.subject, ca.code as account_code, ca.sla_minutes, t.tags
       from thread t
       join channel_account ca on ca.id = t.account_id
       left join "order" o on o.id = t.order_id
@@ -307,7 +308,7 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
         update thread set
           state = 'open',
           last_inbound_at = ${ora},
-          due_at = ${new Date(ora.getTime() + t.sla_minutes * 60_000)},
+          due_at = ${new Date(ora.getTime() + minutiSla(t.sla_minutes, t.tags) * 60_000)},
           updated_at = now()
         where id = ${t.id}
       `
@@ -358,8 +359,8 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
     const email = normalizzaEmail(c.data.email)
     const conChiave = chiaveValida(id, c.data.chiave, chiave!)
 
-    const [t] = await db<{ id: string; numero: string; subject: string | null; account_code: string; sla_minutes: number }[]>`
-      select t.id, t.numero::text as numero, t.subject, ca.code as account_code, ca.sla_minutes
+    const [t] = await db<{ id: string; numero: string; subject: string | null; account_code: string; sla_minutes: number; tags: string[] }[]>`
+      select t.id, t.numero::text as numero, t.subject, ca.code as account_code, ca.sla_minutes, t.tags
       from thread t
       join channel_account ca on ca.id = t.account_id
       left join "order" o on o.id = t.order_id
@@ -419,7 +420,7 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
           tags = (select array(select distinct x from unnest(tags || array[${TAG_GARANZIA_REGISTRATA}::text, 'garanzia'::text]) x
                   where x <> ${TAG_ATTESA_REGISTRAZIONE})),
           last_inbound_at = ${ora},
-          due_at = ${new Date(ora.getTime() + t.sla_minutes * 60_000)},
+          due_at = ${new Date(ora.getTime() + minutiSla(t.sla_minutes, t.tags) * 60_000)},
           updated_at = now()
         where id = ${t.id}
       `

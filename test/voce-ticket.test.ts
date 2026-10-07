@@ -138,3 +138,12 @@ describe('notaTelefonata', () => {
     expect(notaTelefonata('Non mi è arrivato il pacco.')).toMatch(/^Il cliente ha chiamato l'assistente vocale\.\n\nNon mi è arrivato il pacco\.$/)
   })
 })
+
+describe('priorità alta quando il ticket torna in coda', () => {
+  it('la scadenza resta quella urgente (caso reale 12119)', async () => {
+    const { minutiSla } = await import('../src/connectors/voce/ticket.js')
+    expect(minutiSla(480, ['garanzia', 'priorita-alta'])).toBe(240)
+    expect(minutiSla(480, ['garanzia'])).toBe(480)
+    expect(minutiSla(120, ['priorita-alta'])).toBe(120)
+  })
+})
