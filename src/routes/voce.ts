@@ -6,7 +6,8 @@ import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { registraChiamataVoce } from '../connectors/voce/registro.js'
 import { statoDellOrdine } from '../connectors/voce/ordine.js'
-import { apriTicketVoce } from '../connectors/voce/ticket.js'
+import { apriTicketVoce, contattoEmail } from '../connectors/voce/ticket.js'
+import { avviaRegistrazioneGaranzia } from '../connectors/voce/garanzia.js'
 import { doveAcquistare, type SitiAcquisto } from '../core/voce/acquisto.js'
 import {
   cercaProdottiPim,
@@ -122,6 +123,17 @@ const corpoTicket = z.object({
   nome: testoFacoltativo(200),
   contatto_richiamata: z.string().trim().min(3).max(200),
   caller_number: tokenFacoltativo,
+  // Per categoria 'garanzia': il marchio del prodotto, che sceglie il
+  // portale garanzie a cui mandare il cliente (canale garanzia-<marchio>).
+  // Non 'brand': in ElevenLabs {{brand}} è già il marchio del numero chiamato.
+  marchio: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(40)
+    .nullable()
+    .optional()
+    .transform((v) => (v && /^[a-z0-9-]+$/.test(v) ? v : null)),
 })
 
 const corpoCercaProdotto = z.object({
@@ -327,6 +339,29 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
           contatto_richiamata: dati.contatto_richiamata,
           numero_chiamante: dati.caller_number,
         })
+        // Garanzia segnalata al telefono: email al cliente con il link al
+        // portale del brand. Si decide qui (una query veloce) e si spedisce
+        // dopo aver risposto, così la telefonata non aspetta il server di posta.
+        const email = contattoEmail(dati.contatto_richiamata)
+        const [portale] =
+          dati.categoria === 'garanzia' && dati.marchio && email && ticket.nuovo && !ticket.esistente
+            ? await db<{ ok: boolean }[]>`
+                select true as ok from channel_account
+                where code = ${`garanzia-${dati.marchio}`} and active and config ? 'portale_url'
+              `
+            : []
+        if (portale) {
+          setImmediate(() => {
+            void avviaRegistrazioneGaranzia(db, req.log, config, {
+              thread_id: ticket.thread_id,
+              numero: String(ticket.numero),
+              email,
+              nome: dati.nome,
+              brand: dati.marchio!,
+              prodotto: dati.prodotto,
+            })
+          })
+        }
         return {
           esito: ticket.esistente ? 'ticket_esistente_aggiornato' : ticket.nuovo ? 'ticket_aperto' : 'ticket_aggiornato',
           corpo: {
@@ -336,6 +371,9 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
             // su quest'ordine: l'agente lo dice al cliente invece di
             // presentarla come nuova.
             ticket_esistente: ticket.esistente,
+            // true = il cliente riceve un'email con il link per registrare il
+            // prodotto sul portale garanzie (l'agente glielo dice).
+            email_registrazione_garanzia: Boolean(portale),
             messaggio: ticket.esistente
               ? `Aggiunto alla pratica ${ticket.numero} già aperta per quest'ordine`
               : `Ticket ${ticket.numero} ${ticket.nuovo ? 'aperto' : 'aggiornato'}`,

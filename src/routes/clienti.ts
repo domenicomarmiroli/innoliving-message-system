@@ -7,6 +7,12 @@ import type { Db } from '../db/index.js'
 import { ETICHETTA_STATO, normalizzaEmail, statoPerCliente, testoPerCliente } from '../core/clienti/area.js'
 import { scaricaAllegato, storageConfigurato } from '../core/storage.js'
 import {
+  TAG_ATTESA_REGISTRAZIONE,
+  TAG_GARANZIA_REGISTRATA,
+  chiaveValida,
+  testoRegistrazione,
+} from '../core/garanzia/collegamento.js'
+import {
   LIMITE_CORPO_RICHIESTA,
   preparaAllegatiCliente,
   schemaAllegato,
@@ -81,8 +87,10 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
     const righe = await db<{
       id: string; numero: string; subject: string | null; state: string; canale: string
       brand: string | null; ordine: string | null; aperto_il: Date; ultimo_messaggio_il: Date | null
+      in_attesa_garanzia: boolean
     }[]>`
       select t.id, t.numero::text as numero, t.subject, t.state, ca.kind as canale,
+             ${TAG_ATTESA_REGISTRAZIONE} = any(t.tags) as in_attesa_garanzia,
              ca.display_name as brand,
              coalesce(o.shopify_name, o.external_order_id) as ordine,
              t.created_at as aperto_il,
@@ -110,6 +118,9 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
           ordine: r.ordine,
           aperto_il: r.aperto_il,
           ultimo_messaggio_il: r.ultimo_messaggio_il,
+          // true = aperto al telefono per un prodotto in garanzia, aspetta che
+          // il cliente registri il prodotto sul portale.
+          in_attesa_garanzia: r.in_attesa_garanzia,
         }
       }),
     })
@@ -308,5 +319,141 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
       "messaggio del cliente dall'area cliente",
     )
     return reply.code(200).send({ ok: true, message_id: messaggioId, numero: t.numero })
+  })
+
+  // --- Garanzia registrata sul portale: si collega al ticket del telefono ---
+  // Il cliente ha chiamato, ha ricevuto l'email con il link e ha registrato
+  // il prodotto. Il portale manda qui i dati della garanzia e lo scontrino:
+  // il ticket già aperto li riceve come messaggio del cliente e torna in
+  // coda all'assistenza. Autorizzato dalla chiave del link (anche se il
+  // cliente si è registrato con un'altra email) o dall'email del cliente.
+  const corpoGaranzia = z.object({
+    email: z.string().email(),
+    chiave: z.string().trim().max(100).nullable().optional(),
+    // Id della garanzia nel portale: una seconda chiamata per la stessa
+    // garanzia non duplica il messaggio.
+    garanzia_id: z.string().trim().min(1).max(100),
+    garanzia: z.object({
+      prodotto: z.string().max(300).nullable().optional(),
+      codice: z.string().max(100).nullable().optional(),
+      numero_seriale: z.string().max(100).nullable().optional(),
+      data_acquisto: z.string().max(40).nullable().optional(),
+      garanzia_fino_al: z.string().max(40).nullable().optional(),
+      numero_ordine: z.string().max(100).nullable().optional(),
+      rivenditore: z.string().max(200).nullable().optional(),
+    }),
+    allegati: z.array(schemaAllegato).max(20).optional(),
+  })
+
+  app.post('/clienti/ticket/:id/garanzia', { bodyLimit: LIMITE_CORPO_RICHIESTA }, async (req, reply) => {
+    if (!autorizzato(req, reply)) return
+    const { id } = req.params as { id: string }
+    const c = corpoGaranzia.safeParse(req.body)
+    if (!c.success || !z.string().uuid().safeParse(id).success) {
+      return reply.code(400).send({
+        errore: 'richiesta non valida',
+        dettagli: c.success ? [] : c.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+      })
+    }
+    const email = normalizzaEmail(c.data.email)
+    const conChiave = chiaveValida(id, c.data.chiave, chiave!)
+
+    const [t] = await db<{ id: string; numero: string; subject: string | null; account_code: string; sla_minutes: number }[]>`
+      select t.id, t.numero::text as numero, t.subject, ca.code as account_code, ca.sla_minutes
+      from thread t
+      join channel_account ca on ca.id = t.account_id
+      left join "order" o on o.id = t.order_id
+      where t.id = ${id}
+        and (${conChiave} or (${delCliente(email)}))
+    `
+    if (!t) return reply.code(404).send({ errore: 'ticket non trovato' })
+
+    let files
+    try {
+      files = validaAllegati(c.data.allegati ?? [])
+    } catch (errore) {
+      return reply.code(422).send({ errore: errore instanceof Error ? errore.message : String(errore) })
+    }
+    const allegati = await preparaAllegatiCliente(config, req.log, t.account_code, files)
+
+    const [precedente] = await db<{ raw: Record<string, unknown> | null; rfc822_id: string | null }[]>`
+      select raw, rfc822_id from message
+      where thread_id = ${t.id} and author_kind = 'customer' and direction = 'in'
+      order by sent_at desc limit 1
+    `
+    const ora = new Date()
+
+    const messaggioId = await db.begin(async (tx) => {
+      const [m] = await tx<{ id: string }[]>`
+        insert into message (thread_id, direction, author_kind, external_id, body_text, sent_at, raw)
+        values (
+          ${t.id}, 'in', 'customer', ${`garanzia:${c.data.garanzia_id}`}, ${testoRegistrazione(c.data.garanzia)}, ${ora},
+          ${tx.json({
+            // Se il cliente scrive dal portale con un'altra email, da qui in
+            // poi il ticket compare anche nella sua area con quell'indirizzo.
+            from: email,
+            canale: 'portale_garanzie',
+            subject: t.subject,
+            casella: precedente?.raw?.['casella'] ?? null,
+            garanzia: c.data.garanzia,
+          } as never)}
+        )
+        on conflict (thread_id, external_id) do nothing
+        returning id
+      `
+      if (!m) return null
+      for (const a of allegati) {
+        await tx`
+          insert into attachment (
+            message_id, direzione, nome_file, mime, dimensione_byte, checksum, storage_path, larghezza, altezza
+          ) values (
+            ${m.id}, 'in', ${a.nome_file}, ${a.mime}, ${a.dimensione_byte}, ${a.checksum},
+            ${a.storage_path}, ${a.larghezza}, ${a.altezza}
+          )
+        `
+      }
+      // Torna APERTO, in coda all'assistenza, con la scadenza da adesso.
+      await tx`
+        update thread set
+          state = 'open',
+          tags = (select array(select distinct x from unnest(tags || array[${TAG_GARANZIA_REGISTRATA}::text, 'garanzia'::text]) x
+                  where x <> ${TAG_ATTESA_REGISTRAZIONE})),
+          last_inbound_at = ${ora},
+          due_at = ${new Date(ora.getTime() + t.sla_minutes * 60_000)},
+          updated_at = now()
+        where id = ${t.id}
+      `
+      return m.id
+    })
+
+    req.log.info(
+      { thread_id: t.id, con_chiave: conChiave, allegati: allegati.length, duplicato: messaggioId === null },
+      'garanzia registrata sul portale collegata al ticket',
+    )
+    return reply.code(200).send({ ok: true, numero: t.numero, thread_id: t.id })
+  })
+
+  // --- Anteprima per la conferma nel portale ----------------------------------
+  // Arrivando dal link dell'email, il portale mostra "Richiesta n. 12345 del
+  // 7 ottobre: è per questo prodotto?" prima che il cliente confermi. Solo
+  // con la chiave del link, e solo il minimo: niente conversazione.
+  app.get('/clienti/ticket/:id/anteprima', async (req, reply) => {
+    if (!autorizzato(req, reply)) return
+    const { id } = req.params as { id: string }
+    const { chiave: chiaveLink } = (req.query ?? {}) as { chiave?: string }
+    if (!z.string().uuid().safeParse(id).success || !chiaveValida(id, chiaveLink, chiave!)) {
+      return reply.code(404).send({ errore: 'richiesta non trovata' })
+    }
+    const [t] = await db<{ numero: string; aperto_il: Date; in_attesa_garanzia: boolean; registrata: boolean; prodotto: string | null }[]>`
+      select t.numero::text as numero, t.created_at as aperto_il,
+             ${TAG_ATTESA_REGISTRAZIONE} = any(t.tags) as in_attesa_garanzia,
+             ${TAG_GARANZIA_REGISTRATA} = any(t.tags) as registrata,
+             (select m.raw->>'prodotto' from message m
+               where m.thread_id = t.id and m.author_kind = 'customer'
+               order by m.sent_at asc limit 1) as prodotto
+      from thread t where t.id = ${id}
+    `
+    if (!t) return reply.code(404).send({ errore: 'richiesta non trovata' })
+    return reply.send(t)
   })
 }

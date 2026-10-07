@@ -102,7 +102,7 @@ describe('POST /voce/strumenti/crea-ticket', () => {
   it('restituisce il numero breve da dettare al cliente', async () => {
     const r = await chiama(false, richiesta)
     expect(r.status).toBe(200)
-    expect(r.corpo).toEqual({ ticket_numero: '10234', ticket_numero_da_dettare: '1 0 2 3 4', ticket_esistente: false, messaggio: 'Ticket 10234 aperto' })
+    expect(r.corpo).toEqual({ ticket_numero: '10234', ticket_numero_da_dettare: '1 0 2 3 4', ticket_esistente: false, email_registrazione_garanzia: false, messaggio: 'Ticket 10234 aperto' })
   })
 
   it("con una sessione valida il ticket è legato all'ordine verificato", async () => {

@@ -90,6 +90,7 @@ Descrizione:
 | `session_token` | stringa | no | variabile dinamica `session_token` |
 | `categoria` | stringa (enum) | sì | LLM, valori: `spedizione`, `difetto_prodotto`, `reso`, `garanzia`, `info`, `altro` |
 | `priorita` | stringa (enum) | no | LLM, valori: `normale`, `alta` — "alta se il cliente è molto insoddisfatto, chiede una persona, o lo stato dell'ordine è sconosciuto" |
+| `marchio` | stringa | no | LLM — "solo per categoria garanzia: il marchio del prodotto in minuscolo: innoliving, viceversa, medifit, higo, bimar" |
 | `descrizione` | stringa | sì | LLM: "Il problema riassunto con le parole del cliente, con tutti i dettagli utili detti in chiamata" |
 | `prodotto` | stringa | no | LLM: "Il prodotto di cui parla il cliente, se l'ha detto" |
 | `nome` | stringa | no | LLM: "Nome del cliente, se l'ha detto" |

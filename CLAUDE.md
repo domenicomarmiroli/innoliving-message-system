@@ -1864,3 +1864,29 @@ funzionano tutti. `channel_account.config.tag_predefiniti` (0040): i
 ticket di un canale nascono con quei tag (per `garanzia-*`: `garanzia`).
 La classificazione aggiunge la sua categoria senza togliere quelle già
 presenti.
+
+### Garanzia segnalata al telefono → portale garanzie (migrazione 0041, 07/10)
+Il flusso, voluto da Domenico ("tutto super user friendly per il
+cliente"):
+1. `crea_ticket` con categoria `garanzia` e `marchio`. Se il cliente ha
+   lasciato un'email e il canale `garanzia-<marchio>` ha
+   `config.portale_url` (0041), il worker invia l'email **dopo** aver
+   risposto all'agente (`connectors/voce/garanzia.ts`). L'email ha un
+   link al portale con `?richiesta=<thread_id>&chiave=<hmac>` e tre passi
+   numerati (`core/garanzia/collegamento.ts`); resta nel ticket come
+   messaggio in uscita. Il ticket va in `pending_customer` con il tag
+   `attesa-registrazione-garanzia`.
+2. Il portale, arrivando dal link, legge `GET
+   /clienti/ticket/:id/anteprima?chiave=` (numero, data, prodotto) e
+   chiede conferma.
+3. Registrata la garanzia, chiama `POST /clienti/ticket/:id/garanzia`
+   con i dati della garanzia e lo scontrino. Il messaggio entra come
+   cliente, idempotente su `garanzia_id`. Il tag diventa
+   `garanzia-registrata` e il ticket torna `open` con scadenza da adesso.
+   La chiave del link basta anche se il cliente si registra con un'altra
+   email: da quel momento il ticket compare anche nella sua area.
+
+Bimar non ha portale (centro assistenza), HIGO non ha ancora un dominio:
+nessuna email, il ticket resta normale. L'elenco `/clienti/ticket` ha
+`in_attesa_garanzia`. Il parametro dello strumento si chiama `marchio`
+perché in ElevenLabs `{{brand}}` è già il marchio del numero chiamato.
