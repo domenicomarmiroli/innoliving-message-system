@@ -11,6 +11,7 @@ import { draftRoutes } from './routes/draft.js'
 import { traduzioneRoutes } from './routes/traduzione.js'
 import { knowledgeRoutes } from './routes/knowledge.js'
 import { contattiRoutes } from './routes/contatti.js'
+import { clientiRoutes } from './routes/clienti.js'
 import { voceRoutes } from './routes/voce.js'
 import { voceWebhookRoutes } from './routes/voce-webhook.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
@@ -54,6 +55,7 @@ export async function buildServer(config: Config) {
   await app.register(traduzioneRoutes, { db, config })
   await app.register(knowledgeRoutes, { db, config })
   await app.register(contattiRoutes, { db, config })
+  await app.register(clientiRoutes, { db, config })
   // Plugin incapsulato: i suoi hook (secret obbligatorio, registro in
   // voice_log) valgono solo per le rotte /voce/*.
   await app.register(voceRoutes, { db, config })

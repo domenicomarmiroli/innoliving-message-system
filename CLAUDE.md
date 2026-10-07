@@ -1811,3 +1811,20 @@ prodotto/gruppo/famiglia) non si elencano al cliente: l'agente indica
 la soluzione solo se il sintomo descritto corrisponde. Senza
 `PIM_DB_URL` gli strumenti rispondono 503 e l'agente apre un ticket.
 
+
+### Ticket nell'area cliente dei siti (07/10)
+`GET /clienti/ticket?email=` e `GET /clienti/ticket/:id?email=`
+(`routes/clienti.ts`): sono chiamate server-to-server dal frontend dei
+siti (progetto Lovable "Frontend Shopify", login con la Shopify Customer
+Account API), con lo stesso `CONTATTO_TOKEN`. L'email la prende il sito
+dal profilo Shopify, mai dal browser. Un ticket è del cliente se ha
+scritto da quell'indirizzo (`raw.from`/`reply_to` di un messaggio
+`customer`) o se è legato a un suo ordine (`order.email`). Solo i canali
+`contatto`, `email`, `telefono` e `shopify`, mai i ticket collegati.
+Il cliente vede solo i messaggi `customer`/`agent` con `interno = false`,
+senza note né notifiche di sistema. Gli stati diventano ricevuto / in
+lavorazione / in attesa di una tua risposta / chiuso
+(`core/clienti/area.ts`). Dal riepilogo telefonico si tolgono le righe di
+servizio. Scoperto collaudando: l'agente vocale aveva salvato un'email
+dettata con una lettera in più, quindi il ticket non si trovava. Ora il
+prompt fa rileggere l'email lettera per lettera.
