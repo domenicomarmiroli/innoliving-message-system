@@ -193,7 +193,15 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
         await classificaEsalvaIntento(db, req.log, config, risultato.thread_id, dati.testo)
       }
 
-      return reply.code(200).send({ thread_id: risultato.thread_id, message_id: risultato.message_id })
+      // Il numero breve, da mostrare al cliente ("Richiesta #12080 registrata").
+      const [conNumero] = await db<{ numero: string }[]>`
+        select numero::text as numero from thread where id = ${risultato.thread_id}
+      `
+      return reply.code(200).send({
+        thread_id: risultato.thread_id,
+        message_id: risultato.message_id,
+        numero: conNumero?.numero ?? null,
+      })
     } catch (errore) {
       req.log.error(
         { codice, err: errore instanceof Error ? errore.message : String(errore) },
