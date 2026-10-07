@@ -56,6 +56,8 @@ export function minutiSla(slaAccount: number, tags: string[] | null | undefined)
 
 export interface RichiestaTicketVoce {
   conversation_id: string
+  /** Dichiarato dall'agente: fuoco, fumo, scintille, scosse. */
+  incidente_sicurezza?: boolean | null
   order_id: string | null
   riferimento_ordine: string | null
   categoria: CategoriaVoce
@@ -72,8 +74,28 @@ export function contattoEmail(contatto: string): string | null {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) ? t.toLowerCase() : null
 }
 
-export function tagTicketVoce(categoria: CategoriaVoce, priorita: 'normale' | 'alta'): string[] {
-  return ['telefono', TAG_CATEGORIA[categoria], ...(priorita === 'alta' ? ['priorita-alta'] : [])]
+export const TAG_INCIDENTE_SICUREZZA = 'incidente-sicurezza'
+
+/**
+ * Un prodotto che ha fatto fumo, scintille o ha preso fuoco non è solo una
+ * garanzia: va visto da chi segue la sicurezza dei prodotti, anche se il
+ * cliente chiama a pericolo finito. Si riconosce dalla descrizione, oltre
+ * che dal parametro dell'agente: meglio un tag in più che un incidente
+ * finito fra le garanzie normali.
+ */
+const PAROLE_INCIDENTE = /\b(fuoco|fiamm\w*|incendi\w*|bruciat\w*|brucia\w*|fumo|fuma\w*|scintill\w*|esplo\w*|scoppi\w*|scoss\w*|fulminat\w*|surriscald\w*|fus[oa] la plastica|plastica fusa)\b/i
+
+export function eIncidenteSicurezza(descrizione: string, dichiarato?: boolean | null): boolean {
+  return dichiarato === true || PAROLE_INCIDENTE.test(descrizione)
+}
+
+export function tagTicketVoce(categoria: CategoriaVoce, priorita: 'normale' | 'alta', incidente = false): string[] {
+  return [
+    'telefono',
+    TAG_CATEGORIA[categoria],
+    ...(priorita === 'alta' || incidente ? ['priorita-alta'] : []),
+    ...(incidente ? [TAG_INCIDENTE_SICUREZZA] : []),
+  ]
 }
 
 export function oggettoTicketVoce(categoria: CategoriaVoce, riferimentoOrdine: string | null): string {
@@ -136,7 +158,7 @@ export async function apriTicketVoce(
         tags, first_inbound_at, last_inbound_at, due_at
       ) values (
         ${account.id}, ${r.conversation_id}, ${r.order_id}, ${oggetto}, 'new',
-        ${tagTicketVoce(r.categoria, r.priorita)}, ${ora}, ${ora}, ${scadenza}
+        ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza))}, ${ora}, ${ora}, ${scadenza}
       )
       on conflict (account_id, external_thread_id) where external_thread_id is not null
       do update set
@@ -215,7 +237,7 @@ async function aggiungiAlTicketDellOrdine(
     await tx`
       update thread set
         state      = case when state = 'new' then state else 'open' end,
-        tags       = (select array(select distinct unnest(tags || ${tagTicketVoce(r.categoria, r.priorita)}::text[]))),
+        tags       = (select array(select distinct unnest(tags || ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza))}::text[]))),
         due_at     = least(coalesce(due_at, ${scadenza}), ${scadenza}),
         updated_at = now()
       where id = ${t.id}

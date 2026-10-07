@@ -147,3 +147,15 @@ describe('priorità alta quando il ticket torna in coda', () => {
     expect(minutiSla(120, ['priorita-alta'])).toBe(120)
   })
 })
+
+describe('incidente di sicurezza', () => {
+  it('riconosce fuoco, fumo, scintille dalla descrizione e alza la priorità', async () => {
+    const { eIncidenteSicurezza, tagTicketVoce } = await import('../src/connectors/voce/ticket.js')
+    expect(eIncidenteSicurezza('ieri il forno ha fatto fumo e si è spento')).toBe(true)
+    expect(eIncidenteSicurezza('ha preso fuoco tutto')).toBe(true)
+    expect(eIncidenteSicurezza('dalla presa escono scintille')).toBe(true)
+    expect(eIncidenteSicurezza('non si accende più')).toBe(false)
+    expect(eIncidenteSicurezza('non si accende più', true)).toBe(true)
+    expect(tagTicketVoce('garanzia', 'normale', true)).toEqual(['telefono', 'garanzia', 'priorita-alta', 'incidente-sicurezza'])
+  })
+})

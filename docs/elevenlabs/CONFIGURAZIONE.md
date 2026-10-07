@@ -269,3 +269,11 @@ in **Aggiungi strumento** (il formato è quello già accettato dal pannello).
   "response_mocks": []
 }
 ```
+
+### Parametro aggiuntivo di `crea_ticket` (07/10)
+| Identificatore | Tipo | Richiesto | Tipo di valore | Descrizione |
+|---|---|---|---|---|
+| `incidente_sicurezza` | Boolean | no | Prompt LLM | true se il cliente parla di fuoco, fumo, scintille, esplosione o scosse dall'apparecchio |
+
+Il worker lo riconosce comunque anche dalle parole della descrizione:
+il parametro è una sicurezza in più, non l'unico controllo.

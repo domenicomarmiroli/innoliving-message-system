@@ -115,6 +115,7 @@ const tokenFacoltativo = z
 
 const corpoTicket = z.object({
   conversation_id: z.string().trim().min(1).max(200),
+  incidente_sicurezza: z.boolean().nullable().optional(),
   session_token: tokenFacoltativo,
   categoria: z.enum(['spedizione', 'difetto_prodotto', 'reso', 'garanzia', 'info', 'altro']).default('altro'),
   priorita: z.enum(['normale', 'alta']).default('normale'),
@@ -333,6 +334,7 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
           riferimento_ordine: ordine?.riferimento ?? null,
           categoria: dati.categoria,
           priorita: dati.priorita,
+          incidente_sicurezza: dati.incidente_sicurezza ?? null,
           descrizione: dati.descrizione,
           prodotto: dati.prodotto,
           nome: dati.nome,
