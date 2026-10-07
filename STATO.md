@@ -1627,3 +1627,12 @@ troncata a 2500 token, JSON illeggibile, riga mai segnata). Stima
 ~35-40 $ al giorno su Haiku. Corretto in `core/ai/traduzione.ts`
 (ingresso a 4000 caratteri, abbandono dopo 2 fallimenti). Da fare:
 escludere i domini delle newsletter in `app_config.mail_ingest`.
+
+**Richiamata del cliente (07/10)**: codice pronto (380 test). Da fare:
+migrazione 0042; secondo agente su ElevenLabs con il prompt di
+`docs/elevenlabs/richiamata-prompt.md`; webhook di fine chiamata con
+l'evento `call_initiation_failure` attivo; su Render
+`ELEVENLABS_API_KEY`, `ELEVENLABS_RICHIAMATA_AGENT_ID`,
+`ELEVENLABS_PHONE_NUMBER_ID`; su Telnyx un profilo voce in uscita verso
+l'Italia; interfaccia Lovable (pulsante nel ticket).
+

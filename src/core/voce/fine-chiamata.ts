@@ -52,6 +52,13 @@ export interface DatiChiamata {
   costo_usd: number | null
   /** dev_discount: chiamata di test dal simulatore, scontata. */
   chiamata_test: boolean | null
+  /** metadata.termination_reason: serve a riconoscere la segreteria. */
+  terminazione: string | null
+  /**
+   * Dalla "raccolta dati" dell'agente delle richiamate: true se ha parlato
+   * con la persona giusta. null se il campo non c'è.
+   */
+  cliente_raggiunto: boolean | null
 }
 
 const testo = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
@@ -113,7 +120,43 @@ export function estraiChiamata(payload: unknown): DatiChiamata | null {
     crediti_llm: intero(charging['llm_charge']),
     costo_usd: prezzoVoce === null && prezzoLlm === null ? null : (prezzoVoce ?? 0) + (prezzoLlm ?? 0),
     chiamata_test: typeof charging['dev_discount'] === 'boolean' ? (charging['dev_discount'] as boolean) : null,
+    terminazione: testo(metadata['termination_reason']),
+    cliente_raggiunto: valoreBooleano(
+      ((analysis['data_collection_results'] ?? {}) as Record<string, { value?: unknown }>)['cliente_raggiunto']?.value,
+    ),
   }
+}
+
+function valoreBooleano(v: unknown): boolean | null {
+  if (typeof v === 'boolean') return v
+  if (typeof v === 'string') {
+    if (/^(true|si|sì|yes)$/i.test(v.trim())) return true
+    if (/^(false|no)$/i.test(v.trim())) return false
+  }
+  return null
+}
+
+/**
+ * L'esito di una richiamata dalla sua trascrizione. Una chiamata finita in
+ * segreteria per ElevenLabs è "riuscita" (qualcuno ha risposto): la
+ * riconosciamo dal motivo di chiusura, dalla raccolta dati dell'agente o,
+ * in mancanza, dal fatto che il cliente non abbia detto niente.
+ */
+export function esitoRichiamata(c: DatiChiamata): 'risposto' | 'segreteria' | 'non_raggiunto' {
+  if (c.terminazione && /voicemail|segreteria|answering/i.test(c.terminazione)) return 'segreteria'
+  if (c.cliente_raggiunto === false) return 'non_raggiunto'
+  if (c.cliente_raggiunto === true) return 'risposto'
+  return c.trascrizione.some((b) => b.ruolo === 'cliente') ? 'risposto' : 'non_raggiunto'
+}
+
+/** Il webhook di una chiamata in uscita mai partita (no-answer, busy). */
+export function estraiFallimento(payload: unknown): { conversation_id: string; motivo: 'no-answer' | 'busy' | 'errore' } | null {
+  const p = payload as { type?: unknown; data?: Record<string, unknown> } | null
+  if (!p || p.type !== 'call_initiation_failure' || !p.data) return null
+  const conversation_id = testo(p.data['conversation_id'])
+  if (!conversation_id) return null
+  const r = testo(p.data['failure_reason'])
+  return { conversation_id, motivo: r === 'no-answer' || r === 'busy' ? r : 'errore' }
 }
 
 /** La nota breve nel ticket: inizia come le note dell'agente, così l'interfaccia offre "Vedi trascrizione". */

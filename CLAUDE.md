@@ -1890,3 +1890,21 @@ Bimar non ha portale (centro assistenza), HIGO non ha ancora un dominio:
 nessuna email, il ticket resta normale. L'elenco `/clienti/ticket` ha
 `in_attesa_garanzia`. Il parametro dello strumento si chiama `marchio`
 perché in ElevenLabs `{{brand}}` è già il marchio del numero chiamato.
+
+### Richiamata del cliente con l'agente vocale (migrazione 0042, 07/10)
+L'operatore scrive cosa dire o chiedere e fa partire la richiamata dal
+ticket (`POST /threads/richiama`); il giro di `connectors/voce/richiamate.ts`
+(ogni minuto) chiama con l'API ElevenLabs "outbound call via SIP trunk"
+un secondo agente (`docs/elevenlabs/richiamata-prompt.md`), passando il
+messaggio come variabile dinamica. Regole di Domenico: se non risponde si
+riprova fra 1 e 2 ore, **mai fuori dalla fascia 8-21 ora italiana**, solo
+nello stesso giorno, al massimo 5 tentativi; poi "non raggiunto" e il
+ticket torna aperto. Fascia e attese in `app_config.voce_richiamate`,
+regola pura in `core/voce/richiamata.ts` (testata anche sul cambio
+d'ora). Esiti dal webhook di fine chiamata: `call_initiation_failure`
+(no-answer, busy) e, per le chiamate avviate, `esitoRichiamata()` —
+segreteria dal motivo di chiusura, poi la raccolta dati
+`cliente_raggiunto`, poi "il cliente ha parlato". Ogni passaggio lascia
+una nota interna nel ticket. Una chiamata "in corso" senza webhook da 30
+minuti conta come non risposta, per non restare ferma.
+

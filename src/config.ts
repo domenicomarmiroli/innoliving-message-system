@@ -91,6 +91,13 @@ const schema = z.object({
   // Secret del webhook di fine chiamata (ElevenLabs → Impostazioni →
   // Webhook). Senza, la rotta /voce/webhook/fine-chiamata non esiste.
   ELEVENLABS_WEBHOOK_SECRET: z.string().min(16).optional(),
+  // Richiamata del cliente (chiamata in uscita): chiave API di ElevenLabs,
+  // l'agente che fa le richiamate e il numero da cui chiamare (id
+  // "phnum_…" del numero importato da SIP trunk). Senza tutte e tre la
+  // richiamata non è disponibile.
+  ELEVENLABS_API_KEY: z.string().min(1).optional(),
+  ELEVENLABS_RICHIAMATA_AGENT_ID: z.string().min(1).optional(),
+  ELEVENLABS_PHONE_NUMBER_ID: z.string().min(1).optional(),
 
   // --- PIM (altro progetto Supabase), sola lettura per l'assistenza ------
   // Connection string del session pooler del PIM con il ruolo

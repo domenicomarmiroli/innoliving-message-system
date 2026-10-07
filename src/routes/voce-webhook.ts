@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify'
 
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
-import { estraiChiamata, notaChiamata, verificaFirmaElevenLabs } from '../core/voce/fine-chiamata.js'
+import { esitoRichiamata, estraiChiamata, estraiFallimento, notaChiamata, verificaFirmaElevenLabs } from '../core/voce/fine-chiamata.js'
+import { registraEsito } from '../connectors/voce/richiamate.js'
 
 /**
  * `POST /voce/webhook/fine-chiamata` — il webhook "post-call" di
@@ -42,11 +43,27 @@ export async function voceWebhookRoutes(app: FastifyInstance, opts: { db: Db; co
     // Audio e chiamate non riuscite arrivano allo stesso indirizzo: per
     // ora servono solo le trascrizioni. 200, altrimenti ElevenLabs conta
     // un fallimento e dopo dieci disattiva il webhook.
+    // Richiamata che non ha nemmeno squillato fino in fondo (nessuna
+    // risposta, occupato): si pianifica il tentativo successivo.
+    const fallita = estraiFallimento(req.body)
+    if (fallita) {
+      try {
+        await registraEsito(db, req.log, fallita.conversation_id, fallita.motivo, null)
+        return reply.code(200).send({ ok: true })
+      } catch (errore) {
+        req.log.error({ err: errore instanceof Error ? errore.message : String(errore) }, 'esito della richiamata non registrato')
+        return reply.code(500).send({ errore: 'salvataggio non riuscito' })
+      }
+    }
+
     const chiamata = estraiChiamata(req.body)
     if (!chiamata) return reply.code(200).send({ ok: true, ignorato: true })
 
     try {
-      const [thread] = await db<{ id: string }[]>`
+      // Una richiamata (chiamata in uscita): esito e nota li scrive
+      // registraEsito; qui resta solo il salvataggio della trascrizione.
+      const threadRichiamata = await registraEsito(db, req.log, chiamata.conversation_id, esitoRichiamata(chiamata), chiamata.riassunto)
+      const [threadInArrivo] = threadRichiamata ? [] : await db<{ id: string }[]>`
         select t.id from thread t
         join channel_account ca on ca.id = t.account_id
         where ca.kind = 'telefono' and t.external_thread_id = ${chiamata.conversation_id}
@@ -66,6 +83,7 @@ export async function voceWebhookRoutes(app: FastifyInstance, opts: { db: Db; co
         ) x
         limit 1
       `
+      const thread = threadRichiamata ? { id: threadRichiamata } : threadInArrivo
       await db`
         insert into voice_call (
           conversation_id, agent_ref, summary, outcome, durata_secondi, iniziata_at,
@@ -107,7 +125,7 @@ export async function voceWebhookRoutes(app: FastifyInstance, opts: { db: Db; co
       // riferito la pratica), una nota breve la rende visibile scorrendo la
       // conversazione. Stesso prefisso delle note dell'agente: l'interfaccia
       // ci mette accanto "Vedi trascrizione". Idempotente sulla chiave.
-      if (thread) {
+      if (thread && !threadRichiamata) {
         await db`
           insert into message (thread_id, direction, author_kind, external_id, body_text, interno, sent_at)
           select ${thread.id}, 'out', 'agent', ${`${chiamata.conversation_id}:chiamata`},

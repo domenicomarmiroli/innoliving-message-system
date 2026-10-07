@@ -14,6 +14,8 @@ import { knowledgeRoutes } from './routes/knowledge.js'
 import { contattiRoutes } from './routes/contatti.js'
 import { clientiRoutes } from './routes/clienti.js'
 import { voceRoutes } from './routes/voce.js'
+import { richiamaRoutes } from './routes/richiama.js'
+import { avviaRichiamate } from './connectors/voce/richiamate.js'
 import { voceWebhookRoutes } from './routes/voce-webhook.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
 import { avviaPolling } from './connectors/mail/poll.js'
@@ -63,6 +65,7 @@ export async function buildServer(config: Config) {
   // Plugin incapsulato: i suoi hook (secret obbligatorio, registro in
   // voice_log) valgono solo per le rotte /voce/*.
   await app.register(voceRoutes, { db, config })
+  await app.register(richiamaRoutes, { db, config })
   // Fine chiamata: firma HMAC di ElevenLabs, fuori dal plugin degli strumenti.
   await app.register(voceWebhookRoutes, { db, config })
 
@@ -91,12 +94,17 @@ export async function buildServer(config: Config) {
   // per spedizione finché non risulta consegnata.
   const trackingBrt = avviaTrackingBrt(db, logger, config)
 
+  // Richiamate del cliente con l'agente vocale: un giro al minuto, solo
+  // nella fascia 8-21 (connectors/voce/richiamate.ts).
+  const richiamate = avviaRichiamate(db, logger, config)
+
   app.addHook('onClose', async () => {
     casella?.ferma()
     casellaMicrosoft?.ferma()
     ordini?.ferma()
     rientri?.ferma()
     trackingBrt?.ferma()
+    richiamate?.ferma()
     await db.end({ timeout: 5 })
   })
 
