@@ -22,7 +22,7 @@ describe('aggiornamentiDaSpedizioni', () => {
       tracking_number: '066061651672',
       carrier: 'BRT',
       tracking_url: 'https://vas.brt.it/vas/sped_det_show.hsm?referer=sped_numspe_par.htm&Nspediz=066061651672',
-      stato: 'consegnato',
+      stato: 'spedito',
       data_spedizione: '2026-10-05',
     })
   })
@@ -57,7 +57,8 @@ describe('statoDaZoho', () => {
   it('i tre valori visti su Zoho, e null per un valore nuovo', () => {
     expect(statoDaZoho('not_shipped')).toBe('non_spedito')
     expect(statoDaZoho('shipped')).toBe('spedito')
-    expect(statoDaZoho('delivered')).toBe('consegnato')
+    // delivered in Zoho = affidato al corriere, non consegnato (caso reale 07/10)
+    expect(statoDaZoho('delivered')).toBe('spedito')
     expect(statoDaZoho('returned')).toBeNull()
   })
 })

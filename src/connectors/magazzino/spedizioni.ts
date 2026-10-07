@@ -43,15 +43,22 @@ export interface AggiornamentoTracking {
  * Lo stato del pacchetto Zoho. Valori visti sui dati veri (06/10):
  * `not_shipped`, `shipped`, `delivered`. Un valore nuovo resta null —
  * meglio nessuno stato che uno sbagliato detto a un cliente al telefono.
+ *
+ * **`delivered` NON è "consegnato al cliente" (caso reale 07/10).** In Zoho
+ * il pacchetto risulta delivered quando lo prende il corriere: l'ordine
+ * 404-0876052-7313920 era "delivered" un minuto dopo il ritiro BRT, con il
+ * pacco appena partito, e l'agente vocale ha detto al cliente che era
+ * consegnato. 35 ordini su 248 nelle due settimane precedenti avevano lo
+ * stesso problema. Da Zoho si ricava quindi al massimo "spedito":
+ * "consegnato" lo dice solo il corriere (connectors/brt).
  */
 export function statoDaZoho(status: string | null): StatoSpedizione | null {
   switch (status?.trim().toLowerCase()) {
     case 'not_shipped':
       return 'non_spedito'
     case 'shipped':
-      return 'spedito'
     case 'delivered':
-      return 'consegnato'
+      return 'spedito'
     default:
       return null
   }
