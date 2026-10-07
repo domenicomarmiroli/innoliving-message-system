@@ -1858,3 +1858,9 @@ con allegati e il nuovo campo facoltativo `oggetto`. Nella sua area
 cliente mostra tutti i ticket del cliente con le rotte `/clienti/ticket`,
 quindi anche quelli aperti al telefono, per email o dai siti. Gli account
 `garanzia-*` (0039) sono `kind='contatto'`: nessuna rotta nuova.
+Collaudo del 07/10, ticket #12096: apertura con foto, lettura
+dall'area cliente, risposta del cliente con PDF e download dal portale
+funzionano tutti. `channel_account.config.tag_predefiniti` (0040): i
+ticket di un canale nascono con quei tag (per `garanzia-*`: `garanzia`).
+La classificazione aggiunge la sua categoria senza togliere quelle già
+presenti.

@@ -103,8 +103,11 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
       return reply.code(401).send({ errore: 'non autorizzato' })
     }
 
-    const [account] = await db<{ id: string; code: string; sla_minutes: number; active: boolean }[]>`
-      select id, code, sla_minutes, active
+    const [account] = await db<{ id: string; code: string; sla_minutes: number; active: boolean; tag_predefiniti: string[] | null }[]>`
+      select id, code, sla_minutes, active,
+             -- Tag con cui nasce ogni ticket del canale (es. 'garanzia' per
+             -- il portale garanzie, migrazione 0040): dato, non codice.
+             (select array_agg(x) from jsonb_array_elements_text(coalesce(config->'tag_predefiniti', '[]'::jsonb)) x) as tag_predefiniti
       from channel_account
       where code = ${codice} and kind = 'contatto'
     `
@@ -155,10 +158,11 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
           const [riga] = await tx<{ id: string; created: boolean }[]>`
             insert into thread (
               account_id, external_thread_id, order_id, subject, state,
-              first_inbound_at, last_inbound_at, due_at
+              first_inbound_at, last_inbound_at, due_at, tags
             ) values (
               ${account.id}, ${dati.richiesta_id}, ${orderId}, ${oggetto},
-              ${orderId ? 'new' : 'unmatched'}, ${ora}, ${ora}, ${scadenza}
+              ${orderId ? 'new' : 'unmatched'}, ${ora}, ${ora}, ${scadenza},
+              ${account.tag_predefiniti ?? []}
             )
             on conflict (account_id, external_thread_id)
               where external_thread_id is not null
@@ -171,10 +175,11 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
           const [riga] = await tx<{ id: string }[]>`
             insert into thread (
               account_id, order_id, subject, state,
-              first_inbound_at, last_inbound_at, due_at
+              first_inbound_at, last_inbound_at, due_at, tags
             ) values (
               ${account.id}, ${orderId}, ${oggetto},
-              ${orderId ? 'new' : 'unmatched'}, ${ora}, ${ora}, ${scadenza}
+              ${orderId ? 'new' : 'unmatched'}, ${ora}, ${ora}, ${scadenza},
+              ${account.tag_predefiniti ?? []}
             )
             returning id
           `
