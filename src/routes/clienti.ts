@@ -5,6 +5,13 @@ import { z } from 'zod'
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { ETICHETTA_STATO, normalizzaEmail, statoPerCliente, testoPerCliente } from '../core/clienti/area.js'
+import { scaricaAllegato, storageConfigurato } from '../core/storage.js'
+import {
+  LIMITE_CORPO_RICHIESTA,
+  preparaAllegatiCliente,
+  schemaAllegato,
+  validaAllegati,
+} from '../connectors/clienti/allegati.js'
 
 /**
  * I ticket di un cliente, per l'area cliente dei siti.
@@ -133,10 +140,17 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
       where thread_id = ${t.id}
         and not interno
         and author_kind in ('customer', 'agent')
-        and body_text is not null and body_text <> ''
+        and (coalesce(body_text, '') <> '' or exists (select 1 from attachment a where a.message_id = message.id))
       order by sent_at asc
       limit ${MASSIMO_MESSAGGI}
     `
+    const allegati = messaggi.length
+      ? await db<{ id: string; message_id: string; nome_file: string; mime: string | null; dimensione_byte: number | null }[]>`
+          select id, message_id, nome_file, mime, dimensione_byte from attachment
+          where message_id = any(${messaggi.map((m) => m.id)}) and storage_path is not null
+          order by created_at
+        `
+      : []
     const stato = statoPerCliente(t.state)
     return reply.send({
       id: t.id,
@@ -150,9 +164,149 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
       messaggi: messaggi.map((m) => ({
         id: m.id,
         da: m.author_kind === 'customer' ? 'cliente' : 'assistenza',
-        testo: testoPerCliente(m.body_text!, t.canale, m.author_kind),
+        testo: m.body_text ? testoPerCliente(m.body_text, t.canale, m.author_kind) : '',
         data: m.sent_at,
+        allegati: allegati
+          .filter((a) => a.message_id === m.id)
+          .map((a) => ({ id: a.id, nome_file: a.nome_file, mime: a.mime, dimensione_byte: a.dimensione_byte })),
       })),
     })
+  })
+
+  // --- Un allegato del ticket, per il sito che lo mostra al cliente --------
+  // Il sito fa da tramite (stesso token, stessa email dal profilo): il
+  // bucket è privato e il browser del cliente non deve vederne le chiavi.
+  app.get('/clienti/ticket/:id/allegati/:allegato', async (req, reply) => {
+    if (!autorizzato(req, reply)) return
+    const q = query.safeParse(req.query)
+    const { id, allegato } = req.params as { id: string; allegato: string }
+    const uuid = z.string().uuid()
+    if (!q.success || !uuid.safeParse(id).success || !uuid.safeParse(allegato).success) {
+      return reply.code(400).send({ errore: 'richiesta non valida' })
+    }
+    const email = normalizzaEmail(q.data.email)
+    const [a] = await db<{ nome_file: string; mime: string | null; storage_path: string }[]>`
+      select a.nome_file, a.mime, a.storage_path
+      from attachment a
+      join message m on m.id = a.message_id
+      join thread t on t.id = m.thread_id
+      join channel_account ca on ca.id = t.account_id
+      left join "order" o on o.id = t.order_id
+      where a.id = ${allegato} and t.id = ${id}
+        and not m.interno and m.author_kind in ('customer', 'agent')
+        and a.storage_path is not null
+        and ${delCliente(email)}
+    `
+    if (!a || !storageConfigurato(config)) return reply.code(404).send({ errore: 'allegato non trovato' })
+    const byte = await scaricaAllegato(config, a.storage_path)
+    return reply
+      .header('Content-Type', a.mime ?? 'application/octet-stream')
+      .header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(a.nome_file)}`)
+      .send(byte)
+  })
+
+  // --- Il cliente scrive (testo e/o allegati) dall'area cliente --------------
+  const corpoRisposta = z
+    .object({
+      email: z.string().email(),
+      testo: z.string().max(10_000).default(''),
+      allegati: z.array(schemaAllegato).max(20).optional(),
+      // Un retry di rete con lo stesso valore non duplica il messaggio.
+      richiesta_id: z.string().trim().min(1).max(200).optional(),
+    })
+    .refine((c) => c.testo.trim().length > 0 || (c.allegati?.length ?? 0) > 0, {
+      message: 'scrivi un messaggio o allega un file',
+    })
+
+  app.post('/clienti/ticket/:id/messaggi', { bodyLimit: LIMITE_CORPO_RICHIESTA }, async (req, reply) => {
+    if (!autorizzato(req, reply)) return
+    const { id } = req.params as { id: string }
+    const c = corpoRisposta.safeParse(req.body)
+    if (!c.success || !z.string().uuid().safeParse(id).success) {
+      return reply.code(400).send({
+        errore: 'richiesta non valida',
+        dettagli: c.success ? [] : c.error.issues.map((i) => i.message),
+      })
+    }
+    const email = normalizzaEmail(c.data.email)
+
+    const [t] = await db<{ id: string; numero: string; subject: string | null; account_code: string; sla_minutes: number }[]>`
+      select t.id, t.numero::text as numero, t.subject, ca.code as account_code, ca.sla_minutes
+      from thread t
+      join channel_account ca on ca.id = t.account_id
+      left join "order" o on o.id = t.order_id
+      where t.id = ${id} and ${delCliente(email)}
+    `
+    if (!t) return reply.code(404).send({ errore: 'ticket non trovato' })
+
+    let files
+    try {
+      files = validaAllegati(c.data.allegati ?? [])
+    } catch (errore) {
+      return reply.code(422).send({ errore: errore instanceof Error ? errore.message : String(errore) })
+    }
+    const allegati = await preparaAllegatiCliente(config, req.log, t.account_code, files)
+
+    // La nostra risposta deve ripartire dalla stessa casella e restare nella
+    // stessa catena email del messaggio precedente del cliente:
+    // inviaRisposta() legge casella e References dall'ultimo messaggio del
+    // cliente, che da ora è questo.
+    const [precedente] = await db<{ raw: Record<string, unknown> | null; rfc822_id: string | null }[]>`
+      select raw, rfc822_id from message
+      where thread_id = ${t.id} and author_kind = 'customer' and direction = 'in'
+      order by sent_at desc limit 1
+    `
+    const precedenti = precedente?.raw?.['references']
+    const riferimenti = [
+      ...(Array.isArray(precedenti) ? (precedenti as string[]) : []),
+      ...(precedente?.rfc822_id ? [precedente.rfc822_id] : []),
+    ]
+    const ora = new Date()
+
+    const messaggioId = await db.begin(async (tx) => {
+      const [m] = await tx<{ id: string }[]>`
+        insert into message (thread_id, direction, author_kind, external_id, body_text, sent_at, raw)
+        values (
+          ${t.id}, 'in', 'customer', ${c.data.richiesta_id ?? null}, ${c.data.testo.trim()}, ${ora},
+          ${tx.json({
+            from: email,
+            canale: 'area_cliente',
+            subject: t.subject,
+            casella: precedente?.raw?.['casella'] ?? null,
+            references: riferimenti,
+          } as never)}
+        )
+        on conflict (thread_id, external_id) do nothing
+        returning id
+      `
+      if (!m) return null
+      for (const a of allegati) {
+        await tx`
+          insert into attachment (
+            message_id, direzione, nome_file, mime, dimensione_byte, checksum, storage_path, larghezza, altezza
+          ) values (
+            ${m.id}, 'in', ${a.nome_file}, ${a.mime}, ${a.dimensione_byte}, ${a.checksum},
+            ${a.storage_path}, ${a.larghezza}, ${a.altezza}
+          )
+        `
+      }
+      // Il cliente ha scritto: il ticket torna in coda, con la scadenza
+      // ricalcolata da adesso, anche se era chiuso.
+      await tx`
+        update thread set
+          state = 'open',
+          last_inbound_at = ${ora},
+          due_at = ${new Date(ora.getTime() + t.sla_minutes * 60_000)},
+          updated_at = now()
+        where id = ${t.id}
+      `
+      return m.id
+    })
+
+    req.log.info(
+      { thread_id: t.id, allegati: allegati.length, duplicato: messaggioId === null },
+      "messaggio del cliente dall'area cliente",
+    )
+    return reply.code(200).send({ ok: true, message_id: messaggioId, numero: t.numero })
   })
 }

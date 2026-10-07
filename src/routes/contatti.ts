@@ -5,6 +5,12 @@ import { z } from 'zod'
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { classificaEsalvaIntento } from '../core/ai/intento.js'
+import {
+  LIMITE_CORPO_RICHIESTA,
+  preparaAllegatiCliente,
+  schemaAllegato,
+  validaAllegati,
+} from '../connectors/clienti/allegati.js'
 
 /**
  * Apertura ticket dai siti esterni — passo successivo al Contattaci con
@@ -44,6 +50,8 @@ const corpo = z.object({
   // non apre un secondo ticket. Se manca, il rischio di duplicato in un
   // retry di rete resta a carico del chiamante.
   richiesta_id: z.string().trim().min(1).max(200).optional(),
+  // Foto della chat, scontrini: vedi connectors/clienti/allegati.ts.
+  allegati: z.array(schemaAllegato).max(20).optional(),
 })
 
 function confrontoCostante(a: string, b: string): boolean {
@@ -69,7 +77,7 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
   }
   const chiave = config.CONTATTO_TOKEN
 
-  app.post('/contatti/:codice/ticket', async (req, reply) => {
+  app.post('/contatti/:codice/ticket', { bodyLimit: LIMITE_CORPO_RICHIESTA }, async (req, reply) => {
     const { codice } = req.params as { codice: string }
 
     const headerAuth = req.headers.authorization
@@ -92,8 +100,8 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
       return reply.code(401).send({ errore: 'non autorizzato' })
     }
 
-    const [account] = await db<{ id: string; sla_minutes: number; active: boolean }[]>`
-      select id, sla_minutes, active
+    const [account] = await db<{ id: string; code: string; sla_minutes: number; active: boolean }[]>`
+      select id, code, sla_minutes, active
       from channel_account
       where code = ${codice} and kind = 'contatto'
     `
@@ -110,7 +118,16 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
     }
     const dati = analizzato.data
 
+    let files
     try {
+      files = validaAllegati(dati.allegati ?? [])
+    } catch (errore) {
+      return reply.code(422).send({ errore: errore instanceof Error ? errore.message : String(errore) })
+    }
+
+    try {
+      const allegati = await preparaAllegatiCliente(config, req.log, account.code, files)
+
       const [ordine] = dati.numero_ordine
         ? await db<{ id: string }[]>`
             select id from "order"
@@ -178,6 +195,22 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
           on conflict (thread_id, external_id) do nothing
           returning id
         `
+
+        // Solo se il messaggio è nuovo: un retry con lo stesso richiesta_id
+        // non duplica gli allegati.
+        if (messaggio) {
+          for (const a of allegati) {
+            await tx`
+              insert into attachment (
+                message_id, direzione, nome_file, mime, dimensione_byte, checksum,
+                storage_path, larghezza, altezza
+              ) values (
+                ${messaggio.id}, 'in', ${a.nome_file}, ${a.mime}, ${a.dimensione_byte}, ${a.checksum},
+                ${a.storage_path}, ${a.larghezza}, ${a.altezza}
+              )
+            `
+          }
+        }
 
         return { thread_id: threadId, message_id: messaggio?.id ?? null, nuovo_thread: nuovoThread }
       })

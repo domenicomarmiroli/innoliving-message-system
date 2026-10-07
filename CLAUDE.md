@@ -1828,3 +1828,21 @@ lavorazione / in attesa di una tua risposta / chiuso
 servizio. Scoperto collaudando: l'agente vocale aveva salvato un'email
 dettata con una lettera in più, quindi il ticket non si trovava. Ora il
 prompt fa rileggere l'email lettera per lettera.
+
+**Allegati e risposte dal cliente (07/10).**
+- `POST /contatti/:codice/ticket` accetta `allegati: [{nome_file, mime?,
+  contenuto_base64}]`, per le foto della chat che prima finivano su
+  Zendesk.
+- `POST /clienti/ticket/:id/messaggi` (testo e/o allegati,
+  `richiesta_id` per l'idempotenza) fa rispondere il cliente dall'area
+  cliente. Il ticket torna `open` con scadenza ricalcolata, anche se era
+  chiuso. Il messaggio copia `casella` e `references` dal precedente
+  messaggio del cliente, così la nostra risposta parte dalla stessa
+  casella e resta nella stessa catena email.
+- `GET /clienti/ticket/:id/allegati/:allegato` serve i byte al sito,
+  che fa da tramite: il bucket è privato.
+
+`connectors/clienti/allegati.ts` ammette solo foto, PDF e video, con al
+massimo 5 file da 10 MB e 20 MB in tutto. I file vanno su Storage prima
+della transazione, con lo stesso percorso degli allegati email. Le rotte
+hanno `bodyLimit` di 30 MB.
