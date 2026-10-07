@@ -151,7 +151,7 @@ export async function generaBozza(
     'Proponi la prossima risposta dell\'assistenza, solo il testo del messaggio.',
   ].join('\n\n')
 
-  const provider = await creaProvider(config)
+  const provider = await creaProvider(config, undefined, { funzione: 'bozza', sfondo: false })
   const completamento = await provider.completa({
     sistema,
     utente,

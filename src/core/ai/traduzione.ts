@@ -1,6 +1,7 @@
 import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
+import { BudgetAISuperato } from './consumo.js'
 import { creaProvider, type ProviderAI } from './provider.js'
 import { proteggi, redigi } from './redazione.js'
 
@@ -201,7 +202,7 @@ export async function traduciMessaggiInArrivo(db: Db, log: Logger, config: Confi
   const daFare = righe.filter((r) => (tentativiFalliti.get(r.id) ?? 0) < TENTATIVI_MASSIMI)
   if (daFare.length === 0) return 0
 
-  const provider = await creaProvider(config, config.ANTHROPIC_MODEL_CLASSIFICAZIONE)
+  const provider = await creaProvider(config, config.ANTHROPIC_MODEL_CLASSIFICAZIONE, { funzione: 'traduzione_arrivo', sfondo: true })
   let tradotti = 0
 
   const fallito = (id: string) => {
@@ -227,6 +228,8 @@ export async function traduciMessaggiInArrivo(db: Db, log: Logger, config: Confi
       `
       if (esito.traduzione) tradotti += 1
     } catch (errore) {
+      // Tetto di spesa: non è colpa del messaggio, si smette e basta.
+      if (errore instanceof BudgetAISuperato) break
       fallito(r.id)
       log.warn(
         { message_id: r.id, err: errore instanceof Error ? errore.message : String(errore) },

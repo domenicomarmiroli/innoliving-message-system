@@ -97,7 +97,7 @@ export async function classificaIntento(
     elenco,
   ].join('\n')
 
-  const provider = await creaProvider(config, config.ANTHROPIC_MODEL_CLASSIFICAZIONE)
+  const provider = await creaProvider(config, config.ANTHROPIC_MODEL_CLASSIFICAZIONE, { funzione: 'classificazione', sfondo: true })
   const completamento = await provider.completa({
     sistema,
     utente: redigi(testo).testo,

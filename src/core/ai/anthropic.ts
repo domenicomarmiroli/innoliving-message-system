@@ -41,6 +41,8 @@ export class ProviderAnthropic implements ProviderAI {
     const dati = (await risposta.json()) as {
       content?: Array<{ type?: string; text?: string }>
       model?: string
+      stop_reason?: string
+      usage?: { input_tokens?: number; output_tokens?: number }
     }
     const testo = (dati.content ?? [])
       .filter((b) => b.type === 'text' && typeof b.text === 'string')
@@ -52,6 +54,12 @@ export class ProviderAnthropic implements ProviderAI {
       throw new Error('Anthropic ha risposto senza testo utilizzabile.')
     }
 
-    return { testo, modello: dati.model ?? this.modello }
+    return {
+      testo,
+      modello: dati.model ?? this.modello,
+      token_in: dati.usage?.input_tokens ?? 0,
+      token_out: dati.usage?.output_tokens ?? 0,
+      troncata: dati.stop_reason === 'max_tokens',
+    }
   }
 }

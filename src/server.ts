@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import type { Config } from './config.js'
 import { logger } from './logger.js'
 import { createDb } from './db/index.js'
+import { impostaMisuraAI } from './core/ai/consumo.js'
 import { healthRoutes } from './routes/health.js'
 import { replyRoutes } from './routes/reply.js'
 import { collegaRoutes } from './routes/collega.js'
@@ -47,6 +48,9 @@ export async function buildServer(config: Config) {
   }
 
   const db = createDb(config)
+  // Ogni chiamata AI si misura in ai_uso e i lavori in background hanno
+  // un tetto giornaliero (core/ai/consumo.ts).
+  impostaMisuraAI(db, logger)
   await app.register(healthRoutes, { db })
   await app.register(shopifyWebhookRoutes, { db, config })
   await app.register(replyRoutes, { db, config })

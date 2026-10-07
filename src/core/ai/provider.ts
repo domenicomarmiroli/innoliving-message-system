@@ -15,6 +15,17 @@ export interface RichiestaCompletamento {
 export interface EsitoCompletamento {
   testo: string
   modello: string
+  /** Facoltativi: un provider che non li conosce non li riporta. */
+  token_in?: number
+  token_out?: number
+  /** True se la risposta si è fermata al limite `max_token`: è incompleta. */
+  troncata?: boolean
+}
+
+/** Chi chiama e se è un lavoro in background (soggetto al tetto giornaliero). */
+export interface UsoProvider {
+  funzione: string
+  sfondo: boolean
 }
 
 export interface ProviderAI {
@@ -36,13 +47,37 @@ export async function creaProvider(
     ANTHROPIC_MODEL: string
   },
   modelloOverride?: string,
+  uso?: UsoProvider,
 ): Promise<ProviderAI> {
-  if (config.AI_PROVIDER === 'anthropic') {
-    if (!config.ANTHROPIC_API_KEY) {
-      throw new Error('ANTHROPIC_API_KEY non configurata: le bozze AI non possono generare testo.')
-    }
-    const { ProviderAnthropic } = await import('./anthropic.js')
-    return new ProviderAnthropic(config.ANTHROPIC_API_KEY, modelloOverride ?? config.ANTHROPIC_MODEL)
+  if (config.AI_PROVIDER !== 'anthropic') throw new Error(`Provider AI sconosciuto: ${config.AI_PROVIDER}`)
+  if (!config.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY non configurata: le bozze AI non possono generare testo.')
   }
-  throw new Error(`Provider AI sconosciuto: ${config.AI_PROVIDER}`)
+  const { ProviderAnthropic } = await import('./anthropic.js')
+  const base = new ProviderAnthropic(config.ANTHROPIC_API_KEY, modelloOverride ?? config.ANTHROPIC_MODEL)
+  return conMisura(base, uso ?? { funzione: 'non_indicata', sfondo: false })
+}
+
+/**
+ * Ogni chiamata passa da qui: tetto giornaliero per i lavori in
+ * background, e una riga in `ai_uso` dopo (vedi `consumo.ts`). Nessun
+ * chiamante può dimenticarlo, perché nessuno istanzia i provider a mano.
+ */
+function conMisura(base: ProviderAI, uso: UsoProvider): ProviderAI {
+  return {
+    nome: base.nome,
+    async completa(richiesta) {
+      const { controllaBudget, registraChiamata } = await import('./consumo.js')
+      if (uso.sfondo) await controllaBudget()
+      const esito = await base.completa(richiesta)
+      await registraChiamata({
+        funzione: uso.funzione,
+        modello: esito.modello,
+        token_in: esito.token_in ?? 0,
+        token_out: esito.token_out ?? 0,
+        troncata: esito.troncata ?? false,
+      })
+      return esito
+    },
+  }
 }

@@ -102,7 +102,7 @@ export async function traduzioneRoutes(app: FastifyInstance, opts: { db: Db; con
 
     try {
       // Modello economico anche in uscita, su richiesta di Domenico (06/10).
-      const provider = await creaProvider(config, config.ANTHROPIC_MODEL_CLASSIFICAZIONE)
+      const provider = await creaProvider(config, config.ANTHROPIC_MODEL_CLASSIFICAZIONE, { funzione: 'traduzione_uscita', sfondo: false })
       const tradotto = await traduciPerCliente(provider, testo, lingua)
       return reply.code(200).send({
         tradotto: true,
