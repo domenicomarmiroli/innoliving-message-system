@@ -5,8 +5,12 @@ import {
   interpretaRilevamento,
   nomeLingua,
   rilevaETraduci,
+  traduciMessaggiInArrivo,
   traduciPerCliente,
+  azzeraTentativiTraduzione,
 } from '../src/core/ai/traduzione.js'
+import { parseConfig } from '../src/config.js'
+import type { Db } from '../src/db/index.js'
 
 /** Un provider finto: registra cosa riceve, risponde con ciò che gli si dice. */
 function providerFinto(risposta: (r: RichiestaCompletamento) => string) {
@@ -114,5 +118,40 @@ describe('nomeLingua', () => {
     expect(nomeLingua('de')).toBe('tedesco')
     expect(nomeLingua('fr')).toBe('francese')
     expect(nomeLingua('fi')).toBe('fi')
+  })
+})
+
+describe('costo sotto controllo (caso reale 02-07/10)', () => {
+  it('un testo lungo viene tagliato prima di arrivare al modello', async () => {
+    const { provider, ricevute } = providerFinto(() => '{"lingua":"en","traduzione":"x"}')
+    await rilevaETraduci(provider, 'a '.repeat(10_000))
+    expect(ricevute[0]!.utente.length).toBeLessThanOrEqual(4000)
+  })
+
+  it('un messaggio che fallisce due volte non viene più ripagato a ogni giro', async () => {
+    azzeraTentativiTraduzione()
+    const config = parseConfig({ SUPABASE_DB_URL: 'postgres://prova', ANTHROPIC_API_KEY: 'chiave-di-prova' })
+    if (!config.success) throw new Error('config')
+    const fn = (strings: TemplateStringsArray) =>
+      Promise.resolve(strings.join('?').includes('from message') ? [{ id: 'm1', body_text: 'Hello' }] : [])
+    const db = Object.assign(fn, { json: (x: unknown) => x }) as unknown as Db
+    const log = { info() {}, warn() {}, error() {}, debug() {} }
+
+    let chiamate = 0
+    const originale = globalThis.fetch
+    globalThis.fetch = (async () => {
+      chiamate += 1
+      // Risposta troncata: JSON mai chiuso, come quando si superano i token.
+      return new Response(JSON.stringify({ content: [{ type: 'text', text: '{"lingua":"en","traduzione":"Ciao' }], model: 'x' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as typeof fetch
+    try {
+      for (let giro = 0; giro < 5; giro++) await traduciMessaggiInArrivo(db, log, config.data)
+    } finally {
+      globalThis.fetch = originale
+    }
+    expect(chiamate).toBe(2)
   })
 })

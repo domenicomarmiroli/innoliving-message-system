@@ -47,9 +47,32 @@ export function nomeLingua(codice: string): string {
   return NOMI_LINGUA[codice] ?? codice
 }
 
-/** Oltre questa lunghezza si traduce l'inizio: un messaggio di assistenza non è un romanzo. */
-const MAX_CARATTERI_INGRESSO = 8000
+/**
+ * Oltre questa lunghezza si traduce l'inizio: un messaggio di assistenza
+ * non è un romanzo. Il limite deve stare DENTRO `MAX_TOKEN_TRADUZIONE`:
+ * con 8000 caratteri (il valore precedente) una traduzione completa
+ * superava i 2500 token di risposta, il JSON arrivava troncato, la riga
+ * restava `lingua is null` e veniva ripagata a ogni giro — caso reale
+ * 02-07/10, quattro newsletter in inglese ritradotte ogni due minuti e
+ * mezzo per giorni. 4000 caratteri sono circa 1000-1300 token in
+ * italiano: margine ampio.
+ */
+const MAX_CARATTERI_INGRESSO = 4000
 const MAX_TOKEN_TRADUZIONE = 2500
+
+/**
+ * Tentativi falliti per messaggio, nella vita del processo. Un messaggio
+ * che il modello non riesce a leggere due volte di seguito fallirà anche
+ * la terza: si smette di riprovarlo (e di pagarlo) fino al prossimo
+ * riavvio, che è anche il momento in cui arriva un'eventuale correzione.
+ */
+const TENTATIVI_MASSIMI = 2
+const tentativiFalliti = new Map<string, number>()
+
+/** Per i test. */
+export function azzeraTentativiTraduzione(): void {
+  tentativiFalliti.clear()
+}
 
 export interface Rilevamento {
   lingua: string
@@ -175,16 +198,26 @@ export async function traduciMessaggiInArrivo(db: Db, log: Logger, config: Confi
     order by created_at desc
     limit ${PER_GIRO}
   `
-  if (righe.length === 0) return 0
+  const daFare = righe.filter((r) => (tentativiFalliti.get(r.id) ?? 0) < TENTATIVI_MASSIMI)
+  if (daFare.length === 0) return 0
 
   const provider = await creaProvider(config, config.ANTHROPIC_MODEL_CLASSIFICAZIONE)
   let tradotti = 0
 
-  for (const r of righe) {
+  const fallito = (id: string) => {
+    const n = (tentativiFalliti.get(id) ?? 0) + 1
+    tentativiFalliti.set(id, n)
+    if (n >= TENTATIVI_MASSIMI) {
+      log.warn({ message_id: id, tentativi: n }, 'traduzione: messaggio abbandonato fino al prossimo riavvio')
+    }
+  }
+
+  for (const r of daFare) {
     try {
       const esito = await rilevaETraduci(provider, r.body_text)
       if (!esito) {
-        log.warn({ message_id: r.id }, 'traduzione: risposta del modello non interpretabile, riprovo al giro dopo')
+        fallito(r.id)
+        log.warn({ message_id: r.id }, 'traduzione: risposta del modello non interpretabile')
         continue
       }
       await db`
@@ -194,9 +227,10 @@ export async function traduciMessaggiInArrivo(db: Db, log: Logger, config: Confi
       `
       if (esito.traduzione) tradotti += 1
     } catch (errore) {
+      fallito(r.id)
       log.warn(
         { message_id: r.id, err: errore instanceof Error ? errore.message : String(errore) },
-        'traduzione di un messaggio in arrivo non riuscita, riprovo al giro dopo',
+        'traduzione di un messaggio in arrivo non riuscita',
       )
     }
   }
