@@ -46,6 +46,9 @@ const corpo = z.object({
   nome: z.string().trim().min(1).max(200).nullable().optional(),
   numero_ordine: z.string().trim().min(1).max(100).nullable().optional(),
   testo: z.string().min(1).max(10_000),
+  // Facoltativo: chi apre il ticket può dargli un titolo più preciso del
+  // predefinito (es. il portale garanzie: "Riparazione in garanzia — <prodotto>").
+  oggetto: z.string().trim().min(1).max(200).optional(),
   // Facoltativo: se il chiamante lo manda, un retry con lo stesso valore
   // non apre un secondo ticket. Se manca, il rischio di duplicato in un
   // retry di rete resta a carico del chiamante.
@@ -141,9 +144,9 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
 
       const ora = new Date()
       const scadenza = new Date(ora.getTime() + account.sla_minutes * 60_000)
-      const oggetto = dati.numero_ordine
-        ? `Contatto dal sito — ordine ${dati.numero_ordine}`
-        : 'Contatto dal sito'
+      const oggetto =
+        dati.oggetto ??
+        (dati.numero_ordine ? `Contatto dal sito — ordine ${dati.numero_ordine}` : 'Contatto dal sito')
 
       const risultato = await db.begin(async (tx) => {
         let threadId: string

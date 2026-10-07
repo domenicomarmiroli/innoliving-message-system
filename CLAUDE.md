@@ -1846,3 +1846,15 @@ prompt fa rileggere l'email lettera per lettera.
 massimo 5 file da 10 MB e 20 MB in tutto. I file vanno su Storage prima
 della transazione, con lo stesso percorso degli allegati email. Le rotte
 hanno `bodyLimit` di 30 MB.
+
+### Portale garanzie nel sistema di messaggistica (migrazione 0039, 07/10)
+Decisione di Domenico: le conversazioni delle riparazioni in garanzia si
+gestiscono **solo qui**. Il portale (Warranty Wizard, Lovable, altro
+Supabase) resta per registrare prodotti e garanzie. Prima aveva una sua
+conversazione (`repair_messages`) e un suo back-office, e mandava in più
+una copia per email alla casella Gmail: c'erano due conversazioni
+parallele. Ora apre il ticket con `POST /contatti/garanzia-<brand>/ticket`,
+con allegati e il nuovo campo facoltativo `oggetto`. Nella sua area
+cliente mostra tutti i ticket del cliente con le rotte `/clienti/ticket`,
+quindi anche quelli aperti al telefono, per email o dai siti. Gli account
+`garanzia-*` (0039) sono `kind='contatto'`: nessuna rotta nuova.
