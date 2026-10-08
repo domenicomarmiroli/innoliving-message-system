@@ -23,6 +23,10 @@ export interface Rientro {
   internal_reference: string | null
   customer_name: string | null
   created_at: string
+  /** Solo rientri in garanzia: il riferimento della pratica scritto dal magazzino. */
+  pratica?: string | null
+  /** Solo rientri in garanzia: l'esito deciso alla scansione (sostituzione, riparazione...). */
+  action?: string | null
 }
 
 /**
@@ -42,7 +46,10 @@ export function estraiNumeroOrdineDaRiferimento(internalReference: string | null
   return trovato?.[1] ?? null
 }
 
-export async function recuperaRientri(config: Config): Promise<Rientro[]> {
+export async function recuperaRientri(
+  config: Config,
+  tipo: 'reso_ecommerce' | 'assistenza_garanzia' = 'reso_ecommerce',
+): Promise<Rientro[]> {
   if (!config.MAGAZZINO_API_URL || !config.MAGAZZINO_API_TOKEN) {
     throw new Error(
       'Rientri magazzino non configurati: mancano MAGAZZINO_API_URL e/o MAGAZZINO_API_TOKEN.',
@@ -50,7 +57,7 @@ export async function recuperaRientri(config: Config): Promise<Rientro[]> {
   }
 
   const url = new URL(config.MAGAZZINO_API_URL)
-  url.searchParams.set('package_type', 'reso_ecommerce')
+  url.searchParams.set('package_type', tipo)
 
   const risposta = await fetch(url, {
     headers: { Authorization: `Bearer ${config.MAGAZZINO_API_TOKEN}` },

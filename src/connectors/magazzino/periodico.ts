@@ -2,6 +2,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { recuperaRientri, elaboraRientri } from './rientri.js'
+import { elaboraRientriGaranzia } from './rientri-garanzia.js'
 import { recuperaSpedizioni, elaboraSpedizioni } from './spedizioni.js'
 
 /**
@@ -51,6 +52,15 @@ export function avviaControlloRientri(
         { err: errore instanceof Error ? errore.message : String(errore) },
         'controllo rientri magazzino fallito',
       )
+    }
+    // Rientri in garanzia → stato della pratica e avviso al cliente.
+    // Separato: è un tipo di pacco diverso, con un suo collegamento.
+    try {
+      const garanzie = await recuperaRientri(config, 'assistenza_garanzia')
+      const esito = await elaboraRientriGaranzia(db, log, garanzie)
+      if (esito.collegati > 0) log.info(esito, 'rientri in garanzia collegati alle pratiche')
+    } catch (errore) {
+      log.error({ err: errore instanceof Error ? errore.message : String(errore) }, 'controllo rientri in garanzia fallito')
     }
     // Il tracking degli ordini Amazon viene dallo stesso tool (pacchetti
     // Zoho): try separato, un errore sui rientri non deve fermarlo né

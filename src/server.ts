@@ -15,6 +15,7 @@ import { contattiRoutes } from './routes/contatti.js'
 import { clientiRoutes } from './routes/clienti.js'
 import { voceRoutes } from './routes/voce.js'
 import { richiamaRoutes } from './routes/richiama.js'
+import { praticaRoutes } from './routes/pratica.js'
 import { avviaRichiamate } from './connectors/voce/richiamate.js'
 import { voceWebhookRoutes } from './routes/voce-webhook.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
@@ -66,6 +67,7 @@ export async function buildServer(config: Config) {
   // voice_log) valgono solo per le rotte /voce/*.
   await app.register(voceRoutes, { db, config })
   await app.register(richiamaRoutes, { db, config })
+  await app.register(praticaRoutes, { db, config })
   // Fine chiamata: firma HMAC di ElevenLabs, fuori dal plugin degli strumenti.
   await app.register(voceWebhookRoutes, { db, config })
 

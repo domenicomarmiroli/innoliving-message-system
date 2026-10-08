@@ -6,6 +6,7 @@ import { riaggancia } from './riaggancia.js'
 import { sincronizzaMirakl } from '../mirakl/sync.js'
 import { traduciMessaggiInArrivo } from '../../core/ai/traduzione.js'
 import { classificaTicketSenzaCategoria } from '../../core/ai/intento.js'
+import { inviaAvvisiPratica } from '../pratica/avvisi.js'
 
 /**
  * Il ciclo che tiene la casella sotto controllo.
@@ -81,6 +82,13 @@ export function avviaPolling(db: Db, log: Logger, config: Config): Ciclo | null 
         await classificaTicketSenzaCategoria(db, log, config)
       } catch (errore) {
         log.warn({ err: messaggioErrore(errore) }, 'recupero della classificazione non riuscito')
+      }
+
+      // Avvisi al cliente sullo stato della pratica (migrazione 0044).
+      try {
+        await inviaAvvisiPratica(db, log, config)
+      } catch (errore) {
+        log.warn({ err: messaggioErrore(errore) }, 'invio degli avvisi della pratica non riuscito')
       }
 
       fallimenti = 0

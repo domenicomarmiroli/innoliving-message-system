@@ -1947,3 +1947,26 @@ Restano fuori (non sono dell'agente): messaggi automatici al cliente a
 ogni cambio di stato, etichetta BRT via API, rientri in garanzia da
 "Utilities Magazzino", triage per famiglia nei `problemi_noti` del PIM.
 
+
+### Stato della pratica e avvisi automatici al cliente (migrazione 0044, 08/10)
+Priorità n. 1 del report Zendesk: un messaggio al cliente a ogni cambio
+di stato toglie il "a che punto è?". Decisioni di Domenico: pratiche di
+garanzia gestite in QUESTO sistema, avvisi automatici (testi fissi in
+`app_config.pratica_avvisi`, modificabili), resi Amazon solo nota interna.
+- `thread.stato_pratica` + `pratica_evento` (unico per thread e stato:
+  idempotente). Stati in `core/pratica/stati.ts`.
+- Chi li imposta: il worker per `ricevuta` (pratica aperta da un portale
+  garanzie, cioè account con `tag_predefiniti` che contiene `garanzia`, o
+  registrazione della garanzia dal link) e per i rientri in garanzia
+  (`magazzino/rientri-garanzia.ts`: esito `action` del magazzino → stato,
+  ticket riaperto); l'operatore per `etichetta_inviata`, `spedita` (con
+  tracking) e `chiusa` (`POST /threads/stato-pratica`).
+- Invio: `inviaAvvisiPratica()` nel ciclo principale, via `inviaRisposta()`
+  con `mantieni_stato` (un avviso non mette il ticket in attesa del
+  cliente). Solo canali email/contatto/telefono/shopify; su Amazon e
+  Mirakl l'evento diventa nota interna. Un tentativo solo: se fallisce,
+  nota interna "va scritto a mano" e `ingest_anomaly`.
+- Collegamento rientri → ticket: il magazzino scrive il NOSTRO numero di
+  ticket nel campo "pratica" (non il GGF del partner). Serve che
+  l'endpoint `/api/public/rientri` di "Utilities Magazzino" restituisca
+  anche `pratica` e `action` per `package_type=assistenza_garanzia`.

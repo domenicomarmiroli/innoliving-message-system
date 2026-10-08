@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
+import { registraStatoPratica } from '../connectors/pratica/avvisi.js'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
@@ -431,6 +432,11 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
       { thread_id: t.id, con_chiave: conChiave, allegati: allegati.length, duplicato: messaggioId === null },
       'garanzia registrata sul portale collegata al ticket',
     )
+    if (messaggioId !== null) {
+      await registraStatoPratica(db, { thread_id: t.id, stato: 'ricevuta', origine: 'portale' }).catch((errore: unknown) =>
+        req.log.warn({ err: errore instanceof Error ? errore.message : String(errore) }, 'stato pratica non registrato'),
+      )
+    }
     return reply.code(200).send({ ok: true, numero: t.numero, thread_id: t.id })
   })
 

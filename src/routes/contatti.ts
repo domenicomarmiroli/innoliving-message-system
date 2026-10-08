@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { classificaEsalvaIntento } from '../core/ai/intento.js'
+import { registraStatoPratica } from '../connectors/pratica/avvisi.js'
 import {
   LIMITE_CORPO_RICHIESTA,
   preparaAllegatiCliente,
@@ -232,6 +233,15 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
       // canali: le risposte successive non cambiano l'argomento.
       if (risultato.nuovo_thread && risultato.message_id) {
         await classificaEsalvaIntento(db, req.log, config, risultato.thread_id, dati.testo)
+      }
+
+      // Pratica nuova da un portale garanzie: parte lo stato "ricevuta" e il
+      // cliente riceve la conferma (migrazione 0044). Mai bloccante: il
+      // ticket è già aperto.
+      if (risultato.nuovo_thread && (account.tag_predefiniti ?? []).includes('garanzia')) {
+        await registraStatoPratica(db, { thread_id: risultato.thread_id, stato: 'ricevuta', origine: 'portale' }).catch((errore: unknown) =>
+          req.log.warn({ err: errore instanceof Error ? errore.message : String(errore) }, 'stato pratica non registrato'),
+        )
       }
 
       // Il numero breve, da mostrare al cliente ("Richiesta #12080 registrata").

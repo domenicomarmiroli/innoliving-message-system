@@ -33,6 +33,12 @@ export interface RichiestaInvio {
   testo: string
   /** Già passati da core/attachments/normalize.ts: pronti per essere spediti. */
   allegati?: FilePronto[]
+  /**
+   * Avvisi automatici (stato della pratica): il ticket resta nello stato
+   * in cui è. Un "prodotto arrivato in magazzino" non mette il ticket in
+   * attesa del cliente.
+   */
+  mantieni_stato?: boolean
 }
 
 export interface EsitoInvio {
@@ -202,11 +208,13 @@ export async function inviaRisposta(
   // l'agente rilegge "in attesa del cliente" su un thread che di clienti
   // non ne ha.
   const statoSuccessivo = ultimo.linked_thread_id ? 'pending_internal' : 'pending_customer'
-  await db`
-    update thread
-    set state = ${statoSuccessivo}, updated_at = now()
-    where id = ${richiesta.thread_id}
-  `
+  if (!richiesta.mantieni_stato) {
+    await db`
+      update thread
+      set state = ${statoSuccessivo}, updated_at = now()
+      where id = ${richiesta.thread_id}
+    `
+  }
 
   if (richiesta.agent_id) {
     await db`
