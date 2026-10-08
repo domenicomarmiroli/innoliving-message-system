@@ -71,6 +71,31 @@ export interface RichiestaTicketVoce {
   richiesta_operatore?: boolean | null
   /** Quando preferisce essere richiamato, con le sue parole ("domani mattina"). */
   fascia_oraria?: string | null
+  /** Caso che decide un operatore (report Zendesk 08/10, sezione F). */
+  motivo_operatore?: MotivoOperatore | null
+}
+
+/**
+ * Le situazioni che l'automazione non deve gestire da sola: il report sulle
+ * conversazioni del partner garanzie le indica come quelle in cui serve una
+ * decisione (costo, garanzia, rischio legale). Il ticket nasce in cima alla
+ * coda con un tag che dice perché.
+ */
+export const MOTIVI_OPERATORE = [
+  'stesso_difetto_dopo_sostituzione',
+  'pezzo_sbagliato',
+  'documento_acquisto_senza_data',
+  'rimborso_o_cambio_modello',
+  'legale',
+] as const
+export type MotivoOperatore = (typeof MOTIVI_OPERATORE)[number]
+
+export const ETICHETTA_MOTIVO: Record<MotivoOperatore, string> = {
+  stesso_difetto_dopo_sostituzione: 'il prodotto sostitutivo ha lo stesso difetto',
+  pezzo_sbagliato: 'è arrivato un pezzo o un prodotto sbagliato',
+  documento_acquisto_senza_data: "il documento d'acquisto non ha una data",
+  rimborso_o_cambio_modello: 'chiede rimborso, buono o un modello diverso',
+  legale: 'menziona avvocato, diffida o vie legali',
 }
 
 export function contattoEmail(contatto: string): string | null {
@@ -104,13 +129,15 @@ export function tagTicketVoce(
   priorita: 'normale' | 'alta',
   incidente = false,
   operatore = false,
+  motivo: MotivoOperatore | null = null,
 ): string[] {
   return [
     'telefono',
     TAG_CATEGORIA[categoria],
-    ...(priorita === 'alta' || incidente || operatore ? ['priorita-alta'] : []),
+    ...(priorita === 'alta' || incidente || operatore || motivo ? ['priorita-alta'] : []),
     ...(incidente ? [TAG_INCIDENTE_SICUREZZA] : []),
     ...(operatore ? [TAG_RICHIAMATA_OPERATORE] : []),
+    ...(motivo ? ['decide-operatore', `motivo-${motivo.replace(/_/g, '-')}`] : []),
   ]
 }
 
@@ -125,6 +152,10 @@ export function testoTicketVoce(r: RichiestaTicketVoce): string {
   if (r.richiesta_operatore) {
     righe.push('>> Il cliente chiede di essere richiamato da un operatore.')
     righe.push(`>> Fascia oraria preferita: ${r.fascia_oraria?.trim() || 'non indicata'}`)
+    righe.push('')
+  }
+  if (r.motivo_operatore) {
+    righe.push(`>> Da decidere: ${ETICHETTA_MOTIVO[r.motivo_operatore]}.`)
     righe.push('')
   }
   if (r.prodotto) righe.push(`Prodotto: ${r.prodotto}`)
@@ -179,7 +210,7 @@ export async function apriTicketVoce(
         tags, first_inbound_at, last_inbound_at, due_at
       ) values (
         ${account.id}, ${r.conversation_id}, ${r.order_id}, ${oggetto}, 'new',
-        ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza), r.richiesta_operatore === true)}, ${ora}, ${ora}, ${scadenza}
+        ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza), r.richiesta_operatore === true, r.motivo_operatore ?? null)}, ${ora}, ${ora}, ${scadenza}
       )
       on conflict (account_id, external_thread_id) where external_thread_id is not null
       do update set
@@ -258,7 +289,7 @@ async function aggiungiAlTicketDellOrdine(
     await tx`
       update thread set
         state      = case when state = 'new' then state else 'open' end,
-        tags       = (select array(select distinct unnest(tags || ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza), r.richiesta_operatore === true)}::text[]))),
+        tags       = (select array(select distinct unnest(tags || ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza), r.richiesta_operatore === true, r.motivo_operatore ?? null)}::text[]))),
         due_at     = least(coalesce(due_at, ${scadenza}), ${scadenza}),
         updated_at = now()
       where id = ${t.id}

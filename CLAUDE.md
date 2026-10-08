@@ -1920,3 +1920,30 @@ battesimo da solo non basta) e tollera una lettera sbagliata su una sola
 parola. Due tentativi per chiamata, contati in `voice_log`.
 La chiamata di prova del 08/10 è caduta dopo 26 s lato Telnyx (account
 in prova, "Client disconnected"): da capire con il supporto o l'upgrade.
+
+### Casistiche dal report Zendesk nell'agente vocale (08/10)
+Dal report sulle 1.779 conversazioni del partner garanzie (artifact
+"Assistenza post-vendita", altra sessione). Nell'agente:
+- `POST /voce/strumenti/stato-pratica` (`connectors/voce/pratica.ts`,
+  parte pura in `core/voce/pratica.ts`): "a che punto è la mia pratica?"
+  per numero di pratica, la domanda più frequente, anche per chi ha
+  comprato in negozio e non ha un ordine. Verifica con email, CAP
+  dell'ordine o numero chiamante già presente nella pratica; 3 tentativi
+  per chiamata contati in `voice_log`. La fase viene dai tag
+  (`attesa-registrazione-garanzia`, `garanzia-registrata`,
+  `pacco-rientrato-logistica`) prima che dallo stato. Ogni richiesta
+  lascia una nota interna (chiave `stato-pratica:<conversation_id>`, una
+  per chiamata); oltre 10 giorni lavorativi senza movimenti →
+  `pratica-ferma`, dal terzo contatto → `contatti-ripetuti`, entrambi
+  con priorità alta.
+- `crea_ticket.motivo_operatore` (lista chiusa, valore ignoto = nessuno):
+  i casi che decide un operatore → `decide-operatore` +
+  `motivo-<valore>` + priorità alta. Non è una richiamata: la richiamata
+  da operatore resta solo su richiesta esplicita del cliente.
+- Prompt: etichetta BRT valida in qualsiasi punto, documento d'acquisto
+  datato, recesso entro 14 giorni al venditore, ricambi fuori garanzia
+  con `dove_acquistare`, nessuna promessa sull'esito.
+Restano fuori (non sono dell'agente): messaggi automatici al cliente a
+ogni cambio di stato, etichetta BRT via API, rientri in garanzia da
+"Utilities Magazzino", triage per famiglia nei `problemi_noti` del PIM.
+

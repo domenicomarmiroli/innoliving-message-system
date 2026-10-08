@@ -6,9 +6,11 @@ import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { registraChiamataVoce } from '../connectors/voce/registro.js'
 import { statoDellOrdine } from '../connectors/voce/ordine.js'
-import { apriTicketVoce, contattoEmail } from '../connectors/voce/ticket.js'
+import { MOTIVI_OPERATORE, apriTicketVoce, contattoEmail, type MotivoOperatore } from '../connectors/voce/ticket.js'
 import { avviaRegistrazioneGaranzia } from '../connectors/voce/garanzia.js'
 import { verificaNomeRichiamata } from '../connectors/voce/richiamate.js'
+import { statoPratica } from '../connectors/voce/pratica.js'
+import { numeroPratica } from '../core/voce/pratica.js'
 import { doveAcquistare, type SitiAcquisto } from '../core/voce/acquisto.js'
 import {
   cercaProdottiPim,
@@ -126,6 +128,11 @@ const corpoTicket = z.object({
   contatto_richiamata: z.string().trim().min(3).max(200),
   caller_number: tokenFacoltativo,
   richiesta_operatore: z.boolean().nullable().optional(),
+  // Un valore sconosciuto vale "nessuno": un ticket non si perde per un
+  // parametro sbagliato.
+  motivo_operatore: z.string().nullable().optional().transform((v) =>
+    v && (MOTIVI_OPERATORE as readonly string[]).includes(v) ? (v as MotivoOperatore) : null,
+  ),
   fascia_oraria: testoFacoltativo(200),
   // Per categoria 'garanzia': il marchio del prodotto, che sceglie il
   // portale garanzie a cui mandare il cliente (canale garanzia-<marchio>).
@@ -312,6 +319,37 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
     }
   })
 
+  // --- Stato di una pratica per numero (clienti senza ordine) --------------
+  // Il numero di pratica non basta: serve anche email, CAP o il numero da
+  // cui chiama già presente nella pratica. Un rifiuto non dice nulla.
+  app.post('/voce/strumenti/stato-pratica', async (req, reply) => {
+    const analizzato = z
+      .object({
+        conversation_id: z.string().trim().min(1).max(200),
+        numero_pratica: z.string().trim().min(1).max(40),
+        email: tokenFacoltativo,
+        cap: tokenFacoltativo,
+        caller_number: tokenFacoltativo,
+      })
+      .safeParse(req.body)
+    if (!analizzato.success) return richiestaNonValida(req, reply, analizzato.error)
+    const d = analizzato.data
+    const numero = numeroPratica(d.numero_pratica)
+    if (numero === null) {
+      impostaEsitoVoce(req, 'numero_non_valido')
+      return reply.send({ esito: 'numero_non_valido' })
+    }
+    try {
+      const risposta = await entroLimite(() =>
+        statoPratica(db, d.conversation_id, numero, { email: d.email, cap: d.cap, numero_chiamante: d.caller_number }),
+      )
+      impostaEsitoVoce(req, risposta.esito)
+      return reply.send(risposta)
+    } catch (errore) {
+      return guasto(req, reply, errore, 'stato pratica fallito')
+    }
+  })
+
   // --- Richiamata: chi ha risposto è la persona giusta? ---------------------
   // Solo per l'agente delle richiamate. Il confronto si fa qui e restituisce
   // un esito, mai i nomi in archivio.
@@ -364,6 +402,7 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
           numero_chiamante: dati.caller_number,
           richiesta_operatore: dati.richiesta_operatore ?? null,
           fascia_oraria: dati.fascia_oraria,
+          motivo_operatore: dati.motivo_operatore,
         })
         // Garanzia segnalata al telefono: email al cliente con il link al
         // portale del brand. Si decide qui (una query veloce) e si spedisce

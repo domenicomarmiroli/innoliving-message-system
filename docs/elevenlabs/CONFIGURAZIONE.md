@@ -290,3 +290,60 @@ ticket prende il tag `richiamata-operatore` e la priorità alta (scadenza 4 ore)
 
 In questo caso `contatto_richiamata` è il **numero di telefono** da richiamare.
 
+### Parametro aggiuntivo di `crea_ticket` (08/10): casi che decide un operatore
+| Identificatore | Tipo | Richiesto | Tipo di valore | Descrizione |
+|---|---|---|---|---|
+| `motivo_operatore` | String (enum) | no | Prompt LLM | Solo se ricorre uno di questi casi: stesso_difetto_dopo_sostituzione, pezzo_sbagliato, documento_acquisto_senza_data, rimborso_o_cambio_modello, legale. Altrimenti lascialo vuoto. |
+
+Valori enum da inserire: `stesso_difetto_dopo_sostituzione`, `pezzo_sbagliato`,
+`documento_acquisto_senza_data`, `rimborso_o_cambio_modello`, `legale`.
+Il ticket prende `decide-operatore`, `motivo-<valore>` e priorità alta.
+
+### `stato_pratica` (08/10)
+A che punto è una pratica, per numero: per i clienti che hanno comprato in
+negozio e non hanno un numero d'ordine.
+```json
+{
+  "type": "webhook",
+  "name": "stato_pratica",
+  "description": "Stato di una pratica di assistenza già aperta, dato il numero della pratica. Serve anche l'email della pratica oppure il CAP; il numero da cui chiama il cliente viene controllato da solo. Esiti: trovata (con fase), non_verificata (con tentativi_rimasti), troppi_tentativi, numero_non_valido.",
+  "response_timeout_secs": 5,
+  "api_schema": {
+    "url": "https://hub-messaggi-worker.onrender.com/voce/strumenti/stato-pratica",
+    "method": "POST",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": {
+      "id": "body",
+      "type": "object",
+      "description": "Numero della pratica e dato di verifica.",
+      "required": true,
+      "value_type": "llm_prompt",
+      "properties": [
+        { "id": "conversation_id", "type": "string", "description": "", "dynamic_variable": "system__conversation_id", "constant_value": "", "value_type": "dynamic_variable", "required": true },
+        { "id": "numero_pratica", "type": "string", "description": "Numero della pratica o del ticket come detto dal cliente", "dynamic_variable": "", "constant_value": "", "value_type": "llm_prompt", "required": true, "enum": null },
+        { "id": "email", "type": "string", "description": "Email della pratica, riletta e confermata lettera per lettera", "dynamic_variable": "", "constant_value": "", "value_type": "llm_prompt", "required": false, "enum": null },
+        { "id": "cap", "type": "string", "description": "CAP, solo se il cliente non ricorda l'email", "dynamic_variable": "", "constant_value": "", "value_type": "llm_prompt", "required": false, "enum": null },
+        { "id": "caller_number", "type": "string", "description": "", "dynamic_variable": "system__caller_id", "constant_value": "", "value_type": "dynamic_variable", "required": false }
+      ]
+    },
+    "request_headers": [ { "type": "secret", "name": "x-voice-secret", "secret_id": "4eZ9NNmpbpUHDx7OppKV" } ],
+    "content_type": "application/json",
+    "auth_connection": null,
+    "mtls_auth_connection": null,
+    "response_filter": null
+  },
+  "follow_redirects": false,
+  "follow_redirects_allowed_domains": [],
+  "dynamic_variables": { "dynamic_variable_placeholders": {} },
+  "assignments": [],
+  "interruption_mode": "allow",
+  "tool_call_sound": null,
+  "tool_call_sound_behavior": "auto",
+  "response_mocks": []
+}
+```
+Effetti a verifica riuscita: nota interna nel ticket; se la pratica è ferma
+da oltre 10 giorni lavorativi tag `pratica-ferma`, dal terzo contatto del
+cliente tag `contatti-ripetuti`; in entrambi i casi priorità alta.
+

@@ -177,3 +177,12 @@ describe('richiesta di un operatore umano', () => {
     expect(t).toContain('domani dopo le 15')
   })
 })
+
+describe('casi che decide un operatore', () => {
+  it('tag del motivo e priorità alta', async () => {
+    const { tagTicketVoce } = await import('../src/connectors/voce/ticket.js')
+    expect(tagTicketVoce('garanzia', 'normale', false, false, 'stesso_difetto_dopo_sostituzione')).toEqual([
+      'telefono', 'garanzia', 'priorita-alta', 'decide-operatore', 'motivo-stesso-difetto-dopo-sostituzione',
+    ])
+  })
+})
