@@ -123,3 +123,61 @@ export function etichettaCanale(channel: string, operator: string | null): strin
       return channel
   }
 }
+
+/**
+ * Richiamata: chi risponde dice il suo nome, e lo si confronta con gli
+ * intestatari dell'ordine (spedizione e fatturazione) o con il nome
+ * lasciato nel ticket. Il nome arriva trascritto dal parlato, quindi:
+ * niente accenti né maiuscole, parole in qualunque ordine ("Rossi Mario"),
+ * un errore di una lettera tollerato su UNA parola lunga (due parole
+ * "quasi uguali" farebbero passare Maria Rossa per Mario Rossi).
+ *
+ * Basta il cognome solo se in archivio c'è solo quello; altrimenti servono
+ * almeno due parole in comune: un nome di battesimo da solo ("Maria") non
+ * identifica nessuno, e "De Luca" non deve corrispondere a "Luca".
+ */
+export function paroleNome(v: string): string[] {
+  return v
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z\s'-]/g, ' ')
+    .split(/[\s'-]+/)
+    .filter((p) => p.length >= 2)
+}
+
+function quasiUguali(a: string, b: string): boolean {
+  if (a === b) return true
+  if (Math.min(a.length, b.length) < 5 || Math.abs(a.length - b.length) > 1) return false
+  // Distanza di modifica al massimo 1.
+  let i = 0
+  let j = 0
+  let differenze = 0
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      i++
+      j++
+      continue
+    }
+    if (++differenze > 1) return false
+    if (a.length > b.length) i++
+    else if (b.length > a.length) j++
+    else {
+      i++
+      j++
+    }
+  }
+  return differenze + (a.length - i) + (b.length - j) <= 1
+}
+
+export function nomeCorrisponde(detto: string, candidati: readonly string[]): boolean {
+  const parole = paroleNome(detto)
+  if (parole.length === 0) return false
+  return candidati.some((c) => {
+    const attese = paroleNome(c)
+    if (attese.length === 0) return false
+    const esatte = attese.filter((a) => parole.includes(a)).length
+    const approssimate = attese.filter((a) => !parole.includes(a) && parole.some((p) => quasiUguali(p, a))).length
+    return esatte + Math.min(approssimate, 1) >= Math.min(2, attese.length)
+  })
+}

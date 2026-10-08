@@ -8,6 +8,7 @@ import { registraChiamataVoce } from '../connectors/voce/registro.js'
 import { statoDellOrdine } from '../connectors/voce/ordine.js'
 import { apriTicketVoce, contattoEmail } from '../connectors/voce/ticket.js'
 import { avviaRegistrazioneGaranzia } from '../connectors/voce/garanzia.js'
+import { verificaNomeRichiamata } from '../connectors/voce/richiamate.js'
 import { doveAcquistare, type SitiAcquisto } from '../core/voce/acquisto.js'
 import {
   cercaProdottiPim,
@@ -306,6 +307,25 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
       return reply.send(risposta.corpo)
     } catch (errore) {
       return guasto(req, reply, errore, 'stato ordine fallito')
+    }
+  })
+
+  // --- Richiamata: chi ha risposto è la persona giusta? ---------------------
+  // Solo per l'agente delle richiamate. Il confronto si fa qui e restituisce
+  // un esito, mai i nomi in archivio.
+  app.post('/voce/strumenti/verifica-nome', async (req, reply) => {
+    const analizzato = z
+      .object({ conversation_id: z.string().trim().min(1).max(200), nome: z.string().trim().min(1).max(200) })
+      .safeParse(req.body)
+    if (!analizzato.success) return richiestaNonValida(req, reply, analizzato.error)
+    try {
+      const risposta = await entroLimite(() =>
+        verificaNomeRichiamata(db, analizzato.data.conversation_id, analizzato.data.nome),
+      )
+      impostaEsitoVoce(req, risposta.esito)
+      return reply.send(risposta)
+    } catch (errore) {
+      return guasto(req, reply, errore, 'verifica nome fallita')
     }
   })
 

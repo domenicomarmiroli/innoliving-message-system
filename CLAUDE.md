@@ -1908,3 +1908,15 @@ segreteria dal motivo di chiusura, poi la raccolta dati
 una nota interna nel ticket. Una chiamata "in corso" senza webhook da 30
 minuti conta come non risposta, per non restare ferma.
 
+**Chi risponde alla richiamata (08/10).** Prima l'agente chiedeva "Parlo
+con …?" e bastava un sì: chiunque rispondesse riceveva il messaggio.
+Ora il primo messaggio non fa nomi e chiede con chi parla;
+`POST /voce/strumenti/verifica-nome` confronta nome e cognome detti con
+gli intestatari di spedizione e fatturazione dell'ordine (o col nome
+lasciato nel ticket) e restituisce solo l'esito, mai i nomi in archivio.
+Il confronto (`nomeCorrisponde()`, `core/voce/verifica.ts`) ignora
+accenti e ordine delle parole, chiede due parole in comune (un nome di
+battesimo da solo non basta) e tollera una lettera sbagliata su una sola
+parola. Due tentativi per chiamata, contati in `voice_log`.
+La chiamata di prova del 08/10 è caduta dopo 26 s lato Telnyx (account
+in prova, "Client disconnected"): da capire con il supporto o l'upgrade.

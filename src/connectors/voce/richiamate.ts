@@ -2,7 +2,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { cifrePerCifra } from '../../core/voce/stato.js'
-import { nomeDiBattesimo } from '../../core/voce/verifica.js'
+import { nomeCorrisponde, nomeDiBattesimo } from '../../core/voce/verifica.js'
 import {
   REGOLE_PREDEFINITE,
   dentroFascia,
@@ -318,4 +318,58 @@ export function avviaRichiamate(db: Db, log: Logger, config: Config): { ferma():
       if (timer) clearTimeout(timer)
     },
   }
+}
+
+export const TENTATIVI_NOME = 2
+
+export type EsitoVerificaNome =
+  | 'corrisponde'
+  | 'non_corrisponde'
+  | 'troppi_tentativi'
+  | 'nessun_nome_in_archivio'
+  | 'richiamata_sconosciuta'
+
+/**
+ * Durante una richiamata: chi ha risposto è la persona dell'ordine? I nomi
+ * in archivio non escono mai di qui: all'agente arriva solo l'esito, così
+ * non può suggerirli né lasciarseli sfuggire con chi ha risposto.
+ *
+ * Fonti, in quest'ordine di autorità: intestatari di spedizione e di
+ * fatturazione dell'ordine del ticket, poi il nome lasciato dal cliente nel
+ * ticket (form dei siti, telefono) per i ticket senza ordine.
+ */
+export async function verificaNomeRichiamata(
+  db: Db,
+  conversationId: string,
+  nome: string,
+): Promise<{ esito: EsitoVerificaNome; tentativi_rimasti?: number }> {
+  const [r] = await db<{ thread_id: string; order_id: string | null }[]>`
+    select r.thread_id, t.order_id
+    from richiamata_tentativo rt
+    join richiamata r on r.id = rt.richiamata_id
+    join thread t on t.id = r.thread_id
+    where rt.conversation_id = ${conversationId}
+  `
+  if (!r) return { esito: 'richiamata_sconosciuta' }
+
+  const [conteggio] = await db<{ falliti: number }[]>`
+    select count(*)::int as falliti from voice_log
+    where conversation_id = ${conversationId} and tool = 'verifica-nome' and esito = 'non_corrisponde'
+  `
+  const falliti = conteggio?.falliti ?? 0
+  if (falliti >= TENTATIVI_NOME) return { esito: 'troppi_tentativi' }
+
+  const righe = await db<{ nome: string | null }[]>`
+    select o.shipping_address->>'nome' as nome from "order" o where o.id = ${r.order_id}
+    union all
+    select o.billing_address->>'nome' from "order" o where o.id = ${r.order_id}
+    union all
+    select m.raw->>'nome' from message m
+    where m.thread_id = ${r.thread_id} and m.direction = 'in' and m.author_kind = 'customer' and m.raw->>'nome' is not null
+  `
+  const candidati = righe.map((x) => x.nome).filter((n): n is string => !!n && n.trim().length > 0)
+  if (candidati.length === 0) return { esito: 'nessun_nome_in_archivio' }
+
+  if (nomeCorrisponde(nome, candidati)) return { esito: 'corrisponde' }
+  return { esito: 'non_corrisponde', tentativi_rimasti: Math.max(0, TENTATIVI_NOME - falliti - 1) }
 }
