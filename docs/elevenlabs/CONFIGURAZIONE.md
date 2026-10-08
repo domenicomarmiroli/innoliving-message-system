@@ -285,7 +285,7 @@ ticket prende il tag `richiamata-operatore` e la priorità alta (scadenza 4 ore)
 
 | Identificatore | Tipo | Richiesto | Tipo di valore | Descrizione |
 |---|---|---|---|---|
-| `richiesta_operatore` | Boolean | no | Prompt LLM | true se il cliente ha chiesto di parlare con una persona / un operatore e vuole essere richiamato |
+| `richiesta_operatore` | Boolean | no | Prompt LLM | true SOLO se il cliente ha chiesto esplicitamente di parlare con una persona o un operatore. Mai per tua iniziativa. |
 | `fascia_oraria` | String | no | Prompt LLM | Quando il cliente preferisce essere richiamato, con le sue parole (es. "domani mattina", "oggi dopo le 15") |
 
 In questo caso `contatto_richiamata` è il **numero di telefono** da richiamare.
