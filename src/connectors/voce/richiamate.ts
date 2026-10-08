@@ -199,9 +199,16 @@ export async function eseguiRichiamate(db: Db, log: Logger, config: Config): Pro
     } catch (errore) {
       // La chiamata non è nemmeno partita: conta come tentativo, così un
       // errore di configurazione non fa chiamare all'infinito.
-      log.error({ richiamata: r.id, err: errore instanceof Error ? errore.message : String(errore) }, 'richiamata non avviata')
+      const messaggio = errore instanceof Error ? errore.message : String(errore)
+      log.error({ richiamata: r.id, err: messaggio }, 'richiamata non avviata')
+      // Regola 5: il motivo deve essere leggibile senza la shell di Render.
+      // Il numero non va nel payload: basta l'id della richiamata.
+      await db`
+        insert into ingest_anomaly (tipo, payload)
+        values ('richiamata_non_avviata', ${db.json({ richiamata_id: r.id, thread_id: r.thread_id, tentativo: r.tentativi + 1, errore: messaggio.slice(0, 500) })})
+      `
       await db`update richiamata set tentativi = tentativi + 1, updated_at = now() where id = ${r.id}`
-      await pianificaDopo(db, r.id, r.thread_id, r.tentativi + 1, 'errore', regole)
+      await pianificaDopo(db, r.id, r.thread_id, r.tentativi + 1, 'errore', regole, messaggio)
     }
   }
   return daFare.length
@@ -214,7 +221,9 @@ async function pianificaDopo(
   tentativiFatti: number,
   esito: EsitoTentativo,
   regole: RegoleRichiamata,
+  dettaglio?: string,
 ): Promise<void> {
+  const perche = dettaglio ? ` (${dettaglio.slice(0, 300)})` : ''
   const motivo: Record<EsitoTentativo, string> = {
     'no-answer': 'non ha risposto',
     busy: 'occupato',
@@ -230,7 +239,7 @@ async function pianificaDopo(
       where id = ${id}
     `
     await nota(db, threadId, `richiamata:${id}:${tentativiFatti}`,
-      `Richiamata, tentativo ${tentativiFatti}: ${motivo[esito]}. Riprovo alle ${oraParlata(prossimo)}.`)
+      `Richiamata, tentativo ${tentativiFatti}: ${motivo[esito]}${perche}. Riprovo alle ${oraParlata(prossimo)}.`)
   } else {
     await db`
       update richiamata set stato = 'non_raggiunto', prossimo_tentativo_at = null, ultimo_esito = ${esito},
@@ -238,7 +247,7 @@ async function pianificaDopo(
       where id = ${id}
     `
     await nota(db, threadId, `richiamata:${id}:${tentativiFatti}`,
-      `Richiamata, tentativo ${tentativiFatti}: ${motivo[esito]}. Cliente non raggiunto oggi: la richiamata si ferma qui, serve un'altra strada (email) o una nuova richiamata.`)
+      `Richiamata, tentativo ${tentativiFatti}: ${motivo[esito]}${perche}. Cliente non raggiunto oggi: la richiamata si ferma qui, serve un'altra strada (email) o una nuova richiamata.`)
     // Torna all'operatore: il ticket riappare in coda.
     await db`update thread set state = 'open', updated_at = now() where id = ${threadId} and state <> 'open'`
   }
