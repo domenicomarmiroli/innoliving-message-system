@@ -67,6 +67,10 @@ export interface RichiestaTicketVoce {
   nome: string | null
   contatto_richiamata: string
   numero_chiamante: string | null
+  /** Il cliente ha chiesto di parlare con una persona: lo richiama un operatore. */
+  richiesta_operatore?: boolean | null
+  /** Quando preferisce essere richiamato, con le sue parole ("domani mattina"). */
+  fascia_oraria?: string | null
 }
 
 export function contattoEmail(contatto: string): string | null {
@@ -75,6 +79,12 @@ export function contattoEmail(contatto: string): string | null {
 }
 
 export const TAG_INCIDENTE_SICUREZZA = 'incidente-sicurezza'
+/**
+ * Al telefono il cliente può chiedere una persona: niente trasferimento di
+ * chiamata (servirebbe un operatore sempre libero), ma un ticket a priorità
+ * alta che un operatore richiama, nella fascia indicata dal cliente.
+ */
+export const TAG_RICHIAMATA_OPERATORE = 'richiamata-operatore'
 
 /**
  * Un prodotto che ha fatto fumo, scintille o ha preso fuoco non è solo una
@@ -89,12 +99,18 @@ export function eIncidenteSicurezza(descrizione: string, dichiarato?: boolean | 
   return dichiarato === true || PAROLE_INCIDENTE.test(descrizione)
 }
 
-export function tagTicketVoce(categoria: CategoriaVoce, priorita: 'normale' | 'alta', incidente = false): string[] {
+export function tagTicketVoce(
+  categoria: CategoriaVoce,
+  priorita: 'normale' | 'alta',
+  incidente = false,
+  operatore = false,
+): string[] {
   return [
     'telefono',
     TAG_CATEGORIA[categoria],
-    ...(priorita === 'alta' || incidente ? ['priorita-alta'] : []),
+    ...(priorita === 'alta' || incidente || operatore ? ['priorita-alta'] : []),
     ...(incidente ? [TAG_INCIDENTE_SICUREZZA] : []),
+    ...(operatore ? [TAG_RICHIAMATA_OPERATORE] : []),
   ]
 }
 
@@ -106,6 +122,11 @@ export function oggettoTicketVoce(categoria: CategoriaVoce, riferimentoOrdine: s
 /** Il testo del messaggio: le parole del cliente prima, i dati raccolti dopo, leggibili da un operatore. */
 export function testoTicketVoce(r: RichiestaTicketVoce): string {
   const righe = [r.descrizione.trim(), '']
+  if (r.richiesta_operatore) {
+    righe.push('>> Il cliente chiede di essere richiamato da un operatore.')
+    righe.push(`>> Fascia oraria preferita: ${r.fascia_oraria?.trim() || 'non indicata'}`)
+    righe.push('')
+  }
   if (r.prodotto) righe.push(`Prodotto: ${r.prodotto}`)
   if (r.nome) righe.push(`Nome: ${r.nome}`)
   righe.push(`Contatto per la risposta: ${r.contatto_richiamata}`)
@@ -158,7 +179,7 @@ export async function apriTicketVoce(
         tags, first_inbound_at, last_inbound_at, due_at
       ) values (
         ${account.id}, ${r.conversation_id}, ${r.order_id}, ${oggetto}, 'new',
-        ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza))}, ${ora}, ${ora}, ${scadenza}
+        ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza), r.richiesta_operatore === true)}, ${ora}, ${ora}, ${scadenza}
       )
       on conflict (account_id, external_thread_id) where external_thread_id is not null
       do update set
@@ -237,7 +258,7 @@ async function aggiungiAlTicketDellOrdine(
     await tx`
       update thread set
         state      = case when state = 'new' then state else 'open' end,
-        tags       = (select array(select distinct unnest(tags || ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza))}::text[]))),
+        tags       = (select array(select distinct unnest(tags || ${tagTicketVoce(r.categoria, r.priorita, eIncidenteSicurezza(r.descrizione, r.incidente_sicurezza), r.richiesta_operatore === true)}::text[]))),
         due_at     = least(coalesce(due_at, ${scadenza}), ${scadenza}),
         updated_at = now()
       where id = ${t.id}

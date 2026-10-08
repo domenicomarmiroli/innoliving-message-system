@@ -125,6 +125,8 @@ const corpoTicket = z.object({
   nome: testoFacoltativo(200),
   contatto_richiamata: z.string().trim().min(3).max(200),
   caller_number: tokenFacoltativo,
+  richiesta_operatore: z.boolean().nullable().optional(),
+  fascia_oraria: testoFacoltativo(200),
   // Per categoria 'garanzia': il marchio del prodotto, che sceglie il
   // portale garanzie a cui mandare il cliente (canale garanzia-<marchio>).
   // Non 'brand': in ElevenLabs {{brand}} è già il marchio del numero chiamato.
@@ -360,6 +362,8 @@ export async function voceRoutes(app: FastifyInstance, opts: { db: Db; config: C
           nome: dati.nome,
           contatto_richiamata: dati.contatto_richiamata,
           numero_chiamante: dati.caller_number,
+          richiesta_operatore: dati.richiesta_operatore ?? null,
+          fascia_oraria: dati.fascia_oraria,
         })
         // Garanzia segnalata al telefono: email al cliente con il link al
         // portale del brand. Si decide qui (una query veloce) e si spedisce

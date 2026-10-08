@@ -159,3 +159,21 @@ describe('incidente di sicurezza', () => {
     expect(tagTicketVoce('garanzia', 'normale', true)).toEqual(['telefono', 'garanzia', 'priorita-alta', 'incidente-sicurezza'])
   })
 })
+
+describe('richiesta di un operatore umano', () => {
+  it('tag dedicato e priorità alta', async () => {
+    const { tagTicketVoce } = await import('../src/connectors/voce/ticket.js')
+    expect(tagTicketVoce('info', 'normale', false, true)).toEqual(['telefono', 'domanda-prodotto', 'priorita-alta', 'richiamata-operatore'])
+  })
+  it('il testo del ticket dice che va richiamato e quando', async () => {
+    const { testoTicketVoce } = await import('../src/connectors/voce/ticket.js')
+    const t = testoTicketVoce({
+      conversation_id: 'c', order_id: null, riferimento_ordine: null, categoria: 'altro', priorita: 'normale',
+      descrizione: 'Vuole parlare con una persona per un rimborso.', prodotto: null, nome: 'Anna',
+      contatto_richiamata: '+393331234567', numero_chiamante: '+393331234567',
+      richiesta_operatore: true, fascia_oraria: 'domani dopo le 15',
+    })
+    expect(t).toContain('richiamato da un operatore')
+    expect(t).toContain('domani dopo le 15')
+  })
+})

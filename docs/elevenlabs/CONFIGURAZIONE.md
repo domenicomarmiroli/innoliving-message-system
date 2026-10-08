@@ -277,3 +277,16 @@ in **Aggiungi strumento** (il formato è quello già accettato dal pannello).
 
 Il worker lo riconosce comunque anche dalle parole della descrizione:
 il parametro è una sicurezza in più, non l'unico controllo.
+
+### Parametri aggiuntivi di `crea_ticket` (08/10): richiamata da un operatore
+Niente trasferimento di chiamata: se il cliente chiede una persona, l'agente
+apre un ticket che un operatore richiama nella fascia scelta dal cliente. Il
+ticket prende il tag `richiamata-operatore` e la priorità alta (scadenza 4 ore).
+
+| Identificatore | Tipo | Richiesto | Tipo di valore | Descrizione |
+|---|---|---|---|---|
+| `richiesta_operatore` | Boolean | no | Prompt LLM | true se il cliente ha chiesto di parlare con una persona / un operatore e vuole essere richiamato |
+| `fascia_oraria` | String | no | Prompt LLM | Quando il cliente preferisce essere richiamato, con le sue parole (es. "domani mattina", "oggi dopo le 15") |
+
+In questo caso `contatto_richiamata` è il **numero di telefono** da richiamare.
+
