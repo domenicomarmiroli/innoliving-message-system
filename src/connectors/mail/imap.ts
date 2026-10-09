@@ -69,6 +69,12 @@ export async function leggiCasella(
     // messaggi dei clienti. Fuori dai log (regola 8).
     logger: false,
   })
+  // Senza un ascoltatore, un errore di socket (Gmail che chiude la
+  // connessione, ECONNABORTED) è un 'error' non gestito e fa uscire il
+  // processo. Il giro in corso fallisce comunque e il poll riprova.
+  client.on('error', (err: Error) => {
+    log.warn({ err: err.message }, 'connessione IMAP interrotta')
+  })
 
   const esito: EsitoCiclo = {
     lette: 0,
