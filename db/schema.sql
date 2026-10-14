@@ -355,3 +355,34 @@ alter table ai_draft         enable row level security;
 alter table sync_state       enable row level security;
 alter table ingest_anomaly   enable row level security;
 alter table audit_log        enable row level security;
+
+-- ---------------------------------------------------------------- etichetta di reso BRT (0045)
+create table if not exists etichetta_reso (
+  id                   uuid primary key default gen_random_uuid(),
+  thread_id            uuid not null references thread(id) on delete cascade,
+  order_id             uuid references "order"(id),
+  tipo                 text not null check (tipo in ('recesso', 'danneggiato', 'verificare')),
+  stato                text not null default 'in_corso' check (stato in ('in_corso', 'creata', 'fallita')),
+  -- Segnacollo (18 cifre) e codice per il tracking via API (15 cifre).
+  parcel_id            text unique,
+  tracking_parcel_id   text,
+  storage_path         text,
+  nome_file            text,
+  -- Numero dell'ordine di vendita Zoho (es. AMZS404-…), scritto nel modulo LDV Reso.
+  zoho_ordine          text,
+  zoho_scritto_at      timestamptz,
+  zoho_errore          text,
+  errore               text,
+  -- Risposta integrale di BRT senza i byte dell'etichetta (stanno su Storage).
+  raw                  jsonb,
+  agent_id             uuid,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  unique (thread_id, tipo)
+);
+
+create index if not exists etichetta_reso_order_idx on etichetta_reso (order_id);
+
+alter table etichetta_reso enable row level security;
+drop policy if exists etichetta_reso_agent_select on etichetta_reso;
+create policy etichetta_reso_agent_select on etichetta_reso for select to authenticated using (public.is_agent());

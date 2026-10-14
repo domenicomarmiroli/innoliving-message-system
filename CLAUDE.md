@@ -1970,3 +1970,37 @@ garanzia gestite in QUESTO sistema, avvisi automatici (testi fissi in
   ticket nel campo "pratica" (non il GGF del partner). Serve che
   l'endpoint `/api/public/rientri` di "Utilities Magazzino" restituisca
   anche `pratica` e `action` per `package_type=assistenza_garanzia`.
+
+### Etichetta di reso BRT dal ticket (migrazione 0045, 14/10)
+Sostituisce il worker esterno su Cloudways, che partiva da un pulsante
+su Zoho. `POST /threads/etichetta-reso` `{ thread_id, tipo }` con `tipo`
+uguale a `recesso`, `danneggiato` o `verificare`
+(`connectors/reso/etichetta.ts`). Funziona in quattro passi:
+1. **Richiesta a BRT**: stessa chiamata del vecchio worker
+   (`connectors/brt/reso.ts`), cioè spedizione di ritorno verso il
+   magazzino. Del cliente serve solo il nome. In etichetta va
+   "TICKET <numero>".
+2. **Foglio per il cliente** (`core/reso/foglio.ts`, pdf-lib, Montserrat
+   in subset, circa 45 KB). Contiene istruzioni, il QR dei punti BRT, il
+   rimborso entro 14 giorni e la tipologia in un riquadro grande sopra
+   l'etichetta: serve alla logistica per riconoscere il pacco all'arrivo.
+   Nel recesso si trattengono € 6,00. Nel "danneggiato" non c'è l'avviso
+   sul reso non conforme.
+3. **Storage**: il foglio torna nella forma degli allegati di
+   `/threads/reply`, così l'editor lo allega alla risposta.
+4. **Zoho**: una riga nel modulo `cm_ldv_reso_amazon` con i campi del
+   vecchio worker più `cf_tipologia_reso`. Il numero dell'ordine di
+   vendita è `AMZS` + numero per Amazon; per gli altri canali si cerca su
+   Zoho. Un errore qui non blocca l'etichetta: finisce in `zoho_errore` e
+   in `ingest_anomaly`.
+
+Idempotenza: la tabella `etichetta_reso` è unica per (thread, tipo). La
+riga nasce `in_corso` PRIMA della chiamata a BRT. Segnacollo e PDF
+originale di BRT si salvano subito, così un errore successivo non porta a
+una seconda spedizione. Il destinatario, i codici del contratto e i testi
+stanno in `app_config.brt_resi`. Le credenziali stanno in `BRT_API_*` e
+`ZOHO_*`.
+
+Il segnacollo restituito da BRT (`tracking_parcel_id`, 15 cifre) è quello
+che l'API di tracking BRT accetta: per i resi creati da qui si potrà
+seguire il rientro senza leggere la pagina pubblica.

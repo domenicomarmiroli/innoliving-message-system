@@ -62,6 +62,24 @@ const schema = z.object({
   // Pausa fra una pagina e l'altra: è un sito pubblico, non un'API.
   BRT_TRACKING_PAUSA_MS: z.coerce.number().int().min(500).default(2000),
 
+  // --- Etichetta di reso BRT (routes/etichetta-reso.ts) ----------------
+  // Credenziali dell'API REST di BRT. Il resto del contratto (codice
+  // cliente, filiali, tariffa) e il destinatario stanno in
+  // app_config.brt_resi. Senza queste due la rotta risponde 503.
+  BRT_API_USER: z.string().min(1).optional(),
+  BRT_API_PASSWORD: z.string().min(1).optional(),
+
+  // --- Zoho Inventory (modulo "LDV Reso") -----------------------------
+  // Self Client della Zoho API Console. Senza, l'etichetta si genera lo
+  // stesso e la riga Zoho resta da scrivere (si riprova alla richiesta
+  // successiva sullo stesso ticket).
+  ZOHO_CLIENT_ID: z.string().min(1).optional(),
+  ZOHO_CLIENT_SECRET: z.string().min(1).optional(),
+  ZOHO_REFRESH_TOKEN: z.string().min(1).optional(),
+  ZOHO_ORGANIZATION_ID: z.string().min(1).optional(),
+  ZOHO_ACCOUNTS_URL: z.string().url().default('https://accounts.zoho.eu'),
+  ZOHO_API_URL: z.string().url().default('https://www.zohoapis.eu'),
+
   MS_TENANT_ID: z.string().min(1).optional(),
   MS_CLIENT_ID: z.string().min(1).optional(),
   MS_CLIENT_SECRET: z.string().min(1).optional(),
