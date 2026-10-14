@@ -90,7 +90,7 @@ export async function generaEtichettaReso(
     shopify_name: string | null; nome_spedizione: string | null; nome_fatturazione: string | null
   }[]>`
     select t.numero, t.order_id, o.channel, o.external_order_id, o.shopify_name,
-      o.shipping_address->>'name' as nome_spedizione, o.billing_address->>'name' as nome_fatturazione
+      o.shipping_address->>'nome' as nome_spedizione, o.billing_address->>'nome' as nome_fatturazione
     from thread t left join "order" o on o.id = t.order_id
     where t.id = ${richiesta.thread_id}
   `
