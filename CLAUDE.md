@@ -2004,3 +2004,14 @@ stanno in `app_config.brt_resi`. Le credenziali stanno in `BRT_API_*` e
 Il segnacollo restituito da BRT (`tracking_parcel_id`, 15 cifre) è quello
 che l'API di tracking BRT accetta: per i resi creati da qui si potrà
 seguire il rientro senza leggere la pagina pubblica.
+
+### Ticket aperto dall'operatore verso un cliente (26/10)
+`POST /threads/nuovo` `{ destinatario, oggetto, testo, allegati? }`
+(`connectors/mail/nuovo.ts`, rotta in `routes/collega.ts` con la stessa
+autenticazione). Parte **sempre dalla casella Microsoft** (`transport =
+'graph'`, indirizzo in `MS_MAILBOX`), mai da Gmail: senza la casella
+Graph attiva la rotta risponde 502 con il motivo. Il ticket nasce
+`pending_customer` con tag `aperto-da-operatore`; la risposta del
+cliente si aggancia dal nostro `rfc822_id` e riapre il ticket, come per
+i ticket collegati. `registraAllegatiUscita()` è ora condivisa fra
+`collega.ts` e `nuovo.ts`.

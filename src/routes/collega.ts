@@ -9,6 +9,7 @@ import { check as verificaPolicy } from '../core/policy.js'
 import { prepare, type FilePronto } from '../core/attachments/normalize.js'
 import { scaricaAllegato } from '../core/storage.js'
 import { apriTicketCollegato } from '../connectors/mail/collega.js'
+import { apriTicketInUscita } from '../connectors/mail/nuovo.js'
 import { messaggioErrore } from '../connectors/mail/imap.js'
 
 /**
@@ -42,6 +43,14 @@ const corpo = z.object({
     .optional(),
 })
 
+const corpoNuovo = z.object({
+  destinatario: z.string().email(),
+  oggetto: z.string().trim().min(1).max(300),
+  testo: z.string().min(1).max(20_000),
+  agent_id: z.string().uuid().nullable().optional(),
+  allegati: corpo.shape.allegati,
+})
+
 function confrontoCostante(a: string, b: string): boolean {
   const ba = Buffer.from(a)
   const bb = Buffer.from(b)
@@ -66,25 +75,40 @@ export async function collegaRoutes(
     return
   }
 
-  app.post('/threads/collega', async (req, reply) => {
-    let agente_id: string | null = null
-
-    const headerWorker = req.headers['x-worker-token']
+  async function autentica(
+    headers: Record<string, string | string[] | undefined>,
+  ): Promise<{ ok: true; agente_id: string | null } | { ok: false }> {
+    const headerWorker = headers['x-worker-token']
     const tokenWorker = Array.isArray(headerWorker) ? headerWorker[0] : headerWorker
-    const worker_ok =
-      worker_token_attivo && !!tokenWorker && confrontoCostante(tokenWorker, config.WORKER_API_TOKEN!)
-
-    if (!worker_ok) {
-      const headerAuth = req.headers.authorization
-      const tokenSessione = headerAuth?.startsWith('Bearer ') ? headerAuth.slice(7) : null
-      const agente = tokenSessione && sessione_attiva
-        ? await verificaAgente(db, config, tokenSessione)
-        : null
-      if (!agente) {
-        return reply.code(401).send({ errore: 'non autorizzato' })
-      }
-      agente_id = agente.id
+    if (worker_token_attivo && !!tokenWorker && confrontoCostante(tokenWorker, config.WORKER_API_TOKEN!)) {
+      return { ok: true, agente_id: null }
     }
+    const headerAuth = headers['authorization']
+    const valore = Array.isArray(headerAuth) ? headerAuth[0] : headerAuth
+    const tokenSessione = valore?.startsWith('Bearer ') ? valore.slice(7) : null
+    const agente = tokenSessione && sessione_attiva
+      ? await verificaAgente(db, config, tokenSessione)
+      : null
+    return agente ? { ok: true, agente_id: agente.id } : { ok: false }
+  }
+
+  async function preparaAllegati(
+    riferimenti: { storage_path: string; nome_file: string; mime: string }[],
+  ): Promise<{ ok: true; file: FilePronto[] } | { ok: false; errore: string }> {
+    const file: FilePronto[] = []
+    for (const rif of riferimenti) {
+      const contenuto = await scaricaAllegato(config, rif.storage_path)
+      const esito = await prepare('email', { nome_file: rif.nome_file, mime: rif.mime, contenuto })
+      if (!esito.ok) return { ok: false, errore: `allegato "${rif.nome_file}" non ammesso: ${esito.motivo}` }
+      file.push(esito)
+    }
+    return { ok: true, file }
+  }
+
+  app.post('/threads/collega', async (req, reply) => {
+    const auth = await autentica(req.headers)
+    if (!auth.ok) return reply.code(401).send({ errore: 'non autorizzato' })
+    const agente_id = auth.agente_id
 
     const analizzato = corpo.safeParse(req.body)
     if (!analizzato.success) {
@@ -114,22 +138,9 @@ export async function collegaRoutes(
         })
       }
 
-      const richiestaAllegati = analizzato.data.allegati ?? []
-      const allegatiPronti: FilePronto[] = []
-      for (const rif of richiestaAllegati) {
-        const contenuto = await scaricaAllegato(config, rif.storage_path)
-        const esito = await prepare('email', {
-          nome_file: rif.nome_file,
-          mime: rif.mime,
-          contenuto,
-        })
-        if (!esito.ok) {
-          return reply.code(422).send({
-            errore: `allegato "${rif.nome_file}" non ammesso: ${esito.motivo}`,
-          })
-        }
-        allegatiPronti.push(esito)
-      }
+      const allegati = await preparaAllegati(analizzato.data.allegati ?? [])
+      if (!allegati.ok) return reply.code(422).send({ errore: allegati.errore })
+      const allegatiPronti = allegati.file
 
       const esito = await apriTicketCollegato(db, req.log, config, {
         thread_id: analizzato.data.thread_id,
@@ -152,6 +163,43 @@ export async function collegaRoutes(
         { thread_id: analizzato.data.thread_id, err: messaggioErrore(errore) },
         'apertura ticket collegato fallita',
       )
+      return reply.code(502).send({ errore: messaggioErrore(errore) })
+    }
+  })
+
+  // Ticket aperto da noi verso un cliente: sempre dalla casella Microsoft
+  // (vedi connectors/mail/nuovo.ts).
+  app.post('/threads/nuovo', async (req, reply) => {
+    const auth = await autentica(req.headers)
+    if (!auth.ok) return reply.code(401).send({ errore: 'non autorizzato' })
+
+    const analizzato = corpoNuovo.safeParse(req.body)
+    if (!analizzato.success) {
+      return reply.code(400).send({
+        errore: 'richiesta non valida',
+        dettagli: analizzato.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+      })
+    }
+    const agent_id = auth.agente_id ?? analizzato.data.agent_id ?? null
+
+    try {
+      const policy = verificaPolicy('email', analizzato.data.testo)
+      if (!policy.ok) {
+        return reply.code(422).send({ errore: 'contenuto non ammesso', violazioni: policy.violazioni })
+      }
+      const allegati = await preparaAllegati(analizzato.data.allegati ?? [])
+      if (!allegati.ok) return reply.code(422).send({ errore: allegati.errore })
+
+      const esito = await apriTicketInUscita(db, req.log, config, {
+        agent_id,
+        destinatario: analizzato.data.destinatario,
+        oggetto: analizzato.data.oggetto,
+        testo: analizzato.data.testo,
+        allegati: allegati.file,
+      })
+      return reply.code(200).send({ ...esito, avvisi: policy.violazioni.filter((v) => !v.bloccante) })
+    } catch (errore) {
+      req.log.error({ err: messaggioErrore(errore) }, 'apertura ticket in uscita fallita')
       return reply.code(502).send({ errore: messaggioErrore(errore) })
     }
   })

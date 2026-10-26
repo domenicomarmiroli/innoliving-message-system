@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { TransactionSql } from 'postgres'
 
 import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
@@ -158,39 +159,7 @@ export async function apriTicketCollegato(
     `
     const messageId = riga!.id
 
-    // Gli allegati spediti davvero, stesso schema di invia.ts: registrati
-    // COSÌ COME SONO PARTITI, per mostrare in cronologia cosa è stato
-    // ricevuto, non cosa l'agente aveva scelto prima di un'eventuale
-    // conversione.
-    for (const a of allegati) {
-      const checksum = createHash('sha256').update(a.contenuto).digest('hex')
-      let storage_path: string | null = null
-      if (storageConfigurato(config)) {
-        try {
-          storage_path = await caricaAllegato(
-            config,
-            `out/${messageId}/${checksum}-${a.nome_file}`,
-            a.contenuto,
-            a.mime,
-          )
-        } catch (errore) {
-          log.error(
-            { err: errore instanceof Error ? errore.message : String(errore) },
-            "upload su Storage dell'allegato in uscita fallito: registrato solo il metadato",
-          )
-        }
-      }
-      const dimensioni = await dimensioniImmagine(a.contenuto)
-      await tx`
-        insert into attachment (
-          message_id, direzione, nome_file, mime, dimensione_byte, checksum,
-          storage_path, convertito_da, larghezza, altezza
-        ) values (
-          ${messageId}, 'out', ${a.nome_file}, ${a.mime}, ${a.contenuto.byteLength}, ${checksum},
-          ${storage_path}, ${a.convertito_da}, ${dimensioni?.larghezza ?? null}, ${dimensioni?.altezza ?? null}
-        )
-      `
-    }
+    await registraAllegatiUscita(tx, log, config, messageId, allegati)
 
     if (richiesta.agent_id) {
       await tx`
@@ -209,4 +178,47 @@ export async function apriTicketCollegato(
   )
 
   return { thread_id: risultato.thread_id, message_id: risultato.message_id, rfc822_id: rfc822 }
+}
+
+
+export async function registraAllegatiUscita(
+  tx: TransactionSql,
+  log: Logger,
+  config: Config,
+  messageId: string,
+  allegati: FilePronto[],
+): Promise<void> {
+  // Gli allegati spediti davvero, stesso schema di invia.ts: registrati
+  // COSÌ COME SONO PARTITI, per mostrare in cronologia cosa è stato
+  // ricevuto, non cosa l'agente aveva scelto prima di un'eventuale
+  // conversione.
+  for (const a of allegati) {
+    const checksum = createHash('sha256').update(a.contenuto).digest('hex')
+    let storage_path: string | null = null
+    if (storageConfigurato(config)) {
+      try {
+        storage_path = await caricaAllegato(
+          config,
+          `out/${messageId}/${checksum}-${a.nome_file}`,
+          a.contenuto,
+          a.mime,
+        )
+      } catch (errore) {
+        log.error(
+          { err: errore instanceof Error ? errore.message : String(errore) },
+          "upload su Storage dell'allegato in uscita fallito: registrato solo il metadato",
+        )
+      }
+    }
+    const dimensioni = await dimensioniImmagine(a.contenuto)
+    await tx`
+      insert into attachment (
+        message_id, direzione, nome_file, mime, dimensione_byte, checksum,
+        storage_path, convertito_da, larghezza, altezza
+      ) values (
+        ${messageId}, 'out', ${a.nome_file}, ${a.mime}, ${a.contenuto.byteLength}, ${checksum},
+        ${storage_path}, ${a.convertito_da}, ${dimensioni?.larghezza ?? null}, ${dimensioni?.altezza ?? null}
+      )
+    `
+  }
 }
