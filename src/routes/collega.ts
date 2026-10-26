@@ -9,7 +9,7 @@ import { check as verificaPolicy } from '../core/policy.js'
 import { prepare, type FilePronto } from '../core/attachments/normalize.js'
 import { scaricaAllegato } from '../core/storage.js'
 import { apriTicketCollegato } from '../connectors/mail/collega.js'
-import { apriTicketInUscita } from '../connectors/mail/nuovo.js'
+import { OrdineNonTrovato, apriTicketInUscita } from '../connectors/mail/nuovo.js'
 import { messaggioErrore } from '../connectors/mail/imap.js'
 
 /**
@@ -47,6 +47,7 @@ const corpoNuovo = z.object({
   destinatario: z.string().email(),
   oggetto: z.string().trim().min(1).max(300),
   testo: z.string().min(1).max(20_000),
+  numero_ordine: z.string().trim().max(100).nullable().optional(),
   agent_id: z.string().uuid().nullable().optional(),
   allegati: corpo.shape.allegati,
 })
@@ -195,10 +196,12 @@ export async function collegaRoutes(
         destinatario: analizzato.data.destinatario,
         oggetto: analizzato.data.oggetto,
         testo: analizzato.data.testo,
+        numero_ordine: analizzato.data.numero_ordine ?? null,
         allegati: allegati.file,
       })
       return reply.code(200).send({ ...esito, avvisi: policy.violazioni.filter((v) => !v.bloccante) })
     } catch (errore) {
+      if (errore instanceof OrdineNonTrovato) return reply.code(422).send({ errore: errore.message })
       req.log.error({ err: messaggioErrore(errore) }, 'apertura ticket in uscita fallita')
       return reply.code(502).send({ errore: messaggioErrore(errore) })
     }

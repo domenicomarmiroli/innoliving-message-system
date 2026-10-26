@@ -2,6 +2,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import type { FilePronto } from '../../core/attachments/normalize.js'
+import { normalizzaNumeroOrdine } from '../../routes/contatti.js'
 import { casellaPerTrasporto } from './casella.js'
 import { registraAllegatiUscita } from './collega.js'
 import { adattaAllegatiAlTrasporto, spedisci } from './spedizione.js'
@@ -26,6 +27,8 @@ export interface RichiestaNuovoTicket {
   destinatario: string
   oggetto: string
   testo: string
+  /** Facoltativo: ordine di qualunque canale (Shopify o marketplace). */
+  numero_ordine?: string | null
   allegati?: FilePronto[]
 }
 
@@ -37,12 +40,37 @@ export interface EsitoNuovoTicket {
 
 export const TAG_NUOVO_TICKET = 'aperto-da-operatore'
 
+/**
+ * Un numero d'ordine indicato dall'operatore e non trovato. A differenza
+ * del form dei siti (dove si apre comunque `unmatched`), qui chi scrive può
+ * correggerlo subito: meglio fermare l'invio che spedire senza l'aggancio.
+ */
+export class OrdineNonTrovato extends Error {}
+
+export async function trovaOrdine(db: Db, numero: string): Promise<string | null> {
+  const n = normalizzaNumeroOrdine(numero)
+  const [ordine] = await db<{ id: string }[]>`
+    select id from "order"
+    where external_order_id = ${numero.trim()} or external_order_id = ${n}
+       or shopify_name = ${n} or shopify_name = ${'#' + n}
+    order by placed_at desc nulls last
+    limit 1
+  `
+  return ordine?.id ?? null
+}
+
 export async function apriTicketInUscita(
   db: Db,
   log: Logger,
   config: Config,
   richiesta: RichiestaNuovoTicket,
 ): Promise<EsitoNuovoTicket> {
+  const numero = richiesta.numero_ordine?.trim()
+  const orderId = numero ? await trovaOrdine(db, numero) : null
+  if (numero && !orderId) {
+    throw new OrdineNonTrovato(`Nessun ordine trovato con il numero "${numero}".`)
+  }
+
   const trasporto = 'graph' as const
   const casella = await casellaPerTrasporto(db, trasporto)
 
@@ -61,9 +89,9 @@ export async function apriTicketInUscita(
 
   const risultato = await db.begin(async (tx) => {
     const [nuovo] = await tx<{ id: string }[]>`
-      insert into thread (account_id, subject, state, assignee_id, tags, due_at)
+      insert into thread (account_id, order_id, subject, state, assignee_id, tags, due_at)
       values (
-        ${casella.account_id}, ${richiesta.oggetto}, 'pending_customer',
+        ${casella.account_id}, ${orderId}, ${richiesta.oggetto}, 'pending_customer',
         ${richiesta.agent_id}, ${[TAG_NUOVO_TICKET]}, ${scadenza}
       )
       returning id

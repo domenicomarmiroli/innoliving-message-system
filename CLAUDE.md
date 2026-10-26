@@ -2013,5 +2013,7 @@ autenticazione). Parte **sempre dalla casella Microsoft** (`transport =
 Graph attiva la rotta risponde 502 con il motivo. Il ticket nasce
 `pending_customer` con tag `aperto-da-operatore`; la risposta del
 cliente si aggancia dal nostro `rfc822_id` e riapre il ticket, come per
-i ticket collegati. `registraAllegatiUscita()` è ora condivisa fra
+i ticket collegati. `numero_ordine` facoltativo (Shopify o marketplace, stessa
+normalizzazione del form dei siti): se non si trova, 422 e nessun invio.
+`registraAllegatiUscita()` è ora condivisa fra
 `collega.ts` e `nuovo.ts`.
