@@ -193,15 +193,22 @@ modello non lo vede mai.
 
 ## Stato avanzamento
 
+Aggiornata il 03/11 da `STATO.md`, `CLAUDE.md` e dalla storia del codice
+(ultimo lavoro sulla voce: 08/10).
+
 | Fase | Stato | Note |
 |---|---|---|
-| 1 – Fondamenta | ✅ codice e test (05/10) | Da applicare 0030 e impostare il secret su Render |
+| 1 – Fondamenta | ✅ in produzione (05/10) | 0030 applicata e secret su Render, verificato in `voice_log` |
 | 2 – Verifica cliente | ✅ in produzione (05/10) | Ordini da ottobre 2025 riallineati: 3.919 con email |
-| 3 – Stato ordine e tracking | 🟡 stato ordine fatto (05/10) | Eventi di consegna: BRT o un servizio tipo Qapla', più avanti. Tracking Amazon: arriverà col nuovo gestionale |
-| 4 – Ticket | ✅ codice e test (05/10) | Migrazione 0032 da applicare prima del deploy |
-| 5 – Post-call | 🟡 | Trascrizione salvata in `voice_call` e mostrata in un popup dal ticket (06/10). Manca il ticket di ripiego per le chiamate finite senza ticket. |
-| 5b – Richiamata vocale | ⬜ | Dopo la fase 7 per il collaudo |
-| 6 – Config agente | 🟡 guida e prompt pronti (05/10) | Da configurare nel pannello ElevenLabs e provare nel simulatore |
-| 7 – Telefonia | ⏸ | Dopo i test nel simulatore |
-| 8 – Test e pilota | ⬜ | |
-| 9 – Estensioni | ⬜ | |
+| 3 – Stato ordine e tracking | 🟡 stato ordine fatto (05/10, 06/10) | Ordini FBA: "consegnato" e rimando ad Amazon. Eventi BRT dalla pagina pubblica (0034), ripiego in attesa di un servizio via API. Tracking Amazon: arriverà col nuovo gestionale |
+| 4 – Ticket | ✅ codice e test (05/10) | Canale `telefono` e `thread.numero` (0032). Dal 08/10: `motivo_operatore` (casi che decide un operatore) e ticket di richiamata con fascia oraria quando il cliente chiede un operatore |
+| 5 – Post-call | 🟡 (06/10) | Webhook HMAC, trascrizione in `voice_call` (0036) con popup dal ticket, costi e dashboard "Telefonate" (0037), esiti delle telefonate (0043), tetto giornaliero delle chiamate AI. Manca il ticket di ripiego per le chiamate finite senza ticket |
+| 5b – Richiamata vocale | 🟡 codice pronto (07/10, 08/10) | 0042, `POST /threads/richiama`, giro ogni minuto, fascia 8-21, max 5 tentativi, verifica del nome di chi risponde. Prova del 08/10 caduta dopo 26 s lato Telnyx (account in prova, "Client disconnected"): da capire con il supporto o l'upgrade |
+| 6 – Config agente | 🟡 configurato, in prova nel simulatore (06/10) | Prima chiamata di test: 104 s, circa $0,09. Prompt con tono dinamico e casistiche dal report Zendesk (08/10). Secondo agente per la richiamata (`richiamata-prompt.md`) |
+| 7 – Telefonia | ⏸ | In entrata: numero attuale non ancora collegato, si collega solo dopo test ottimi nel simulatore. In uscita: SIP trunk Telnyx per le richiamate, bloccato dalla prova del 08/10 |
+| 8 – Test e pilota | ⬜ | Pilota previsto: "dov'è il mio ordine" |
+| 9 – Estensioni | 🟡 in parte | Fatti: prodotti dal PIM (06/10), siti di acquisto (0039), garanzia segnalata al telefono con link al portale (0041), stato della pratica per numero (0044, 08/10). Da decidere dopo il pilota: WhatsApp |
+
+Debiti rimasti: `db/schema.sql` senza le tabelle `voice_*`; lato Lovable,
+`thread.numero` visibile e cercabile e pulsante di richiamata nel ticket
+(da confermare se fatti).
