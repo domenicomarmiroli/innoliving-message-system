@@ -1636,3 +1636,52 @@ l'evento `call_initiation_failure` attivo; su Render
 `ELEVENLABS_PHONE_NUMBER_ID`; su Telnyx un profilo voce in uscita verso
 l'Italia; interfaccia Lovable (pulsante nel ticket).
 
+
+## Bozze AI coerenti con le risposte di Domenico (04/11)
+
+Specifica: `SecondBrain/Projects/hub-messaggi/specs/istruzioni-agente-bozze.md`
+(785 risposte vere, sei decisioni del 04/11). Se il codice la contraddice,
+vince la specifica.
+
+**Fatto (solo in locale, non pubblicato)**
+- `core/ai/bozza-prompt.ts`: prompt `v2` scritto dalla specifica (stile, 24
+  casi, canali, errori da non imitare). Il caso si classifica dal TESTO del
+  cliente, non dai tag. Valori dell'azienda (nome, telefono assistenza, sito
+  ricambi) in `app_config.bozze_agente`, non nel codice.
+- Output in due parti: testo per il cliente (`ai_draft.draft_text`) e azione
+  consigliata (`azione`: tipo, testo, condizione) più `nota_operatore` e
+  `decide_domenico`. Il sistema non esegue mai l'azione. Sicurezza e garanzia
+  dal telefono: nessuna bozza. Recesso: il testo è il modello `Reso Recesso`
+  della tabella `template` (con i 6,00 euro), compilato dal codice.
+- `core/ai/bozza-contesto.ts`: dati dell'ordine dati all'agente (canale, FBA,
+  date, giorni dalla consegna, corriere, tracking, stato, giacenza, eventi
+  ridotti, reso, rientro, rimborso, A-Z, etichetta reso, foto ricevute,
+  prodotti). Nessun dato personale. Mancano nei dati e restano così: stato
+  ordine Mirakl sul marketplace (non salvato) e disponibilità ricambio.
+- Costo prodotto: il ruolo `hub_assistenza` NON lo vede. Il PIM ha solo
+  `product_costs.costo_acquisto` (non un landed). Proposta in
+  `docs/pim/0226-costo-assistenza.sql` (funzione in sola lettura, da eseguire
+  sul PIM). Finché non c'è, la nota dice "costo non disponibile". Va solo
+  nella nota all'operatore, mai nella bozza.
+- `core/ai/bozza-auto.ts`: bozza automatica nel ciclo principale, una per
+  messaggio cliente (`trigger_message_id`), solo se l'ultimo messaggio è del
+  cliente, ticket non chiusi e non collegati, finestra 3 giorni, 5 per giro,
+  budget giornaliero dei lavori in background.
+- Esito: causa trovata. In `message` ci sono 855 invii di agenti e NESSUNO con
+  `draft_id`: l'interfaccia non lo passa a `/threads/reply`, il codice del
+  worker era corretto. Ora, senza `draft_id`, `/threads/reply` collega la
+  bozza più recente senza esito (ultimi 3 giorni) e decide per somiglianza:
+  `usata_invariata`, `usata_modificata` o `ignorata` (nuovo valore).
+
+**Da fare da Domenico**
+1. Eseguire `db/migrations/0047_bozze_agente.sql` su Hub Messaggi (prima del deploy).
+2. Eseguire `docs/pim/0226-costo-assistenza.sql` sul PIM (facoltativo, per il costo).
+3. Lovable: mostrare `azione`, `nota_operatore`, `decide_domenico` della bozza
+   (leggibili da `ai_draft`), caricare da sola l'ultima bozza all'apertura del
+   ticket e passare `draft_id` a `/threads/reply`; pubblicare.
+4. Via libera al push su `main` (deploy automatico su Render).
+
+**Non provato su ticket veri**: nessuna chiamata al modello. I test coprono
+prompt, contesto, lettura dell'output, modello recesso, policy sui testi
+attesi e l'esito. La qualità delle bozze si vede solo con ticket veri, dopo la
+migrazione.

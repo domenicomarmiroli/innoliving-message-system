@@ -84,3 +84,26 @@ export async function famigliePim(config: Config): Promise<unknown[]> {
 export function impostaClientPimPerTest(finto: ClientPim | null): void {
   client = finto
 }
+
+/**
+ * Costo di acquisto del prodotto, SOLO per la nota all'operatore delle
+ * bozze AI (mai per il cliente né per l'agente vocale). Richiede la
+ * funzione `assistenza_costo_prodotto` nel PIM (docs/pim/0226-costo-assistenza.sql):
+ * senza, o senza dato, restituisce null.
+ */
+export async function costoProdottoPim(
+  config: Config,
+  sku: string,
+): Promise<{ sku: string; costo: number; valuta: string } | null> {
+  if (!config.PIM_DB_URL) return null
+  try {
+    const [riga] = await pim(config)<{ r: { costo?: number; valuta?: string } | null }[]>`
+      select public.assistenza_costo_prodotto(${sku}) as r
+    `
+    const r = riga?.r
+    if (r && typeof r.costo === 'number') return { sku, costo: r.costo, valuta: r.valuta ?? 'EUR' }
+    return null
+  } catch {
+    return null
+  }
+}

@@ -5,7 +5,7 @@ import { z } from 'zod'
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { verificaAgente } from '../core/agente.js'
-import { calcolaEsito } from '../core/ai/esito.js'
+import { calcolaEsito, esitoSenzaId } from '../core/ai/esito.js'
 import { check as verificaPolicy } from '../core/policy.js'
 import { prepare, type FilePronto } from '../core/attachments/normalize.js'
 import { scaricaAllegato } from '../core/storage.js'
@@ -210,31 +210,61 @@ export async function replyRoutes(
       // dell'operatore, non con la traduzione — altrimenti ogni bozza
       // usata e poi tradotta risulterebbe "modificata".
       const testoDaConfrontare = tradotta ? analizzato.data.testo_originale! : analizzato.data.testo
-      if (analizzato.data.draft_id) {
-        try {
+      // Se l'interfaccia non passa draft_id (oggi non lo fa: 855 invii,
+      // nessuno collegato) si cerca la bozza più recente del thread ancora
+      // senza esito, creata negli ultimi 3 giorni. Il confronto di
+      // somiglianza decide se è stata usata o ignorata.
+      try {
+        let bozzaId = analizzato.data.draft_id ?? null
+        let bozzaTesto: string | null = null
+        let senzaId = false
+        if (bozzaId) {
           const [bozza] = await db<{ draft_text: string | null }[]>`
             select draft_text from ai_draft
-            where id = ${analizzato.data.draft_id} and thread_id = ${analizzato.data.thread_id}
+            where id = ${bozzaId} and thread_id = ${analizzato.data.thread_id}
           `
-          if (bozza) {
-            const esitoBozza = calcolaEsito(bozza.draft_text ?? '', testoDaConfrontare)
-            await db`
-              update ai_draft
-              set outcome = ${esitoBozza}, final_text = ${testoDaConfrontare}, updated_at = now()
-              where id = ${analizzato.data.draft_id}
-            `
-          } else {
+          if (bozza) bozzaTesto = bozza.draft_text ?? ''
+          else {
             req.log.warn(
-              { draft_id: analizzato.data.draft_id, thread_id: analizzato.data.thread_id },
+              { draft_id: bozzaId, thread_id: analizzato.data.thread_id },
               'draft_id passato a /threads/reply non trovato per questo thread',
             )
+            bozzaId = null
           }
-        } catch (erroreEsito) {
-          req.log.warn(
-            { draft_id: analizzato.data.draft_id, err: messaggioErrore(erroreEsito) },
-            'aggiornamento esito bozza AI fallito, invio già andato a buon fine',
-          )
+        } else {
+          const [ultima] = await db<{ id: string; draft_text: string | null }[]>`
+            select id, draft_text from ai_draft
+            where thread_id = ${analizzato.data.thread_id}
+              and outcome is null and coalesce(draft_text, '') <> ''
+              and created_at > now() - interval '3 days'
+            order by created_at desc
+            limit 1
+          `
+          if (ultima) {
+            bozzaId = ultima.id
+            bozzaTesto = ultima.draft_text ?? ''
+            senzaId = true
+          }
         }
+        if (bozzaId && bozzaTesto !== null) {
+          const esitoBozza = senzaId
+            ? esitoSenzaId(bozzaTesto, testoDaConfrontare)
+            : calcolaEsito(bozzaTesto, testoDaConfrontare)
+          await db`
+            update ai_draft
+            set outcome = ${esitoBozza}, final_text = ${testoDaConfrontare}, updated_at = now()
+            where id = ${bozzaId}
+          `
+          // Il messaggio ricorda la bozza solo se è stata usata davvero.
+          if (esitoBozza !== 'ignorata') {
+            await db`update message set draft_id = ${bozzaId} where id = ${esito.message_id} and draft_id is null`
+          }
+        }
+      } catch (erroreEsito) {
+        req.log.warn(
+          { draft_id: analizzato.data.draft_id ?? null, err: messaggioErrore(erroreEsito) },
+          'aggiornamento esito bozza AI fallito, invio già andato a buon fine',
+        )
       }
 
       // Il destinatario è un alias del relay: non lo rimandiamo indietro,

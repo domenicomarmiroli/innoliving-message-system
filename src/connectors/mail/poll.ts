@@ -6,6 +6,7 @@ import { riaggancia } from './riaggancia.js'
 import { sincronizzaMirakl } from '../mirakl/sync.js'
 import { traduciMessaggiInArrivo } from '../../core/ai/traduzione.js'
 import { classificaTicketSenzaCategoria } from '../../core/ai/intento.js'
+import { generaBozzeAutomatiche } from '../../core/ai/bozza-auto.js'
 import { inviaAvvisiPratica } from '../pratica/avvisi.js'
 
 /**
@@ -82,6 +83,14 @@ export function avviaPolling(db: Db, log: Logger, config: Config): Ciclo | null 
         await classificaTicketSenzaCategoria(db, log, config)
       } catch (errore) {
         log.warn({ err: messaggioErrore(errore) }, 'recupero della classificazione non riuscito')
+      }
+
+      // Bozza AI già pronta sui messaggi nuovi dei clienti (solo salvata,
+      // mai spedita). Dopo la classificazione, così i tag ci sono già.
+      try {
+        await generaBozzeAutomatiche(db, log, config)
+      } catch (errore) {
+        log.warn({ err: messaggioErrore(errore) }, 'bozze automatiche non riuscite')
       }
 
       // Avvisi al cliente sullo stato della pratica (migrazione 0044).

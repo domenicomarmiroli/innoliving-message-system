@@ -2,6 +2,17 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { check as verificaPolicy, type EsitoPolicy } from '../policy.js'
+import { caricaDatiOrdine, formattaContestoOrdine } from './bozza-contesto.js'
+import {
+  PARAMETRI_NEUTRI,
+  PROMPT_VERSION,
+  type ParametriAzienda,
+  compilaModello,
+  costruisciSistema,
+  interpretaRispostaAgente,
+  type AzioneConsigliata,
+  type Famiglia,
+} from './bozza-prompt.js'
 import { creaProvider } from './provider.js'
 import { redigi } from './redazione.js'
 
@@ -13,19 +24,21 @@ import { redigi } from './redazione.js'
  *     contesto: possono contenere qualunque cosa un operatore abbia
  *     scritto pensando che restasse fra colleghi.
  *  2. Ogni messaggio del cliente passa da redigi() prima di finire nel
- *     prompt: IBAN, carte, codici fiscali oscurati — regola 8, qui non
- *     si tratta.
+ *     prompt: IBAN, carte, codici fiscali oscurati (regola 8).
  *  3. Il testo che il modello propone NON è la risposta: è una
  *     proposta. Passa dallo stesso policy guard di un invio vero prima
- *     di tornare all'agente, così un problema si vede qui e non al
- *     momento di premere Invia.
+ *     di tornare all'agente.
+ *
+ * Il prompt (bozza-prompt.ts) nasce dalla specifica "istruzioni agente
+ * bozze" del 2026-11-04. L'output ha due parti: il testo per il cliente
+ * e l'azione consigliata per l'operatore, che il sistema non esegue mai.
  *
  * Il testo prodotto non viene MAI spedito da questa funzione: solo
  * salvato in ai_draft, per approvazione umana.
  */
 
 const MAX_MESSAGGI_CONTESTO = 20
-const MAX_TOKEN_RISPOSTA = 1000
+const MAX_TOKEN_RISPOSTA = 1500
 const MAX_FONTI_KB = 5
 
 export interface FonteKB {
@@ -37,7 +50,13 @@ export interface FonteKB {
 
 export interface EsitoBozza {
   id: string
+  /** Testo per il cliente. Vuoto quando l'agente non propone nulla. */
   testo: string
+  famiglia: Famiglia
+  /** Azione consigliata, separata dal testo: il sistema non la esegue mai. */
+  azione: AzioneConsigliata
+  nota_operatore: string | null
+  decide_domenico: boolean
   modello: string
   policy: EsitoPolicy
   fonti: FonteKB[]
@@ -48,61 +67,45 @@ export async function generaBozza(
   log: Logger,
   config: Config,
   threadId: string,
+  opzioni: { sfondo?: boolean } = {},
 ): Promise<EsitoBozza> {
   const [thread] = await db<
-    {
-      kind: string
-      account_code: string
-      tags: string[]
-      subject: string | null
-      order_id: string | null
-      customer_nome: string | null
-      order_num: string | null
-      order_tracking: string | null
-      order_fulfillment: string | null
-    }[]
+    { kind: string; account_code: string; tags: string[]; customer_nome: string | null }[]
   >`
-    select
-      ca.kind, ca.code as account_code, t.tags, t.subject, t.order_id,
-      cu.nome as customer_nome,
-      coalesce(o.shopify_name, o.external_order_id) as order_num,
-      o.tracking_number as order_tracking,
-      o.fulfillment_status as order_fulfillment
+    select ca.kind, ca.code as account_code, t.tags, cu.nome as customer_nome
     from thread t
     join channel_account ca on ca.id = t.account_id
     left join channel_identity ci on ci.id = t.identity_id
     left join customer cu on cu.id = ci.customer_id
-    left join "order" o on o.id = t.order_id
     where t.id = ${threadId}
   `
   if (!thread) throw new Error(`Conversazione ${threadId} inesistente.`)
 
   // --- La cronologia, senza le note interne, redatta ------------------
-  const messaggi = await db<{ direction: string; body_text: string | null; sent_at: Date }[]>`
-    select direction, body_text, sent_at
+  const messaggi = await db<
+    { id: string; direction: string; author_kind: string | null; body_text: string | null; sent_at: Date }[]
+  >`
+    select id, direction, author_kind, body_text, sent_at
     from message
     where thread_id = ${threadId} and interno = false and body_text is not null
     order by sent_at desc
     limit ${MAX_MESSAGGI_CONTESTO}
   `
-  const cronologia = messaggi
-    .reverse()
+  const ordinati = messaggi.reverse()
+  const ultimoCliente = [...ordinati].reverse().find((m) => m.direction === 'in' && m.author_kind === 'customer')
+  const cronologia = ordinati
     .map((m) => {
-      const chi = m.direction === 'in' ? 'Cliente' : 'Assistenza'
+      const chi =
+        m.direction === 'out' ? 'Assistenza' : m.author_kind === 'customer' ? 'Cliente' : 'Notifica automatica'
       return `${chi}: ${redigi(m.body_text ?? '').testo}`
     })
     .join('\n\n')
 
-  // --- Knowledge base: solo ciò che condivide un tag col thread -------
-  // Priorità prima di tutto: una procedura ("se il danno è segnalato,
-  // chiedi sempre le foto") deve prevalere su una nota generica con lo
-  // stesso tag, non essere scartata perché più vecchia.
-  // Il filtro canali confronta channel_account.code, non kind: due
-  // operatori sulla stessa piattaforma (es. due operatori Mirakl
-  // diversi) possono avere logiche di comunicazione diverse — filtrare
-  // per kind li terrebbe insieme per errore. Una voce senza canali
-  // selezionati (null o vuoto) vale per tutti gli operatori, una con
-  // canali valorizzati vale SOLO per quei codici specifici.
+  // --- Knowledge base: ciò che condivide un tag col thread ------------
+  // Priorità prima di tutto: una procedura deve prevalere su una nota
+  // generica con lo stesso tag. Il filtro canali confronta
+  // channel_account.code, non kind (due operatori Mirakl possono avere
+  // logiche diverse). Senza canali = vale per tutti.
   const fonti = await db<
     { id: string; titolo: string; contenuto: string; fonte: string; url: string | null }[]
   >`
@@ -115,15 +118,8 @@ export async function generaBozza(
     limit ${MAX_FONTI_KB}
   `
 
-  const contestoOrdine = thread.order_id
-    ? [
-        thread.order_num ? `Numero ordine: ${thread.order_num}` : null,
-        thread.order_fulfillment ? `Stato evasione: ${thread.order_fulfillment}` : null,
-        thread.order_tracking ? `Tracking: ${thread.order_tracking}` : null,
-      ]
-        .filter(Boolean)
-        .join('\n')
-    : 'Nessun ordine collegato a questa conversazione.'
+  const datiOrdine = await caricaDatiOrdine(db, config, threadId)
+  const contestoOrdine = formattaContestoOrdine(datiOrdine)
 
   const testoKB = fonti.length
     ? fonti
@@ -134,50 +130,82 @@ export async function generaBozza(
         .join('\n\n---\n\n')
     : 'Nessuna voce della knowledge base è rilevante per questa conversazione.'
 
-  const sistema = [
-    'Sei un assistente che PROPONE risposte per un operatore del servizio clienti italiano.',
-    'La tua proposta non viene mai inviata direttamente: un operatore la legge, la corregge se serve, e decide se mandarla.',
-    'Scrivi in italiano, tono cortese e diretto, senza formule vuote.',
-    'Usa SOLO le informazioni fornite qui sotto (ordine, cronologia, knowledge base). Se manca un dato per rispondere con certezza, dillo esplicitamente invece di inventarlo.',
-    'Non includere mai IBAN, numeri di carta o dati di pagamento nella risposta, anche se il cliente li ha scritti.',
-    'Non promettere rimborsi, sostituzioni o azioni specifiche a meno che la knowledge base o il contesto ordine non le confermino esplicitamente.',
-    'Alcune fonti della knowledge base includono un link di riferimento alle linee guida ufficiali di un marketplace: è per il tuo contesto, non copiarlo mai nella risposta a meno che non sia specificamente richiesto e utile al cliente.',
-  ].join(' ')
-
+  const [cfg] = await db<{ value: Partial<ParametriAzienda> | null }[]>`
+    select value from app_config where key = 'bozze_agente'
+  `
+  const sistema = costruisciSistema({ ...PARAMETRI_NEUTRI, ...(cfg?.value ?? {}) })
   const utente = [
-    `Contesto ordine:\n${contestoOrdine}`,
-    `Knowledge base rilevante:\n${testoKB}`,
+    `Dati dell'ordine:\n${contestoOrdine}`,
+    `Knowledge base rilevante (la specifica nelle istruzioni prevale in caso di contrasto):\n${testoKB}`,
     `Conversazione finora:\n${cronologia || '(nessun messaggio precedente)'}`,
-    'Proponi la prossima risposta dell\'assistenza, solo il testo del messaggio.',
+    "Classifica dal testo dell'ultimo messaggio del cliente, poi rispondi con il JSON richiesto.",
   ].join('\n\n')
 
-  const provider = await creaProvider(config, undefined, { funzione: 'bozza', sfondo: false })
-  const completamento = await provider.completa({
-    sistema,
-    utente,
-    max_token: MAX_TOKEN_RISPOSTA,
+  const provider = await creaProvider(config, undefined, {
+    funzione: 'bozza',
+    sfondo: opzioni.sfondo ?? false,
   })
+  const completamento = await provider.completa({ sistema, utente, max_token: MAX_TOKEN_RISPOSTA })
+  const risposta = interpretaRispostaAgente(completamento.testo)
 
-  const policy = verificaPolicy(thread.kind, completamento.testo)
+  // Recesso: il testo è il modello già pronto della tabella `template`
+  // (costo della spedizione di reso incluso), mai riscritto dal modello.
+  let testoBozza = risposta.bozza
+  if (risposta.famiglia === 'recesso') {
+    const [modello] = await db<{ body_tpl: string | null }[]>`
+      select body_tpl from template where name = 'Reso Recesso' and locale = 'it' limit 1
+    `
+    if (modello?.body_tpl) {
+      testoBozza = compilaModello(modello.body_tpl, {
+        'cliente.nome': thread.customer_nome?.trim().split(/\s+/)[0] ?? null,
+        'ordine.numero': datiOrdine?.numero ?? null,
+      })
+    } else {
+      risposta.nota_operatore = [
+        risposta.nota_operatore,
+        'Modello "Reso Recesso" non trovato nei template: scrivi il testo a mano.',
+      ]
+        .filter(Boolean)
+        .join(' ')
+    }
+  }
+
+  // La policy guarda il testo per il cliente, mai la nota all'operatore.
+  const policy: EsitoPolicy = testoBozza ? verificaPolicy(thread.kind, testoBozza) : { ok: true, violazioni: [] }
 
   const [riga] = await db<{ id: string }[]>`
-    insert into ai_draft (thread_id, model, prompt_version, draft_text, policy_check, fonti)
+    insert into ai_draft (
+      thread_id, model, prompt_version, draft_text, policy_check, fonti,
+      famiglia, azione, nota_operatore, decide_domenico, trigger_message_id
+    )
     values (
-      ${threadId}, ${completamento.modello}, 'v1', ${completamento.testo},
+      ${threadId}, ${completamento.modello}, ${PROMPT_VERSION}, ${testoBozza ?? ''},
       ${db.json({ ok: policy.ok, violazioni: policy.violazioni } as never)},
-      ${db.json(fonti.map((f) => ({ id: f.id, titolo: f.titolo, fonte: f.fonte })) as never)}
+      ${db.json(fonti.map((f) => ({ id: f.id, titolo: f.titolo, fonte: f.fonte })) as never)},
+      ${risposta.famiglia}, ${db.json(risposta.azione as never)}, ${risposta.nota_operatore},
+      ${risposta.decide_domenico}, ${ultimoCliente?.id ?? null}
     )
     returning id
   `
 
   log.info(
-    { thread_id: threadId, modello: completamento.modello, fonti: fonti.length, policy_ok: policy.ok },
+    {
+      thread_id: threadId,
+      modello: completamento.modello,
+      famiglia: risposta.famiglia,
+      fonti: fonti.length,
+      policy_ok: policy.ok,
+    },
     'bozza AI generata',
   )
 
   return {
     id: riga!.id,
-    testo: completamento.testo,
+    testo: testoBozza ?? '',
+    famiglia: risposta.famiglia,
+    azione: risposta.azione,
+    nota_operatore: risposta.nota_operatore,
+    decide_domenico: risposta.decide_domenico,
     modello: completamento.modello,
     policy,
     fonti: fonti.map((f) => ({ id: f.id, titolo: f.titolo, fonte: f.fonte, url: f.url })),
