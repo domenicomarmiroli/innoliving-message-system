@@ -2005,6 +2005,35 @@ Il segnacollo restituito da BRT (`tracking_parcel_id`, 15 cifre) è quello
 che l'API di tracking BRT accetta: per i resi creati da qui si potrà
 seguire il rientro senza leggere la pagina pubblica.
 
+### Etichetta di reso da numero d'ordine, senza ticket (migrazione 0048, 06/11)
+Per i canali non integrati (BricoBravo) e per ogni caso in cui serve
+l'etichetta prima di un ticket. `POST /threads/etichetta-reso-ordine`
+`{ numero_ordine, tipo, canale?, nome_cliente? }` (stessa autenticazione di
+`/threads/etichetta-reso`, `routes/etichetta-reso.ts`). Risponde con gli
+stessi campi dell'etichetta del ticket più `url_download`, un link firmato
+valido un'ora: l'operatore scarica il PDF e lo manda al cliente a mano.
+- Se l'ordine è nell'Hub (cerca `external_order_id` o `shopify_name`, con o
+  senza `#`) canale e nome vengono dal database. Se il numero esiste su più
+  canali: 409, serve `canale`.
+- Se non c'è, servono `canale` (es. `bricobravo`) e `nome_cliente`: senza, 422
+  e nessuna chiamata a BRT.
+- Stessa funzione del ticket (`produciEtichetta`): BRT, foglio, Storage, Zoho
+  (non bloccante). Riferimento in etichetta: il numero d'ordine, o le ultime
+  15 cifre. File in `etichette-reso/ordine-<canale>-<numero>/`.
+- Idempotenza: indice unico parziale `(canale, numero_ordine, tipo)` dove
+  `thread_id` è NULL; `etichetta_reso.thread_id` ora è facoltativo. Ripetere
+  la richiesta dà la stessa etichetta, mai una seconda spedizione BRT.
+- Testo per il cliente: la risposta ha anche `messaggio` `{ modello, oggetto,
+  testo }`, preso dalla tabella `template` ("Reso Recesso", "Reso Danneggiato",
+  "Reso Verificare") con `{{cliente.nome}}` e `{{ordine.numero}}` già compilati
+  (`connectors/reso/testo.ts`). Nomi tutti maiuscoli (Amazon) diventano normali.
+- **Schermata**: `GET /strumenti/reso` (`routes/strumento-reso.ts`), pagina
+  servita dal worker, senza Lovable. Login con email e password dell'Hub
+  (Supabase Auth, poi vale `agent` come ovunque), numero ordine, casistica;
+  mostra il link al PDF e il testo con "Copia testo". Se l'ordine non è
+  nell'Hub chiede canale e nome. La pagina contiene solo URL e chiave anonima
+  Supabase; esiste solo se `SUPABASE_URL` e `SUPABASE_ANON_KEY` sono impostate.
+
 ### Ticket aperto dall'operatore verso un cliente (26/10)
 `POST /threads/nuovo` `{ destinatario, oggetto, testo, allegati? }`
 (`connectors/mail/nuovo.ts`, rotta in `routes/collega.ts` con la stessa

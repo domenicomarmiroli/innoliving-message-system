@@ -4,7 +4,7 @@ import { PDFDocument } from 'pdf-lib'
 
 import { configBrtResi, costruisciRichiesta, interpretaRisposta } from '../src/connectors/brt/reso.js'
 import { componiFoglioReso, TIPI_RESO } from '../src/core/reso/foglio.js'
-import { numeroOrdineVendita, riferimentoBrt } from '../src/connectors/reso/etichetta.js'
+import { numeroOrdineVendita, riferimentoBrt, riferimentoBrtOrdine } from '../src/connectors/reso/etichetta.js'
 
 // Risposta reale dell'ambiente di collaudo BRT (dal worker che faceva questo prima).
 const collaudo = JSON.parse(readFileSync('test/fixtures/brt/reso-risposta-collaudo.json', 'utf8'))
@@ -61,6 +61,11 @@ describe('numero ordine di vendita e riferimento', () => {
   })
   it('riferimento in etichetta: numero del ticket', () => {
     expect(riferimentoBrt(12096)).toBe('TICKET 12096')
+  })
+  it('reso senza ticket: il numero d\'ordine, o le ultime 15 cifre se è più lungo', () => {
+    expect(riferimentoBrtOrdine('BB-12345')).toBe('BB-12345')
+    expect(riferimentoBrtOrdine('404-1296441-3120351-EXTRA')).toHaveLength(15)
+    expect(riferimentoBrtOrdine('404-1296441-3120351-EXTRA').endsWith('EXTRA')).toBe(true)
   })
 })
 

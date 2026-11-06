@@ -6,7 +6,9 @@ import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { verificaAgente } from '../core/agente.js'
 import { TIPI_RESO } from '../core/reso/foglio.js'
-import { ErroreEtichetta, generaEtichettaReso } from '../connectors/reso/etichetta.js'
+import { urlFirmato } from '../core/storage.js'
+import { testoReso } from '../connectors/reso/testo.js'
+import { ErroreEtichetta, generaEtichettaReso, generaEtichettaResoOrdine } from '../connectors/reso/etichetta.js'
 
 /**
  * POST /threads/etichetta-reso   { thread_id, tipo: recesso | danneggiato | verificare }
@@ -42,6 +44,41 @@ export async function etichettaResoRoutes(app: FastifyInstance, opts: { db: Db; 
     const agente = sessione ? await verificaAgente(db, config, sessione) : null
     return agente ? agente.id : undefined
   }
+
+  /**
+   * POST /threads/etichetta-reso-ordine
+   *   { numero_ordine, tipo, canale?, nome_cliente? }
+   *
+   * Etichetta di reso senza ticket, da numero d'ordine: l'operatore scarica
+   * il foglio dal link e lo manda al cliente a mano (canali non integrati
+   * come BricoBravo). Se l'ordine non è nell'Hub servono canale e nome del
+   * cliente. Ripetere la richiesta restituisce la stessa etichetta, con un
+   * nuovo link di download (valido un'ora).
+   */
+  const corpoOrdine = z.object({
+    numero_ordine: z.string().trim().min(1).max(100),
+    tipo: z.enum(TIPI_RESO),
+    canale: z.string().trim().min(1).max(40).nullable().optional(),
+    nome_cliente: z.string().trim().min(1).max(120).nullable().optional(),
+  })
+
+  app.post('/threads/etichetta-reso-ordine', async (req, reply) => {
+    const agente = await chiChiama(req)
+    if (agente === undefined) return reply.code(401).send({ errore: 'non autorizzato' })
+    const c = corpoOrdine.safeParse(req.body)
+    if (!c.success) return reply.code(400).send({ errore: c.error.issues.map((i) => i.message).join('; ') })
+    try {
+      const etichetta = await generaEtichettaResoOrdine(db, config, req.log, { ...c.data, agent_id: agente })
+      const url_download = await urlFirmato(config, etichetta.storage_path, 3600)
+      // Il testo da incollare nella mail: dal modello della tipologia, già compilato.
+      const messaggio = await testoReso(db, etichetta.tipo, etichetta)
+      return reply.send({ ...etichetta, url_download, messaggio })
+    } catch (e) {
+      if (e instanceof ErroreEtichetta) return reply.code(e.status).send({ errore: e.message })
+      req.log.error({ err: e }, 'etichetta di reso da ordine non generata')
+      return reply.code(500).send({ errore: "errore interno durante la generazione dell'etichetta" })
+    }
+  })
 
   app.post('/threads/etichetta-reso', async (req, reply) => {
     const agente = await chiChiama(req)

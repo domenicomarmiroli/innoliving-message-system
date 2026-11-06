@@ -40,6 +40,9 @@ export interface EtichettaPronta {
   zoho_scritto: boolean
   zoho_errore: string | null
   gia_esistente: boolean
+  /** Dati dell'ordine usati per l'etichetta: servono a comporre il testo per il cliente. */
+  numero_ordine: string
+  nome_cliente: string
 }
 
 /** Numero dell'ordine di vendita Zoho quando si può ricavare senza chiedere: solo Amazon. */
@@ -72,19 +75,36 @@ const COLONNE = (db: Db) => db`id, stato, parcel_id, tracking_parcel_id, storage
 /** Una richiesta 'in_corso' più vecchia di così è considerata abbandonata (processo riavviato a metà). */
 const IN_CORSO_ABBANDONATA_S = 120
 
+/** A chi appartiene l'etichetta: un ticket oppure, senza ticket, un ordine (canale + numero). */
+interface Bersaglio {
+  thread_id: string | null
+  canale: string
+  numero_ordine: string
+  order_id: string | null
+  shopify_name: string | null
+  nome_cliente: string
+  /** Riferimento stampato in etichetta (max 15 caratteri). */
+  riferimento: string
+  /** Cartella su Storage. */
+  cartella: string
+}
+
+/** Riferimento in etichetta per un reso senza ticket: il numero d'ordine, o le sue ultime 15 cifre. */
+export function riferimentoBrtOrdine(numeroOrdine: string): string {
+  return numeroOrdine.length <= 15 ? numeroOrdine : numeroOrdine.slice(-15)
+}
+
+/** Normalizza un pezzo di percorso Storage. */
+function pezzoPercorso(v: string): string {
+  return v.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 60)
+}
+
 export async function generaEtichettaReso(
   db: Db,
   config: Config,
   log: Logger,
   richiesta: { thread_id: string; tipo: TipoReso; agent_id: string | null },
 ): Promise<EtichettaPronta> {
-  if (!config.BRT_API_USER || !config.BRT_API_PASSWORD) throw new ErroreEtichetta(503, 'BRT non configurato: mancano BRT_API_USER e BRT_API_PASSWORD.')
-
-  const [cfgRiga] = await db<{ value: unknown }[]>`select value from app_config where key = 'brt_resi'`
-  const cfg = configBrtResi.safeParse(cfgRiga?.value)
-  if (!cfg.success) throw new ErroreEtichetta(503, `app_config.brt_resi mancante o incompleta: ${cfg.error.issues.map((i) => i.path.join('.')).join(', ')}`)
-  const conf = cfg.data
-
   const [t] = await db<{
     numero: number | null; order_id: string | null; channel: string | null; external_order_id: string | null
     shopify_name: string | null; nome_spedizione: string | null; nome_fatturazione: string | null
@@ -97,17 +117,118 @@ export async function generaEtichettaReso(
   if (!t) throw new ErroreEtichetta(404, 'ticket inesistente')
   if (!t.order_id || !t.external_order_id) throw new ErroreEtichetta(422, "il ticket non è collegato a un ordine: collegalo prima di generare l'etichetta")
 
-  // 1. Prenoto la riga. Se esiste già, decido se restituirla, aspettare o riprendere.
-  let [riga] = await db<Riga[]>`
-    insert into etichetta_reso (thread_id, order_id, tipo, agent_id)
-    values (${richiesta.thread_id}, ${t.order_id}, ${richiesta.tipo}, ${richiesta.agent_id})
-    on conflict (thread_id, tipo) do nothing
-    returning ${COLONNE(db)}
+  return produciEtichetta(db, config, log, {
+    thread_id: richiesta.thread_id,
+    canale: t.channel ?? '',
+    numero_ordine: t.external_order_id,
+    order_id: t.order_id,
+    shopify_name: t.shopify_name,
+    nome_cliente: (t.nome_spedizione ?? t.nome_fatturazione ?? '').trim() || 'Cliente',
+    riferimento: riferimentoBrt(t.numero ?? t.external_order_id),
+    cartella: `etichette-reso/${richiesta.thread_id}`,
+  }, richiesta.tipo, richiesta.agent_id)
+}
+
+/**
+ * Etichetta di reso da numero d'ordine, senza ticket. Se l'ordine è nell'Hub
+ * si prendono canale e nome dal database; se non c'è (BricoBravo e ogni canale
+ * non integrato) servono `canale` e `nome_cliente` digitati dall'operatore.
+ * Stessa idempotenza del ticket: chiave (canale, numero d'ordine, tipo).
+ */
+export async function generaEtichettaResoOrdine(
+  db: Db,
+  config: Config,
+  log: Logger,
+  richiesta: { numero_ordine: string; tipo: TipoReso; canale?: string | null; nome_cliente?: string | null; agent_id: string | null },
+): Promise<EtichettaPronta> {
+  const numero = richiesta.numero_ordine.trim()
+  const senzaCancelletto = numero.replace(/^#/, '')
+  const canaleDato = richiesta.canale?.trim().toLowerCase() || null
+  const nomeDato = richiesta.nome_cliente?.trim() || null
+
+  const trovati = await db<{
+    id: string; channel: string; external_order_id: string; shopify_name: string | null
+    nome_spedizione: string | null; nome_fatturazione: string | null
+  }[]>`
+    select o.id, o.channel, o.external_order_id, o.shopify_name,
+      o.shipping_address->>'nome' as nome_spedizione, o.billing_address->>'nome' as nome_fatturazione
+    from "order" o
+    where (o.external_order_id in (${numero}, ${senzaCancelletto})
+        or o.shopify_name in (${senzaCancelletto}, ${'#' + senzaCancelletto}))
+      and (${canaleDato}::text is null or lower(o.channel) = ${canaleDato})
+    order by o.placed_at desc nulls last
+    limit 3
   `
+  if (trovati.length > 1 && !canaleDato) {
+    throw new ErroreEtichetta(409, `il numero ${numero} esiste su più canali (${trovati.map((o) => o.channel).join(', ')}): indica il canale`)
+  }
+  const ordine = trovati[0]
+
+  if (ordine) {
+    return produciEtichetta(db, config, log, {
+      thread_id: null,
+      canale: ordine.channel,
+      numero_ordine: ordine.external_order_id,
+      order_id: ordine.id,
+      shopify_name: ordine.shopify_name,
+      nome_cliente: nomeDato ?? ((ordine.nome_spedizione ?? ordine.nome_fatturazione ?? '').trim() || 'Cliente'),
+      riferimento: riferimentoBrtOrdine(ordine.external_order_id),
+      cartella: `etichette-reso/ordine-${pezzoPercorso(ordine.channel)}-${pezzoPercorso(ordine.external_order_id)}`,
+    }, richiesta.tipo, richiesta.agent_id)
+  }
+
+  if (!canaleDato || !nomeDato) {
+    throw new ErroreEtichetta(422, `ordine ${numero} non trovato nell'Hub: indica il canale (per esempio bricobravo) e il nome del cliente`)
+  }
+  return produciEtichetta(db, config, log, {
+    thread_id: null,
+    canale: canaleDato,
+    numero_ordine: senzaCancelletto,
+    order_id: null,
+    shopify_name: null,
+    nome_cliente: nomeDato,
+    riferimento: riferimentoBrtOrdine(senzaCancelletto),
+    cartella: `etichette-reso/ordine-${pezzoPercorso(canaleDato)}-${pezzoPercorso(senzaCancelletto)}`,
+  }, richiesta.tipo, richiesta.agent_id)
+}
+
+async function produciEtichetta(
+  db: Db,
+  config: Config,
+  log: Logger,
+  b: Bersaglio,
+  tipo: TipoReso,
+  agentId: string | null,
+): Promise<EtichettaPronta> {
+  if (!config.BRT_API_USER || !config.BRT_API_PASSWORD) throw new ErroreEtichetta(503, 'BRT non configurato: mancano BRT_API_USER e BRT_API_PASSWORD.')
+
+  const [cfgRiga] = await db<{ value: unknown }[]>`select value from app_config where key = 'brt_resi'`
+  const cfg = configBrtResi.safeParse(cfgRiga?.value)
+  if (!cfg.success) throw new ErroreEtichetta(503, `app_config.brt_resi mancante o incompleta: ${cfg.error.issues.map((i) => i.path.join('.')).join(', ')}`)
+  const conf = cfg.data
+
+  const filtro = b.thread_id
+    ? db`thread_id = ${b.thread_id} and tipo = ${tipo}`
+    : db`thread_id is null and canale = ${b.canale} and numero_ordine = ${b.numero_ordine} and tipo = ${tipo}`
+
+  // 1. Prenoto la riga. Se esiste già, decido se restituirla, aspettare o riprendere.
+  let [riga] = b.thread_id
+    ? await db<Riga[]>`
+        insert into etichetta_reso (thread_id, order_id, tipo, agent_id)
+        values (${b.thread_id}, ${b.order_id}, ${tipo}, ${agentId})
+        on conflict (thread_id, tipo) do nothing
+        returning ${COLONNE(db)}
+      `
+    : await db<Riga[]>`
+        insert into etichetta_reso (order_id, canale, numero_ordine, nome_cliente, tipo, agent_id)
+        values (${b.order_id}, ${b.canale}, ${b.numero_ordine}, ${b.nome_cliente}, ${tipo}, ${agentId})
+        on conflict (canale, numero_ordine, tipo) where thread_id is null do nothing
+        returning ${COLONNE(db)}
+      `
   let giaEsistente = false
   if (!riga) {
     giaEsistente = true
-    ;[riga] = await db<Riga[]>`select ${COLONNE(db)} from etichetta_reso where thread_id = ${richiesta.thread_id} and tipo = ${richiesta.tipo}`
+    ;[riga] = await db<Riga[]>`select ${COLONNE(db)} from etichetta_reso where ${filtro}`
     if (!riga) throw new ErroreEtichetta(500, 'etichetta non trovata dopo il conflitto')
     if (riga.stato === 'in_corso' && riga.aggiornata_da_secondi < IN_CORSO_ABBANDONATA_S) {
       throw new ErroreEtichetta(409, "l'etichetta è già in preparazione: riprova fra qualche secondo")
@@ -131,34 +252,33 @@ export async function generaEtichettaReso(
     if (riga.parcel_id && riga.raw?.pdf_brt) {
       pdfBrt = await scaricaAllegato(config, riga.raw.pdf_brt)
     } else {
-      const nome = (t.nome_spedizione ?? t.nome_fatturazione ?? '').trim() || 'Cliente'
       const esito = await richiediEtichetta(conf, { utente: config.BRT_API_USER, password: config.BRT_API_PASSWORD }, {
-        nome_cliente: nome,
-        riferimento: riferimentoBrt(t.numero ?? t.external_order_id),
-        note: t.external_order_id,
+        nome_cliente: b.nome_cliente,
+        riferimento: b.riferimento,
+        note: b.numero_ordine,
       })
       if (!esito.ok) {
         await db`update etichetta_reso set stato = 'fallita', errore = ${esito.errore.slice(0, 500)}, raw = ${db.json(esito.raw as never)}, updated_at = now() where id = ${riga.id}`
-        await db`insert into ingest_anomaly (tipo, payload) values ('etichetta_reso_brt_fallita', ${db.json({ thread_id: richiesta.thread_id, tipo: richiesta.tipo, errore: esito.errore, risposta: esito.raw } as never)})`
+        await db`insert into ingest_anomaly (tipo, payload) values ('etichetta_reso_brt_fallita', ${db.json({ thread_id: b.thread_id, canale: b.canale, numero_ordine: b.numero_ordine, tipo, errore: esito.errore, risposta: esito.raw } as never)})`
         throw new ErroreEtichetta(502, `BRT non ha creato l'etichetta: ${esito.errore}`)
       }
       pdfBrt = esito.pdf
-      const percorsoBrt = await caricaAllegato(config, `etichette-reso/${richiesta.thread_id}/${esito.parcel_id}-brt.pdf`, pdfBrt, 'application/pdf')
+      const percorsoBrt = await caricaAllegato(config, `${b.cartella}/${esito.parcel_id}-brt.pdf`, pdfBrt, 'application/pdf')
       const raw = { ...(esito.raw as object), pdf_brt: percorsoBrt }
       ;[riga] = await db<Riga[]>`
         update etichetta_reso set parcel_id = ${esito.parcel_id}, tracking_parcel_id = ${esito.tracking_parcel_id},
           raw = ${db.json(raw as never)}, updated_at = now()
         where id = ${riga.id} returning ${COLONNE(db)}
       `
-      log.info({ thread_id: richiesta.thread_id, parcel_id: esito.parcel_id }, 'etichetta di reso BRT creata')
+      log.info({ thread_id: b.thread_id, canale: b.canale, numero_ordine: b.numero_ordine, parcel_id: esito.parcel_id }, 'etichetta di reso BRT creata')
     }
     if (!riga?.parcel_id) throw new ErroreEtichetta(500, 'segnacollo mancante dopo la creazione')
 
     // 3. Foglio per il cliente.
     if (!riga.storage_path) {
-      const foglio = await componiFoglioReso({ tipo: richiesta.tipo, etichettaBrt: pdfBrt, testi: conf.foglio })
-      const nomeFile = `Reso ${t.external_order_id} - ${ETICHETTA_TIPO[richiesta.tipo].toLowerCase()}.pdf`.replace(/[\\/:*?"<>|]/g, '-')
-      const percorso = await caricaAllegato(config, `etichette-reso/${richiesta.thread_id}/${riga.parcel_id}.pdf`, foglio, 'application/pdf')
+      const foglio = await componiFoglioReso({ tipo, etichettaBrt: pdfBrt, testi: conf.foglio })
+      const nomeFile = `Reso ${b.numero_ordine} - ${ETICHETTA_TIPO[tipo].toLowerCase()}.pdf`.replace(/[\\/:*?"<>|]/g, '-')
+      const percorso = await caricaAllegato(config, `${b.cartella}/${riga.parcel_id}.pdf`, foglio, 'application/pdf')
       ;[riga] = await db<Riga[]>`
         update etichetta_reso set storage_path = ${percorso}, nome_file = ${nomeFile}, stato = 'creata', errore = null, updated_at = now()
         where id = ${riga.id} returning ${COLONNE(db)}
@@ -181,11 +301,11 @@ export async function generaEtichettaReso(
   if (!creata) throw new ErroreEtichetta(500, 'etichetta non trovata dopo la creazione')
   riga = creata.zoho_scritto_at
     ? creata
-    : await scriviSuZoho(db, config, log, conf, creata, richiesta.tipo, t.channel ?? '', t.external_order_id, t.shopify_name)
+    : await scriviSuZoho(db, config, log, conf, creata, tipo, b.canale, b.numero_ordine, b.shopify_name)
 
   return {
     id: riga.id,
-    tipo: richiesta.tipo,
+    tipo,
     parcel_id: riga.parcel_id!,
     tracking_parcel_id: riga.tracking_parcel_id,
     storage_path: riga.storage_path!,
@@ -195,6 +315,8 @@ export async function generaEtichettaReso(
     zoho_scritto: !!riga.zoho_scritto_at,
     zoho_errore: riga.zoho_errore,
     gia_esistente: giaEsistente,
+    numero_ordine: b.numero_ordine,
+    nome_cliente: b.nome_cliente,
   }
 }
 

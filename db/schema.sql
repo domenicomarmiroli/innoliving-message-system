@@ -359,8 +359,12 @@ alter table audit_log        enable row level security;
 -- ---------------------------------------------------------------- etichetta di reso BRT (0045)
 create table if not exists etichetta_reso (
   id                   uuid primary key default gen_random_uuid(),
-  thread_id            uuid not null references thread(id) on delete cascade,
+  thread_id            uuid references thread(id) on delete cascade,
   order_id             uuid references "order"(id),
+  -- Etichetta da numero d'ordine, senza ticket (0048).
+  canale               text,
+  numero_ordine        text,
+  nome_cliente         text,
   tipo                 text not null check (tipo in ('recesso', 'danneggiato', 'verificare')),
   stato                text not null default 'in_corso' check (stato in ('in_corso', 'creata', 'fallita')),
   -- Segnacollo (18 cifre) e codice per il tracking via API (15 cifre).
@@ -378,10 +382,12 @@ create table if not exists etichetta_reso (
   agent_id             uuid,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now(),
-  unique (thread_id, tipo)
+  unique (thread_id, tipo),
+  constraint etichetta_reso_chiave_check check (thread_id is not null or (canale is not null and numero_ordine is not null))
 );
 
 create index if not exists etichetta_reso_order_idx on etichetta_reso (order_id);
+create unique index if not exists etichetta_reso_ordine_tipo_key on etichetta_reso (canale, numero_ordine, tipo) where thread_id is null;
 
 alter table etichetta_reso enable row level security;
 drop policy if exists etichetta_reso_agent_select on etichetta_reso;

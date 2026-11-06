@@ -71,6 +71,33 @@ export async function caricaAllegato(
 }
 
 /**
+ * Link di download temporaneo (bucket privato). Serve quando il file non
+ * viene allegato a un messaggio ma scaricato dall'operatore, per esempio
+ * l'etichetta di reso da mandare a mano.
+ */
+export async function urlFirmato(config: Config, percorso: string, secondi = 3600): Promise<string> {
+  if (!storageConfigurato(config)) {
+    throw new Error('Storage non configurato: mancano SUPABASE_URL e/o SUPABASE_SERVICE_ROLE_KEY.')
+  }
+  const senzaPrefisso = percorso.startsWith(`${BUCKET}/`) ? percorso.slice(BUCKET.length + 1) : percorso
+  const risposta = await fetch(`${config.SUPABASE_URL}/storage/v1/object/sign/${BUCKET}/${codificaPercorso(senzaPrefisso)}`, {
+    method: 'POST',
+    headers: {
+      apikey: config.SUPABASE_SERVICE_ROLE_KEY!,
+      Authorization: `Bearer ${config.SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ expiresIn: secondi }),
+  })
+  if (!risposta.ok) {
+    throw new Error(`Link di download non creato (${risposta.status}): ${percorso}`)
+  }
+  const { signedURL } = (await risposta.json()) as { signedURL?: string }
+  if (!signedURL) throw new Error(`Link di download non creato: risposta senza signedURL (${percorso})`)
+  return `${config.SUPABASE_URL}/storage/v1${signedURL}`
+}
+
+/**
  * Scarica un file dal bucket. `percorso` accetta sia `allegati/x/y` (come
  * restituito da caricaAllegato) sia `x/y` da solo: entrambi finiscono
  * sullo stesso oggetto.
