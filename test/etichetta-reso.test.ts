@@ -5,6 +5,7 @@ import { PDFDocument } from 'pdf-lib'
 import { configBrtResi, costruisciRichiesta, interpretaRisposta } from '../src/connectors/brt/reso.js'
 import { componiFoglioReso, TIPI_RESO } from '../src/core/reso/foglio.js'
 import { numeroOrdineVendita, riferimentoBrt, riferimentoBrtOrdine } from '../src/connectors/reso/etichetta.js'
+import { compilaModello, nomePerSaluto } from '../src/connectors/reso/testo.js'
 
 // Risposta reale dell'ambiente di collaudo BRT (dal worker che faceva questo prima).
 const collaudo = JSON.parse(readFileSync('test/fixtures/brt/reso-risposta-collaudo.json', 'utf8'))
@@ -66,6 +67,17 @@ describe('numero ordine di vendita e riferimento', () => {
     expect(riferimentoBrtOrdine('BB-12345')).toBe('BB-12345')
     expect(riferimentoBrtOrdine('404-1296441-3120351-EXTRA')).toHaveLength(15)
     expect(riferimentoBrtOrdine('404-1296441-3120351-EXTRA').endsWith('EXTRA')).toBe(true)
+  })
+})
+
+describe('testo del messaggio di reso', () => {
+  it('compila nome e numero ordine, lascia intatti gli altri segnaposto', () => {
+    const t = compilaModello('Buongiorno {{cliente.nome}}, ordine {{ordine.numero}} {{altro}}', { nome_cliente: 'Mario Rossi', numero_ordine: '404-1' })
+    expect(t).toBe('Buongiorno Mario Rossi, ordine 404-1 {{altro}}')
+  })
+  it('nomi tutti maiuscoli (Amazon) diventano normali; gli altri non si toccano', () => {
+    expect(nomePerSaluto("MARIO D'ANGELO")).toBe("Mario D'Angelo")
+    expect(nomePerSaluto('Anna De Luca')).toBe('Anna De Luca')
   })
 })
 

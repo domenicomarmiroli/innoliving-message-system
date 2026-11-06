@@ -2027,12 +2027,13 @@ valido un'ora: l'operatore scarica il PDF e lo manda al cliente a mano.
   testo }`, preso dalla tabella `template` ("Reso Recesso", "Reso Danneggiato",
   "Reso Verificare") con `{{cliente.nome}}` e `{{ordine.numero}}` già compilati
   (`connectors/reso/testo.ts`). Nomi tutti maiuscoli (Amazon) diventano normali.
-- **Schermata**: `GET /strumenti/reso` (`routes/strumento-reso.ts`), pagina
-  servita dal worker, senza Lovable. Login con email e password dell'Hub
-  (Supabase Auth, poi vale `agent` come ovunque), numero ordine, casistica;
-  mostra il link al PDF e il testo con "Copia testo". Se l'ordine non è
-  nell'Hub chiede canale e nome. La pagina contiene solo URL e chiave anonima
-  Supabase; esiste solo se `SUPABASE_URL` e `SUPABASE_ANON_KEY` sono impostate.
+- **Schermata**: sta solo in Lovable, pagina `/reso-ordine` (voce "Reso da
+  ordine" nella barra laterale, sotto la Rubrica, file `src/routes/reso-ordine.tsx`
+  del progetto "Assistenza Rapida Hub (msg)"). Chiama questa rotta con
+  `workerFetch`. **Regola di Domenico (06/11): il worker non espone nessuna
+  pagina**, ogni interfaccia passa dal frontend Lovable; il worker ha solo
+  rotte di servizio. Una prima pagina `/strumenti/reso` sul worker è stata
+  tolta lo stesso giorno.
 
 ### Ticket aperto dall'operatore verso un cliente (26/10)
 `POST /threads/nuovo` `{ destinatario, oggetto, testo, allegati? }`
