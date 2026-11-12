@@ -1719,3 +1719,12 @@ Dopo l'accensione: chiudere a mano una volta il ticket #12989 (dentro ci sono
 5 risposte ai reclami, quindi la regola lo lascia aperto apposta).
 Da valutare: separare gli avvisi BricoBravo dai reclami in ticket diversi.
 `db/schema.sql` va rigenerato dopo l'applicazione della 0050.
+
+**✅ Online dal 12/11 (09:07-09:11 ora italiana)**, con il via di Domenico:
+0050 applicata su Hub Messaggi PRO, `b01531a` su `main` e rilasciato su
+Render, poi accese `bricobravo-nuovo-ordine` (09:07) e
+`leroymerlin-richiesta-fattura` (09:10). Primo controllo alle 09:13: casella
+e Mirakl sincronizzano senza errori, nessuna anomalia, nessuna esecuzione
+ancora (nessun messaggio adatto arrivato dopo l'accensione). Il #15940 di
+stamattina, arrivato prima, va risposto a mano: la regola scatta solo su
+messaggi nuovi. `db/schema.sql` ancora da rigenerare.
