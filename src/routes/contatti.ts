@@ -42,6 +42,34 @@ import {
  * dall'interfaccia, è un sistema esterno che segnala un cliente nuovo.
  */
 
+const testoBreve = z.string().trim().max(500).nullable().optional()
+const dataIso = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'data nel formato AAAA-MM-GG')
+  .nullable()
+  .optional()
+
+/** Dati di una garanzia registrata su un portale garanzie. Tutti facoltativi. */
+export const schemaGaranzia = z.object({
+  certificato: testoBreve,
+  garanzia_id: testoBreve,
+  brand: testoBreve,
+  prodotto: testoBreve,
+  codice_modello: testoBreve,
+  seriale: testoBreve,
+  canale_acquisto: testoBreve,
+  negozio: testoBreve,
+  numero_ordine: testoBreve,
+  data_acquisto: dataIso,
+  scadenza: dataIso,
+  copertura_mesi: z.number().int().min(0).max(240).nullable().optional(),
+  estensione: testoBreve,
+  intestatario: testoBreve,
+  telefono: testoBreve,
+  indirizzo_ritiro: testoBreve,
+  problema: z.string().trim().max(5_000).nullable().optional(),
+})
+
 const corpo = z.object({
   email: z.string().email(),
   nome: z.string().trim().min(1).max(200).nullable().optional(),
@@ -56,6 +84,10 @@ const corpo = z.object({
   richiesta_id: z.string().trim().min(1).max(200).optional(),
   // Foto della chat, scontrini: vedi connectors/clienti/allegati.ts.
   allegati: z.array(schemaAllegato).max(20).optional(),
+  // Facoltativo: i dati della garanzia, quando il ticket lo apre un portale
+  // garanzie. Si salvano tali e quali in message.raw.garanzia e l'interfaccia
+  // li mostra nel pannello del ticket; il testo resta la versione leggibile.
+  garanzia: schemaGaranzia.optional(),
 })
 
 function confrontoCostante(a: string, b: string): boolean {
@@ -197,8 +229,9 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
             ${tx.json({
               from: dati.email,
               nome: dati.nome ?? null,
-              numero_ordine_dichiarato: dati.numero_ordine ?? null,
+              numero_ordine_dichiarato: dati.numero_ordine ?? dati.garanzia?.numero_ordine ?? null,
               subject: oggetto,
+              ...(dati.garanzia ? { garanzia: dati.garanzia } : {}),
             } as never)}
           )
           on conflict (thread_id, external_id) do nothing
