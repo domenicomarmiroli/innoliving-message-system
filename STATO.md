@@ -1782,3 +1782,18 @@ inviati (#15967, #15968). I ticket di avviso nascono CHIUSI (scelta di
 Domenico): la risposta del cliente li riapre.
 Per spegnere: `update automazione set attiva = false
 where codice = 'avviso-spedizione-problema'`.
+
+## Ordine del cliente trovato dall'email (12/11)
+Caso reale #16012 (form Inshopping): il cliente non cita il numero d'ordine,
+il ticket resta senza ordine e la bozza AI chiede il numero.
+- **Worker** (`riaggancia.ts`, `agganciaPerEmail()`): a ogni giro, i ticket
+  degli ultimi 30 giorni senza ordine sui canali `contatto`/`email`/`telefono`
+  (mittente = indirizzo vero del cliente) si collegano all'ordine se la sua
+  email corrisponde a UN SOLO ordine in archivio, creato prima del messaggio.
+  Escluse le pratiche di garanzia. Nota interna con l'ordine collegato. La
+  chiave del thread non cambia. Query per insiemi (~110 ms): una per ticket
+  su `lower(email)` va in timeout. Prova sui dati veri: 4 ticket (#16012,
+  #15939, #14286, #12942); con più ordini (#14167, #12836) sceglie l'operatore.
+- **Lovable** (commit 2a39e7e, da pubblicare): in "Collega un ordine",
+  elenco "Ordini del cliente" con data, totale e stato; un clic collega.
+- La bozza AI già generata non si rifà da sola: "Rigenera bozza".
