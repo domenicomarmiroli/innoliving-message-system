@@ -1728,3 +1728,18 @@ e Mirakl sincronizzano senza errori, nessuna anomalia, nessuna esecuzione
 ancora (nessun messaggio adatto arrivato dopo l'accensione). Il #15940 di
 stamattina, arrivato prima, va risposto a mano: la regola scatta solo su
 messaggi nuovi. `db/schema.sql` ancora da rigenerare.
+
+## Ticket di garanzia: etichetta di reso e dati del portale (12/11)
+- Worker (`e15ac85`): `generaEtichettaReso()` funziona anche su un ticket senza
+  ordine collegato, se è di garanzia o ha `raw.numero_ordine_dichiarato`
+  (`bersaglioSenzaOrdine()`). Numero con forma Amazon = canale `amazon`
+  (Zoho trova `AMZS…`); senza numero il riferimento è `TICKET-<numero>`.
+  Caso reale #15861: l'ordine Amazon del 22/08 non è né nell'Hub né su
+  Shopify (Marketplace Connect parte dal 24/08 circa).
+- Lovable (commit `a5c23b0`, NON pubblicato): pulsante "Etichetta di reso"
+  anche nei ticket di garanzia; sezione "Garanzia" nel pannello destro letta
+  dal primo messaggio del cliente (righe "Etichetta: valore" scritte dal
+  portale + `raw.numero_ordine_dichiarato`) con le etichette del ticket.
+- Il portale garanzie (Warranty Wizard) è su un ALTRO database: i dati
+  arrivano solo come testo del messaggio. Se un giorno serve di più
+  (certificato, negozio), va mandato strutturato da `/contatti`.
