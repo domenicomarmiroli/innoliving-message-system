@@ -15,13 +15,14 @@ import QRCode from 'qrcode'
  * resta intorno ai 100 KB, lontano dal limite di Microsoft sugli allegati.
  */
 
-export const TIPI_RESO = ['recesso', 'danneggiato', 'verificare'] as const
+export const TIPI_RESO = ['recesso', 'danneggiato', 'verificare', 'garanzia'] as const
 export type TipoReso = (typeof TIPI_RESO)[number]
 
 export const ETICHETTA_TIPO: Record<TipoReso, string> = {
   recesso: 'RECESSO PRODOTTO NUOVO',
   danneggiato: 'PRODOTTO DANNEGGIATO',
   verificare: 'VERIFICARE PRODOTTO',
+  garanzia: 'PRODOTTO IN GARANZIA',
 }
 
 export interface TestiFoglio {
@@ -75,6 +76,9 @@ export function aCapo(testo: string, font: PDFFont, dimensione: number, larghezz
 export async function componiFoglioReso(opts: { tipo: TipoReso; etichettaBrt: Buffer | Uint8Array; testi: TestiFoglio }): Promise<Buffer> {
   const { tipo, testi } = opts
   const recesso = tipo === 'recesso'
+  // In garanzia non c'è rimborso: il prodotto si ripara o si sostituisce, e
+  // a chi rende un prodotto guasto non si parla di addebiti.
+  const garanzia = tipo === 'garanzia'
   const r = await caricaRisorse()
 
   const doc = await PDFDocument.create()
@@ -103,21 +107,28 @@ export async function componiFoglioReso(opts: { tipo: TipoReso; etichettaBrt: Bu
   const logo = await doc.embedPng(r.logo)
   const lw = 160
   p.drawImage(logo, { x: M, y: H - 34 - (lw * logo.height) / logo.width, width: lw, height: (lw * logo.height) / logo.width })
-  testo('ISTRUZIONI PER IL RESO', W - M - 200, 54, 8, { font: bold, color: VERDE, larghezza: 200, allinea: 'dx' })
+  testo(garanzia ? 'ISTRUZIONI PER LA GARANZIA' : 'ISTRUZIONI PER IL RESO', W - M - 200, 54, 8, { font: bold, color: VERDE, larghezza: 200, allinea: 'dx' })
 
-  testo('Il tuo reso in quattro passi.', M, 106, 22, { font: bold })
+  testo(garanzia ? 'Il tuo prodotto in garanzia in quattro passi.' : 'Il tuo reso in quattro passi.', M, 106, 22, { font: bold })
   testo(
     recesso ? "Consegna il pacco in un punto di ritiro BRT con l'etichetta qui sotto." : 'La spedizione è gratuita: ti basta un punto di ritiro BRT.',
     M, 142, 10.5, { color: T2 },
   )
 
   // Passi
-  const passi = [
-    'Imballa con cura il prodotto, se possibile nella confezione originale e con tutti gli accessori.',
-    "Stampa questo foglio e attaccalo per intero all'esterno del pacco, con l'etichetta ben visibile.",
-    'Porta il pacco in un punto di ritiro BRT e consegnalo.',
-    'Conserva la ricevuta del punto BRT fino al rimborso.',
-  ]
+  const passi = garanzia
+    ? [
+        'Imballa il prodotto, anche nella confezione in cui ti è arrivato, oppure in una scatola resistente.',
+        "Stampa questo foglio e attaccalo per intero all'esterno del pacco, con l'etichetta ben visibile.",
+        'Porta il pacco in un punto di ritiro BRT e consegnalo: non devi pagare nulla.',
+        'Rispondi alla nostra email per confermarci la consegna e conserva la ricevuta BRT.',
+      ]
+    : [
+        'Imballa con cura il prodotto, se possibile nella confezione originale e con tutti gli accessori.',
+        "Stampa questo foglio e attaccalo per intero all'esterno del pacco, con l'etichetta ben visibile.",
+        'Porta il pacco in un punto di ritiro BRT e consegnalo.',
+        'Conserva la ricevuta del punto BRT fino al rimborso.',
+      ]
   let y = 176
   passi.forEach((s, i) => {
     p.drawCircle({ x: M + 11, y: H - y - 9, size: 11, borderColor: VERDE, borderWidth: 1.4 })
@@ -143,16 +154,19 @@ export async function componiFoglioReso(opts: { tipo: TipoReso; etichettaBrt: Bu
   y = 362
   const hBox = recesso ? 78 : 62
   rett(p, M, y, W - 2 * M, hBox, { fill: SALVIA })
-  testo('Rimborso entro 14 giorni.', M + 16, y + 11, 12, { font: bold, color: VERDE, larghezza: W - 2 * M - 32 })
+  testo(garanzia ? 'Riparazione o sostituzione in garanzia.' : 'Rimborso entro 14 giorni.', M + 16, y + 11, 12, { font: bold, color: VERDE, larghezza: W - 2 * M - 32 })
   testo(
-    recesso
-      ? `Emettiamo il rimborso entro 14 giorni da quando il prodotto arriva nel nostro magazzino. Dal rimborso tratteniamo € ${testi.costo_reso_recesso} per la spedizione del reso.`
-      : 'Emettiamo il rimborso entro 14 giorni da quando il prodotto arriva nel nostro magazzino.',
+    garanzia
+      ? 'Appena il prodotto arriva nel nostro magazzino lo verifichiamo: se possibile lo ripariamo, altrimenti lo sostituiamo con uno uguale o di caratteristiche superiori.'
+      : recesso
+        ? `Emettiamo il rimborso entro 14 giorni da quando il prodotto arriva nel nostro magazzino. Dal rimborso tratteniamo € ${testi.costo_reso_recesso} per la spedizione del reso.`
+        : 'Emettiamo il rimborso entro 14 giorni da quando il prodotto arriva nel nostro magazzino.',
     M + 16, y + 32, 10, { color: T2, larghezza: W - 2 * M - 32 },
   )
   y += hBox + 14
-  // Su un prodotto danneggiato sappiamo già che non torna integro: l'avviso sul reso non conforme non va.
-  if (tipo !== 'danneggiato') {
+  // Su un prodotto danneggiato o guasto in garanzia sappiamo già che non torna
+  // integro: l'avviso sul reso non conforme non va.
+  if (tipo !== 'danneggiato' && !garanzia) {
     y = testo(
       'Rendi il prodotto completo e integro: se il reso non fosse conforme potremmo addebitarti le spese sostenute. I termini completi sono sul sito da cui hai acquistato.',
       M, y, 8, { color: T3 },

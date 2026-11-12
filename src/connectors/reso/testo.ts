@@ -12,6 +12,7 @@ export const MODELLO_PER_TIPO: Record<TipoReso, string> = {
   recesso: 'Reso Recesso',
   danneggiato: 'Reso Danneggiato',
   verificare: 'Reso Verificare',
+  garanzia: 'Reso Garanzia',
 }
 
 /** "MARIO ROSSI" diventa "Mario Rossi"; un nome già scritto bene non si tocca. */
