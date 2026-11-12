@@ -94,6 +94,36 @@ export function riferimentoBrtOrdine(numeroOrdine: string): string {
   return numeroOrdine.length <= 15 ? numeroOrdine : numeroOrdine.slice(-15)
 }
 
+const FORMA_ORDINE_AMAZON = /^\d{3}-\d{7}-\d{7}$/
+
+/**
+ * Canale, numero e nome per l'etichetta di un ticket senza ordine collegato.
+ *
+ * Vale per i ticket di garanzia (tag `garanzia`) e per quelli in cui il
+ * cliente ha dichiarato un numero d'ordine che non è (ancora) in archivio.
+ * Un numero con la forma di un ordine Amazon fa del canale `amazon`, così
+ * Zoho trova l'ordine di vendita; altrimenti il canale è l'account del
+ * ticket. Senza numero dichiarato si usa il ticket stesso come riferimento.
+ * Null = non ci sono dati a sufficienza: serve collegare un ordine.
+ */
+export function bersaglioSenzaOrdine(d: {
+  numero_ticket: number | null
+  account_code: string
+  tags: string[]
+  numero_dichiarato: string | null
+  nome: string | null
+}): { canale: string; numero_ordine: string; nome_cliente: string } | null {
+  const dichiarato = d.numero_dichiarato?.trim().replace(/^#/, '') || null
+  const garanzia = d.tags.includes('garanzia')
+  if (!dichiarato && !garanzia) return null
+  if (!dichiarato && d.numero_ticket === null) return null
+  return {
+    canale: dichiarato && FORMA_ORDINE_AMAZON.test(dichiarato) ? 'amazon' : d.account_code,
+    numero_ordine: dichiarato ?? `TICKET-${d.numero_ticket}`,
+    nome_cliente: d.nome?.trim() || 'Cliente',
+  }
+}
+
 /** Normalizza un pezzo di percorso Storage. */
 function pezzoPercorso(v: string): string {
   return v.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 60)
@@ -115,7 +145,46 @@ export async function generaEtichettaReso(
     where t.id = ${richiesta.thread_id}
   `
   if (!t) throw new ErroreEtichetta(404, 'ticket inesistente')
-  if (!t.order_id || !t.external_order_id) throw new ErroreEtichetta(422, "il ticket non è collegato a un ordine: collegalo prima di generare l'etichetta")
+  if (!t.order_id || !t.external_order_id) {
+    // Ticket senza ordine in archivio (tipico dei portali garanzia: acquisto
+    // in negozio, o ordine marketplace precedente alla sincronizzazione):
+    // bastano i dati che il cliente ha lasciato aprendo il ticket.
+    const [d] = await db<{
+      account_code: string; tags: string[] | null; dichiarato: string | null; nome: string | null
+    }[]>`
+      select ca.code as account_code, th.tags,
+        (select m.raw->>'numero_ordine_dichiarato' from message m
+          where m.thread_id = th.id and m.direction = 'in' and m.author_kind = 'customer'
+            and m.raw ? 'numero_ordine_dichiarato'
+          order by m.sent_at limit 1) as dichiarato,
+        (select m.raw->>'nome' from message m
+          where m.thread_id = th.id and m.direction = 'in' and m.author_kind = 'customer'
+            and coalesce(m.raw->>'nome', '') <> ''
+          order by m.sent_at limit 1) as nome
+      from thread th join channel_account ca on ca.id = th.account_id
+      where th.id = ${richiesta.thread_id}
+    `
+    const senza = d
+      ? bersaglioSenzaOrdine({
+          numero_ticket: t.numero,
+          account_code: d.account_code,
+          tags: d.tags ?? [],
+          numero_dichiarato: d.dichiarato,
+          nome: d.nome,
+        })
+      : null
+    if (!senza) throw new ErroreEtichetta(422, "il ticket non è collegato a un ordine: collegalo prima di generare l'etichetta")
+    return produciEtichetta(db, config, log, {
+      thread_id: richiesta.thread_id,
+      canale: senza.canale,
+      numero_ordine: senza.numero_ordine,
+      order_id: null,
+      shopify_name: null,
+      nome_cliente: senza.nome_cliente,
+      riferimento: riferimentoBrt(t.numero ?? senza.numero_ordine),
+      cartella: `etichette-reso/${richiesta.thread_id}`,
+    }, richiesta.tipo, richiesta.agent_id)
+  }
 
   return produciEtichetta(db, config, log, {
     thread_id: richiesta.thread_id,
@@ -214,8 +283,8 @@ async function produciEtichetta(
   // 1. Prenoto la riga. Se esiste già, decido se restituirla, aspettare o riprendere.
   let [riga] = b.thread_id
     ? await db<Riga[]>`
-        insert into etichetta_reso (thread_id, order_id, tipo, agent_id)
-        values (${b.thread_id}, ${b.order_id}, ${tipo}, ${agentId})
+        insert into etichetta_reso (thread_id, order_id, canale, numero_ordine, nome_cliente, tipo, agent_id)
+        values (${b.thread_id}, ${b.order_id}, ${b.canale || null}, ${b.numero_ordine}, ${b.nome_cliente}, ${tipo}, ${agentId})
         on conflict (thread_id, tipo) do nothing
         returning ${COLONNE(db)}
       `

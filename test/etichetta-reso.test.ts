@@ -4,7 +4,7 @@ import { PDFDocument } from 'pdf-lib'
 
 import { configBrtResi, costruisciRichiesta, interpretaRisposta } from '../src/connectors/brt/reso.js'
 import { componiFoglioReso, TIPI_RESO } from '../src/core/reso/foglio.js'
-import { numeroOrdineVendita, riferimentoBrt, riferimentoBrtOrdine } from '../src/connectors/reso/etichetta.js'
+import { bersaglioSenzaOrdine, numeroOrdineVendita, riferimentoBrt, riferimentoBrtOrdine } from '../src/connectors/reso/etichetta.js'
 import { compilaModello, nomePerSaluto } from '../src/connectors/reso/testo.js'
 
 // Risposta reale dell'ambiente di collaudo BRT (dal worker che faceva questo prima).
@@ -91,5 +91,34 @@ describe('foglio di reso', () => {
     expect(Math.round(letto.getPage(0).getWidth())).toBe(595)
     expect(pdf.length).toBeLessThan(250_000)
     if (process.env.FOGLIO_ANTEPRIMA) writeFileSync(`${process.env.FOGLIO_ANTEPRIMA}/foglio-${tipo}.pdf`, pdf)
+  })
+})
+
+describe('etichetta di un ticket senza ordine collegato', () => {
+  const base = { numero_ticket: 15861, account_code: 'garanzia-innoliving', tags: ['garanzia'], numero_dichiarato: null, nome: 'Mario Rossi' }
+
+  it('garanzia con numero Amazon dichiarato: canale amazon, così Zoho trova AMZS…', () => {
+    expect(bersaglioSenzaOrdine({ ...base, numero_dichiarato: '402-3710774-5547534' })).toEqual({
+      canale: 'amazon', numero_ordine: '402-3710774-5547534', nome_cliente: 'Mario Rossi',
+    })
+  })
+
+  it('garanzia senza numero (acquisto in negozio): canale del ticket, riferimento il ticket', () => {
+    expect(bersaglioSenzaOrdine(base)).toEqual({
+      canale: 'garanzia-innoliving', numero_ordine: 'TICKET-15861', nome_cliente: 'Mario Rossi',
+    })
+  })
+
+  it('numero non Amazon: resta il canale del ticket, senza cancelletto', () => {
+    expect(bersaglioSenzaOrdine({ ...base, numero_dichiarato: '#INSH1234' })?.numero_ordine).toBe('INSH1234')
+    expect(bersaglioSenzaOrdine({ ...base, numero_dichiarato: '#INSH1234' })?.canale).toBe('garanzia-innoliving')
+  })
+
+  it('ticket qualsiasi senza ordine né numero dichiarato: serve collegare un ordine', () => {
+    expect(bersaglioSenzaOrdine({ ...base, tags: ['reso'], account_code: 'mailbox-ticket' })).toBeNull()
+  })
+
+  it('nome mancante: "Cliente"', () => {
+    expect(bersaglioSenzaOrdine({ ...base, nome: '  ' })?.nome_cliente).toBe('Cliente')
   })
 })
