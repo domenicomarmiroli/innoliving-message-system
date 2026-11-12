@@ -1,6 +1,7 @@
 import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
+import { caricaAutomazioniSicuro } from '../automazioni/esegui.js'
 import {
   conta,
   contatoriVuoti,
@@ -77,6 +78,7 @@ export async function leggiCasellaGraph(
   }
 
   const contesto = await caricaRegole(db, 'graph')
+  contesto.automazioni = await caricaAutomazioniSicuro(db, log)
   const { casella } = contesto
   const client = new ClientGraph(config, log)
 

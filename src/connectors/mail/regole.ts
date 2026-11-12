@@ -2,6 +2,7 @@ import type { Db } from '../../db/index.js'
 import { trasportoDi, type Trasporto } from './casella.js'
 import { regoleDaConfig } from './ripulisci.js'
 import type { OpzioniIngest, RegolaCanale } from './tipi.js'
+import type { Automazione } from '../../core/automazioni/regole.js'
 
 /**
  * Le regole di riconoscimento vivono nel database, non nel codice
@@ -51,6 +52,11 @@ export interface Regole {
   regole: RegolaCanale[]
   casella: RegolaCanale
   opzioni: OpzioniIngest
+  /**
+   * Automazioni sui ticket (migrazione 0050). Le carica chi legge la
+   * casella, con il suo logger; assenti = nessuna regola.
+   */
+  automazioni?: Automazione[]
 }
 
 export async function caricaRegole(db: Db, trasporto: Trasporto = 'imap'): Promise<Regole> {

@@ -6,6 +6,8 @@ import { classificaEsalvaIntento } from '../../core/ai/intento.js'
 import { normalizzaRisposta, type EsitoNormalizza } from './normalize.js'
 import { upsertThread } from './upsert.js'
 import { recuperaAllegatiMancanti } from './allegati.js'
+import type { Automazione } from '../../core/automazioni/regole.js'
+import { caricaAutomazioniSicuro, rispondiAutomatico } from '../automazioni/esegui.js'
 
 /**
  * Sincronizzazione dei messaggi Mirakl, operatore per operatore.
@@ -70,13 +72,14 @@ export async function sincronizzaMirakl(
   }
 
   const giorniCoda = await leggiGiorniCoda(db)
+  const automazioni = await caricaAutomazioniSicuro(db, log)
   const esiti: EsitoSyncOperatore[] = []
 
   // In sequenza, non in parallelo: sono due o tre operatori e ognuno ha
   // i suoi limiti di frequenza. Il parallelismo qui comprerebbe secondi
   // e venderebbe 429.
   for (const op of operatori) {
-    esiti.push(await sincronizzaOperatore(db, log, config, op, giorniCoda))
+    esiti.push(await sincronizzaOperatore(db, log, config, op, giorniCoda, automazioni))
   }
 
   return esiti
@@ -88,6 +91,7 @@ async function sincronizzaOperatore(
   config: Config,
   operatore: OperatoreMirakl,
   giorniCoda: number,
+  automazioni: Automazione[],
 ): Promise<EsitoSyncOperatore> {
   const esito: EsitoSyncOperatore = {
     operatore: operatore.code,
@@ -141,6 +145,18 @@ async function sincronizzaOperatore(
 
         if (r.nuovo && r.primo_testo_cliente) {
           await classificaEsalvaIntento(db, log, config, r.thread_id, r.primo_testo_cliente)
+        }
+
+        // Automazione "rispondi e chiudi" (migrazione 0050). Non lancia:
+        // un errore lascia il ticket a un operatore e finisce in
+        // ingest_anomaly, senza fermare la sincronizzazione.
+        if (r.messaggi_inseriti > 0) {
+          await rispondiAutomatico(db, log, config, automazioni, r.thread_id).catch((errore) =>
+            log.warn(
+              { thread_id: r.thread_id, err: errore instanceof Error ? errore.message : String(errore) },
+              'automazioni Mirakl non valutate su questo thread',
+            ),
+          )
         }
       }
 

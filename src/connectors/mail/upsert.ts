@@ -85,6 +85,11 @@ export async function upsertEmail(
   riconoscimento: Riconoscimento,
   agg: Aggancio,
   opzioni: OpzioniIngest,
+  /**
+   * Il messaggio è di un'automazione "chiudi" (migrazione 0050): si salva
+   * come sempre ma non rimette il ticket in coda né ne sposta la scadenza.
+   */
+  nonRiaprire = false,
 ): Promise<RisultatoUpsertEmail> {
   const allegatiPronti = await preparaAllegati(
     config,
@@ -214,7 +219,7 @@ export async function upsertEmail(
         first_inbound_at = least(coalesce(first_inbound_at, ${arrivata}), ${arrivata}),
         order_id         = coalesce(${agg.order_id}, order_id),
         subject          = coalesce(subject, ${email.subject}),
-        due_at           = ${scadenza},
+        due_at           = case when ${nonRiaprire} then due_at else ${scadenza}::timestamptz end,
         -- Un'email vecchia non riapre niente: importare lo storico non
         -- deve far risalire in coda conversazioni concluse mesi fa.
         -- 'pending_internal' è lo stato di un ticket collegato (migrazione
@@ -224,6 +229,7 @@ export async function upsertEmail(
         -- sempre in "in attesa".
         state            = case
                              when ${vecchia} then state
+                             when ${nonRiaprire} then state
                              when state = 'unmatched' and ${agg.order_id}::uuid is not null then 'open'
                              when state in ('closed', 'pending_customer', 'pending_internal') then 'open'
                              else state

@@ -6,6 +6,7 @@ import type { Logger } from '../../logger.js'
 import { conta, contatoriVuoti, elaboraEmail, type ContatoriGenere } from './elabora.js'
 import { analizza } from './parse.js'
 import { caricaRegole } from './regole.js'
+import { caricaAutomazioniSicuro } from '../automazioni/esegui.js'
 
 /**
  * Lettura della casella via IMAP.
@@ -57,6 +58,7 @@ export async function leggiCasella(
   // aziendale su Microsoft 365) "l'unica riga con kind='email'" non
   // identifica più niente.
   const contesto = await caricaRegole(db, 'imap')
+  contesto.automazioni = await caricaAutomazioniSicuro(db, log)
   const { casella } = contesto
   const stato = await leggiStato(db, casella.account_id)
 

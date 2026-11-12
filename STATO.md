@@ -1685,3 +1685,37 @@ vince la specifica.
 prompt, contesto, lettura dell'output, modello recesso, policy sui testi
 attesi e l'esito. La qualità delle bozze si vede solo con ticket veri, dopo la
 migrazione.
+
+---
+
+## Automazioni sui ticket (12/11) — pronte in locale, SPENTE, non online
+
+Specifica: Second Brain, `Projects/hub-messaggi/specs/automazioni-ticket.md`.
+Migrazione `0050_automazioni.sql` (NON applicata): tabella `automazione`
+(una riga per regola, interruttore `attiva`, nascono spente) e registro
+`automazione_esecuzione` (unico per regola + chiave: ripetibile senza doppioni).
+
+- `bricobravo-nuovo-ordine` (azione `chiudi`): l'avviso entra come sempre ma
+  non rimette il ticket in coda (`upsertEmail(..., nonRiaprire)`); il ticket
+  si chiude con nota interna solo se nel ticket non c'è altro da guardare
+  dopo la nostra ultima risposta. Serve perché TUTTA la posta di
+  `marketplace@bricobravo.com` finisce in un solo ticket (#12989, chiave
+  `mittente:`), insieme alle "Nuova risposta al reclamo".
+- `leroymerlin-richiesta-fattura` (azione `rispondi_e_chiudi`): dopo la
+  sincronizzazione Mirakl, se nel thread ci sono solo notifiche dell'operatore
+  (author_kind `system`), nessuna nostra risposta e l'ultima è di meno di 48
+  ore, prenota la riga nel registro, manda il modello con `inviaMessaggioMirakl`
+  (destinatari `CUSTOMER`, come tutte le 41 risposte a mano) e chiude. Un
+  errore: nota interna "rispondere a mano", riga `errore`, `ingest_anomaly`;
+  nessun nuovo tentativo.
+
+Prova a secco (60 giorni, sola lettura): BricoBravo 244 avvisi, tutti nel
+ticket #12989, zero "prodotto non presente su Shopify" presi; Leroy Merlin
+42 thread su 42, le 41 risposte a mano erano identiche al modello.
+
+**Per metterle online**: applicare la 0050, push su `main`, poi accendere
+le regole una alla volta (`update automazione set attiva = true ...`).
+Dopo l'accensione: chiudere a mano una volta il ticket #12989 (dentro ci sono
+5 risposte ai reclami, quindi la regola lo lascia aperto apposta).
+Da valutare: separare gli avvisi BricoBravo dai reclami in ticket diversi.
+`db/schema.sql` va rigenerato dopo l'applicazione della 0050.

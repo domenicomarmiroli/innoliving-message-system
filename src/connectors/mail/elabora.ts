@@ -13,6 +13,8 @@ import { classificaMittente, riconosci } from './riconosci.js'
 import type { Regole } from './regole.js'
 import type { EmailGrezza } from './tipi.js'
 import { upsertEmail } from './upsert.js'
+import { trovaAutomazione } from '../../core/automazioni/regole.js'
+import { chiudiAutomatico } from '../automazioni/esegui.js'
 
 /**
  * Cosa fare di una email, una volta che è stata letta e analizzata.
@@ -67,7 +69,7 @@ export async function elaboraEmail(
   log: Logger,
   config: Config,
   email: EmailGrezza,
-  { regole, casella, opzioni }: Regole,
+  { regole, casella, opzioni, automazioni }: Regole,
 ): Promise<EsitoElaborazione> {
   const genere = classificaMittente(email, opzioni, regole)
 
@@ -116,7 +118,34 @@ export async function elaboraEmail(
 
   const ric = riconosci(email, regole, casella)
   const agg = await aggancia(db, email, ric)
-  const scritto = await upsertEmail(db, log, config, email, ric, agg, opzioni)
+
+  // Automazione "chiudi" (migrazione 0050): un avviso da archiviare entra
+  // come ogni altra email (raw compreso) ma non rimette il ticket in coda.
+  const chiusura = trovaAutomazione(automazioni ?? [], 'chiudi', {
+    account_code: ric.account_code,
+    oggetto: email.subject,
+    mittente: email.reply_to ?? email.from,
+  })
+
+  const scritto = await upsertEmail(db, log, config, email, ric, agg, opzioni, chiusura !== null)
+
+  if (chiusura && scritto.esito === 'inserito' && scritto.message_id) {
+    try {
+      await chiudiAutomatico(db, log, chiusura, scritto.thread_id, scritto.message_id)
+    } catch (errore) {
+      // Il messaggio è già salvato: senza la chiusura il ticket resta
+      // semplicemente com'è, e lo guarda un operatore.
+      const messaggio = errore instanceof Error ? errore.message : String(errore)
+      log.error({ automazione: chiusura.codice, thread_id: scritto.thread_id, err: messaggio }, 'chiusura automatica non riuscita')
+      await db`
+        insert into ingest_anomaly (account_id, tipo, payload)
+        values (${ric.account_id}, 'automazione_chiusura_fallita',
+                ${db.json({ automazione: chiusura.codice, thread_id: scritto.thread_id, message_id: scritto.message_id, errore: messaggio })})
+      `.catch(() => undefined)
+    }
+    // Un avviso archiviato non ha bisogno di una categoria: niente chiamata AI.
+    return 'inserito'
+  }
 
   // Solo al primo messaggio di un ticket nuovo: le risposte successive
   // non cambiano l'argomento della conversazione, e classificare ad ogni
