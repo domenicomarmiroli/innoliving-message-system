@@ -1762,3 +1762,20 @@ messaggi nuovi. `db/schema.sql` ancora da rigenerare.
   cima al menu nei ticket di garanzia. Anche in `/reso-ordine` (`a4a822d`,
   da pubblicare). Zoho: `cf_tipologia_reso` riceve "PRODOTTO IN GARANZIA"; se è
   una lista chiusa su Zoho la riga LDV fallisce (non blocca l'etichetta).
+
+## Avviso automatico per spedizioni con problemi (12/11) — pronto, SPENTO, non online
+Azione `avviso_spedizione` della tabella `automazione` (migrazione 0052, NON
+applicata). Nel ciclo principale (`connectors/automazioni/spedizione.ts`):
+ordini con `spedizione_stato` in giacenza/problema, non "gestita", con un
+evento BRT degli ultimi `max_eta_ore` (72) ed email contattabile (esclusi
+`codisto.com` = Amazon via connettore, `bricobravo.com` = indirizzo del
+marketplace). Apre un ticket in uscita dalla casella Microsoft
+(`apriTicketInUscita`, ora con `order_id` e `tags`) con il modello dello
+stato ("Avviso spedizione in giacenza" / "Avviso problema di consegna",
+tabella template, nascosti dall'editor). Un avviso per ordine e per stato
+(chiave `spedizione:<ordine>:<stato>`), prenotato prima dell'invio, nessun
+nuovo tentativo; errori in `ingest_anomaly`. "Rientrato" escluso.
+Prova a secco (30 giorni): 11 spedizioni con problemi, 2 contattabili (TikTok),
+entrambe avvisate all'accensione; 8 Amazon e 1 BricoBravo non contattabili.
+Per accendere: applicare 0052, push, `update automazione set attiva = true
+where codice = 'avviso-spedizione-problema'`.

@@ -8,6 +8,8 @@ import { traduciMessaggiInArrivo } from '../../core/ai/traduzione.js'
 import { classificaTicketSenzaCategoria } from '../../core/ai/intento.js'
 import { generaBozzeAutomatiche } from '../../core/ai/bozza-auto.js'
 import { inviaAvvisiPratica } from '../pratica/avvisi.js'
+import { caricaAutomazioniSicuro } from '../automazioni/esegui.js'
+import { inviaAvvisiSpedizione } from '../automazioni/spedizione.js'
 
 /**
  * Il ciclo che tiene la casella sotto controllo.
@@ -98,6 +100,14 @@ export function avviaPolling(db: Db, log: Logger, config: Config): Ciclo | null 
         await inviaAvvisiPratica(db, log, config)
       } catch (errore) {
         log.warn({ err: messaggioErrore(errore) }, 'invio degli avvisi della pratica non riuscito')
+      }
+
+      // Avvisi al cliente sulle spedizioni con problemi (migrazione 0052).
+      // Senza la tabella o senza regola accesa non fa niente.
+      try {
+        await inviaAvvisiSpedizione(db, log, config, await caricaAutomazioniSicuro(db, log))
+      } catch (errore) {
+        log.warn({ err: messaggioErrore(errore) }, 'invio degli avvisi di spedizione non riuscito')
       }
 
       fallimenti = 0

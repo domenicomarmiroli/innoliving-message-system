@@ -29,6 +29,10 @@ export interface RichiestaNuovoTicket {
   testo: string
   /** Facoltativo: ordine di qualunque canale (Shopify o marketplace). */
   numero_ordine?: string | null
+  /** Facoltativo, per le automazioni: l'ordine già noto, senza cercarlo per numero. */
+  order_id?: string | null
+  /** Facoltativo: tag del ticket. Assente = quello dei ticket aperti dall'operatore. */
+  tags?: string[]
   allegati?: FilePronto[]
 }
 
@@ -66,7 +70,7 @@ export async function apriTicketInUscita(
   richiesta: RichiestaNuovoTicket,
 ): Promise<EsitoNuovoTicket> {
   const numero = richiesta.numero_ordine?.trim()
-  const orderId = numero ? await trovaOrdine(db, numero) : null
+  const orderId = richiesta.order_id ?? (numero ? await trovaOrdine(db, numero) : null)
   if (numero && !orderId) {
     throw new OrdineNonTrovato(`Nessun ordine trovato con il numero "${numero}".`)
   }
@@ -92,7 +96,7 @@ export async function apriTicketInUscita(
       insert into thread (account_id, order_id, subject, state, assignee_id, tags, due_at)
       values (
         ${casella.account_id}, ${orderId}, ${richiesta.oggetto}, 'pending_customer',
-        ${richiesta.agent_id}, ${[TAG_NUOVO_TICKET]}, ${scadenza}
+        ${richiesta.agent_id}, ${richiesta.tags ?? [TAG_NUOVO_TICKET]}, ${scadenza}
       )
       returning id
     `

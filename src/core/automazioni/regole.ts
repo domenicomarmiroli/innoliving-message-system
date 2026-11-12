@@ -12,13 +12,21 @@ import { dominioCombacia, dominioDi } from '../../connectors/mail/riconosci.js'
  * oggetto, mittente o modello di nessun marketplace.
  */
 
-export type AzioneAutomazione = 'chiudi' | 'rispondi_e_chiudi'
+export type AzioneAutomazione = 'chiudi' | 'rispondi_e_chiudi' | 'avviso_spedizione'
 export type DestinatarioAutomatico = 'CUSTOMER' | 'OPERATOR'
 
 export interface CondizioneAutomazione {
   oggetto_inizia_per: string[]
   oggetto_uguale: string[]
   mittente_dominio: string[]
+  /** Solo avviso_spedizione: gli stati di spedizione che fanno scattare l'avviso. */
+  stati_spedizione: string[]
+  /**
+   * Solo avviso_spedizione: domini delle email a cui NON si scrive, perché
+   * sono un relay che non consegna (es. gli ordini Amazon via connettore) o
+   * l'indirizzo del marketplace invece che quello del cliente.
+   */
+  domini_esclusi: string[]
 }
 
 export interface ParametriAutomazione {
@@ -27,6 +35,8 @@ export interface ParametriAutomazione {
   destinatari_mirakl: DestinatarioAutomatico[]
   tag: string[]
   max_eta_ore: number
+  /** Solo avviso_spedizione: stato di spedizione → nome del modello (tabella template). */
+  modelli: Record<string, string>
 }
 
 export interface Automazione {
@@ -78,13 +88,19 @@ export function leggiAutomazione(
     oggetto_inizia_per: stringhe(c.oggetto_inizia_per),
     oggetto_uguale: stringhe(c.oggetto_uguale),
     mittente_dominio: stringhe(c.mittente_dominio),
-  }
-  if (condizione.oggetto_inizia_per.length === 0 && condizione.oggetto_uguale.length === 0) {
-    return { ok: false, motivo: `automazione ${riga.codice}: nessuna condizione sull'oggetto` }
+    stati_spedizione: stringhe(c.stati_spedizione),
+    domini_esclusi: stringhe(c.domini_esclusi),
   }
 
-  if (riga.azione !== 'chiudi' && riga.azione !== 'rispondi_e_chiudi') {
+  if (riga.azione !== 'chiudi' && riga.azione !== 'rispondi_e_chiudi' && riga.azione !== 'avviso_spedizione') {
     return { ok: false, motivo: `automazione ${riga.codice}: azione sconosciuta '${riga.azione}'` }
+  }
+  if (riga.azione === 'avviso_spedizione') {
+    if (condizione.stati_spedizione.length === 0) {
+      return { ok: false, motivo: `automazione ${riga.codice}: nessuno stato di spedizione indicato` }
+    }
+  } else if (condizione.oggetto_inizia_per.length === 0 && condizione.oggetto_uguale.length === 0) {
+    return { ok: false, motivo: `automazione ${riga.codice}: nessuna condizione sull'oggetto` }
   }
 
   const p = oggetto(riga.parametri)
@@ -100,10 +116,21 @@ export function leggiAutomazione(
       typeof p.max_eta_ore === 'number' && p.max_eta_ore > 0
         ? p.max_eta_ore
         : MAX_ETA_ORE_PREDEFINITA,
+    modelli: Object.fromEntries(
+      Object.entries(oggetto(p.modelli)).filter(
+        (e): e is [string, string] => typeof e[1] === 'string' && e[1].trim().length > 0,
+      ),
+    ),
   }
 
   if (riga.azione === 'rispondi_e_chiudi' && !parametri.modello) {
     return { ok: false, motivo: `automazione ${riga.codice}: manca il modello da inviare` }
+  }
+  if (riga.azione === 'avviso_spedizione') {
+    const senza = condizione.stati_spedizione.filter((st) => !parametri.modelli[st])
+    if (senza.length > 0) {
+      return { ok: false, motivo: `automazione ${riga.codice}: manca il modello per ${senza.join(', ')}` }
+    }
   }
 
   return {
