@@ -1756,9 +1756,9 @@ messaggi nuovi. `db/schema.sql` ancora da rigenerare.
 - **Etichetta "Prodotto in garanzia" (12/11, worker `b201ceb`)**: tipo
   `garanzia` in `TIPI_RESO`, foglio PDF senza rimborso né addebiti
   ("Riparazione o sostituzione in garanzia"), tipologia PRODOTTO IN GARANZIA,
-  modello "Reso Garanzia". **Migrazione 0051 da applicare** (vincolo
-  `etichetta_reso_tipo_check`): finché manca, la scelta Garanzia fallisce,
-  gli altri tipi no. Lovable Hub commit `04f9256` (non pubblicato): voce in
-  cima al menu nei ticket di garanzia. `/reso-ordine` ha una sua lista e non
-  la mostra. Zoho: `cf_tipologia_reso` riceve "PRODOTTO IN GARANZIA"; se è
+  modello "Reso Garanzia". Migrazione 0051 ✅ applicata da Domenico il 12/11 (vincolo
+  `etichetta_reso_tipo_check`).
+  Lovable Hub (`04f9256`, pubblicato): voce in
+  cima al menu nei ticket di garanzia. Anche in `/reso-ordine` (`a4a822d`,
+  da pubblicare). Zoho: `cf_tipologia_reso` riceve "PRODOTTO IN GARANZIA"; se è
   una lista chiusa su Zoho la riga LDV fallisce (non blocca l'etichetta).
