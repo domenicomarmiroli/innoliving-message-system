@@ -1743,3 +1743,13 @@ messaggi nuovi. `db/schema.sql` ancora da rigenerare.
 - Il portale garanzie (Warranty Wizard) è su un ALTRO database: i dati
   arrivano solo come testo del messaggio. Se un giorno serve di più
   (certificato, negozio), va mandato strutturato da `/contatti`.
+- **Dati strutturati dal portale (12/11, worker `8db0096`)**: `POST
+  /contatti/:codice/ticket` accetta il campo facoltativo `garanzia`
+  (`schemaGaranzia` in `routes/contatti.ts`: certificato, brand, prodotto,
+  codice_modello, seriale, canale_acquisto, negozio, numero_ordine,
+  data_acquisto/scadenza AAAA-MM-GG, copertura_mesi, estensione, intestatario,
+  telefono, indirizzo_ritiro, problema), salvato in `message.raw.garanzia`.
+  Warranty Wizard (commit `ac963fd`, `buildHubWarranty()` in `hub.server.ts`)
+  lo manda; l'Hub Lovable (commit `0b046e0`) lo legge con precedenza sul
+  testo. Entrambi i progetti Lovable NON pubblicati. I ticket aperti prima
+  non hanno `raw.garanzia`: per loro resta la lettura dal testo.
