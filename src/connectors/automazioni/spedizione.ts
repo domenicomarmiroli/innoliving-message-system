@@ -143,8 +143,15 @@ export async function inviaAvvisiSpedizione(
           await tx`
             insert into message (thread_id, direction, author_kind, body_text, interno, sent_at)
             values (${aperto.thread_id}, 'out', 'agent',
-                    ${`Avviso automatico al cliente (regola ${regola.codice}): spedizione ${o.tracking_number} in stato "${o.spedizione_stato}". Se risponde, il ticket si riapre.`},
+                    ${`Avviso automatico al cliente (regola ${regola.codice}): spedizione ${o.tracking_number} in stato "${o.spedizione_stato}". Ticket chiuso: se il cliente risponde si riapre da solo.`},
                     true, now())
+          `
+          // Chiuso subito (scelta di Domenico, 12/11): è un avviso, non una
+          // domanda in sospeso. Se il cliente risponde, la sua email si
+          // aggancia a questo ticket e lo riapre (upsert.ts riapre 'closed').
+          await tx`
+            update thread set state = 'closed', updated_at = now()
+            where id = ${aperto.thread_id}
           `
           await tx`
             update automazione_esecuzione set

@@ -1777,5 +1777,8 @@ tabella template, nascosti dall'editor). Un avviso per ordine e per stato
 nuovo tentativo; errori in `ingest_anomaly`. "Rientrato" escluso.
 Prova a secco (30 giorni): 11 spedizioni con problemi, 2 contattabili (TikTok),
 entrambe avvisate all'accensione; 8 Amazon e 1 BricoBravo non contattabili.
-Per accendere: applicare 0052, push, `update automazione set attiva = true
+✅ ONLINE dal 12/11 10:19: 0052 applicata, regola accesa, primi due avvisi
+inviati (#15967, #15968). I ticket di avviso nascono CHIUSI (scelta di
+Domenico): la risposta del cliente li riapre.
+Per spegnere: `update automazione set attiva = false
 where codice = 'avviso-spedizione-problema'`.
