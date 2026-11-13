@@ -1797,3 +1797,25 @@ il ticket resta senza ordine e la bozza AI chiede il numero.
 - **Lovable** (commit 2a39e7e, da pubblicare): in "Collega un ordine",
   elenco "Ordini del cliente" con data, totale e stato; un clic collega.
 - La bozza AI già generata non si rifà da sola: "Rigenera bozza".
+
+## Problemi dei collegamenti visibili (13/11, ticket 16121)
+Outlook giù: la risposta non partiva e non compariva nessun errore.
+Cause nel worker: nessun tempo massimo sulle chiamate a Graph (e un
+Retry-After seguito senza limite), e un invio fallito lasciava solo una
+riga di log. Fatto:
+- `graph/client.ts`: 20 s per chiamata, Retry-After al massimo 10 s, e una
+  POST scaduta NON si ritenta (rischio di doppio invio): l'errore dice di
+  controllare la posta inviata. SMTP Gmail: timeout 15/15/30 s.
+- `stato/invio-fallito.ts`: risposta, email al corriere e nuovo ticket
+  falliti → nota interna nel ticket con errore e testo da rimandare, più
+  `ingest_anomaly` tipo `invio_fallito` (senza il testo).
+- `stato/collegamenti.ts` + migrazione **0053** (`stato_collegamento`,
+  lettura RLS per gli agenti): ogni giro e ogni invio segnano ultimo
+  successo / ultimo errore per casella Microsoft (lettura e invio), Gmail
+  (lettura e invio), Mirakl (lettura e invio), Shopify, BRT, magazzino.
+  Problema = `ultimo_errore_at > ultimo_ok_at`. Best effort: senza la
+  tabella il worker gira uguale.
+- **Da fare in Lovable**: banner in cima all'Hub che legge la tabella, ed
+  errore 502 dell'invio mostrato in rosso nell'editor senza perdere il testo.
+- Causa precisa del 16121 non verificata: connettori Supabase/Render/Lovable
+  scollegati nella sessione del 13/11.

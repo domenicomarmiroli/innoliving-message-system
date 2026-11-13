@@ -11,6 +11,7 @@ import { scaricaAllegato } from '../core/storage.js'
 import { apriTicketCollegato } from '../connectors/mail/collega.js'
 import { OrdineNonTrovato, apriTicketInUscita } from '../connectors/mail/nuovo.js'
 import { messaggioErrore } from '../connectors/mail/imap.js'
+import { registraInvioFallito } from '../connectors/stato/invio-fallito.js'
 
 /**
  * Apertura di un ticket collegato ("linked ticket" stile Zendesk),
@@ -164,6 +165,13 @@ export async function collegaRoutes(
         { thread_id: analizzato.data.thread_id, err: messaggioErrore(errore) },
         'apertura ticket collegato fallita',
       )
+      await registraInvioFallito(db, req.log, {
+        thread_id: analizzato.data.thread_id,
+        agent_id: analizzato.data.agent_id,
+        testo: analizzato.data.testo,
+        errore,
+        azione: 'email al corriere/assistenza',
+      })
       return reply.code(502).send({ errore: messaggioErrore(errore) })
     }
   })
@@ -203,6 +211,13 @@ export async function collegaRoutes(
     } catch (errore) {
       if (errore instanceof OrdineNonTrovato) return reply.code(422).send({ errore: errore.message })
       req.log.error({ err: messaggioErrore(errore) }, 'apertura ticket in uscita fallita')
+      await registraInvioFallito(db, req.log, {
+        thread_id: null,
+        agent_id: analizzato.data.agent_id,
+        testo: analizzato.data.testo,
+        errore,
+        azione: 'nuovo ticket',
+      })
       return reply.code(502).send({ errore: messaggioErrore(errore) })
     }
   })

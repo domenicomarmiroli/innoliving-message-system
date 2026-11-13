@@ -4,6 +4,7 @@ import type { Logger } from '../../logger.js'
 import type { Ciclo } from '../mail/poll.js'
 import { credenzialiGraphMancanti } from './client.js'
 import { leggiCasellaGraph } from './lettura.js'
+import { segnalaStato } from '../stato/collegamenti.js'
 
 /**
  * Il ciclo della casella Microsoft 365.
@@ -52,11 +53,13 @@ export function avviaPollingGraph(db: Db, log: Logger, config: Config): Ciclo | 
     try {
       const esito = await leggiCasellaGraph(db, log, config)
       fallimenti = 0
+      await segnalaStato('casella-microsoft')
       // Silenzio quando non c'è niente: un log al minuto che dice "zero"
       // rende illeggibile quello che conta.
       if (esito.lette > 0) log.info({ ...esito, casella: 'graph' }, 'giro casella Microsoft completato')
     } catch (errore) {
       fallimenti += 1
+      await segnalaStato('casella-microsoft', errore)
       log.error(
         {
           tentativi_falliti: fallimenti,

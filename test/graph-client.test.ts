@@ -91,3 +91,32 @@ describe('messaggi d errore', () => {
     expect(messaggioToken(400, 'AADSTS700016: not found')).toMatch(/MS_CLIENT_ID e MS_TENANT_ID/)
   })
 })
+
+describe('ClientGraph — Microsoft che non risponde (ticket 16121)', () => {
+  it('ogni chiamata ha un tempo massimo: passa un AbortSignal a fetch', async () => {
+    const segnali: (AbortSignal | null | undefined)[] = []
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      segnali.push(init.signal)
+      if (url.includes('oauth2')) return risposta({ access_token: 't', expires_in: 3600 })
+      return risposta({})
+    })
+    await new ClientGraph(config, logger).get('/users/x/messages')
+    expect(segnali).toHaveLength(2)
+    expect(segnali.every((s) => s instanceof AbortSignal)).toBe(true)
+  })
+
+  it("una POST scaduta non si ritenta (rischio di spedire due volte) e l'errore lo dice", async () => {
+    let post = 0
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      if (url.includes('oauth2')) return risposta({ access_token: 't', expires_in: 3600 })
+      post += 1
+      const e = new Error('scaduto')
+      e.name = 'TimeoutError'
+      throw e
+    })
+    await expect(
+      new ClientGraph(config, logger).post('/users/x/sendMail', 'abc', 'text/plain'),
+    ).rejects.toThrow(/nessuna risposta entro 20 secondi.*potrebbe non essere partita/)
+    expect(post).toBe(1)
+  })
+})

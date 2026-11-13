@@ -2,6 +2,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { giroTrackingBrt } from './tracking.js'
+import { segnalaStato } from '../stato/collegamenti.js'
 
 /**
  * Ogni ora si cercano le spedizioni da rileggere; ognuna viene riletta solo
@@ -27,8 +28,10 @@ export function avviaTrackingBrt(db: Db, log: Logger, config: Config): { ferma()
     if (fermato) return
     try {
       const esito = await giroTrackingBrt(db, log, config, () => fermato)
+      await segnalaStato('brt')
       if (esito.letti > 0) log.info(esito, 'tracking BRT letto')
     } catch (errore) {
+      await segnalaStato('brt', errore)
       log.error(
         { err: errore instanceof Error ? errore.message : String(errore) },
         'giro del tracking BRT fallito',

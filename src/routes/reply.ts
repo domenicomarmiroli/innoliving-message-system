@@ -12,6 +12,7 @@ import { scaricaAllegato } from '../core/storage.js'
 import { inviaRisposta } from '../connectors/mail/invia.js'
 import { inviaMessaggioMirakl } from '../connectors/mirakl/invia.js'
 import { messaggioErrore } from '../connectors/mail/imap.js'
+import { registraInvioFallito } from '../connectors/stato/invio-fallito.js'
 
 /**
  * Invio di una risposta, chiamato dall'interfaccia.
@@ -282,6 +283,13 @@ export async function replyRoutes(
         { thread_id: analizzato.data.thread_id, err: messaggioErrore(errore) },
         'invio della risposta fallito',
       )
+      await registraInvioFallito(db, req.log, {
+        thread_id: analizzato.data.thread_id,
+        agent_id: analizzato.data.agent_id,
+        testo: analizzato.data.testo_originale ?? analizzato.data.testo,
+        errore,
+        azione: 'risposta',
+      })
       return reply.code(502).send({ errore: messaggioErrore(errore) })
     }
   })

@@ -25,6 +25,7 @@ import { avviaPollingGraph } from './connectors/graph/poll.js'
 import { avviaAllineamentoOrdini } from './connectors/shopify/periodico.js'
 import { avviaControlloRientri } from './connectors/magazzino/periodico.js'
 import { avviaTrackingBrt } from './connectors/brt/periodico.js'
+import { impostaDbStato } from './connectors/stato/collegamenti.js'
 
 export async function buildServer(config: Config) {
   const app = Fastify({
@@ -52,6 +53,7 @@ export async function buildServer(config: Config) {
   }
 
   const db = createDb(config)
+  impostaDbStato(db)
   // Ogni chiamata AI si misura in ai_uso e i lavori in background hanno
   // un tetto giornaliero (core/ai/consumo.ts).
   impostaMisuraAI(db, logger)

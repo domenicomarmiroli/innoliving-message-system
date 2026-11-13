@@ -7,6 +7,7 @@ import type { FilePronto } from '../../core/attachments/normalize.js'
 import { ClientGraph } from '../graph/client.js'
 import type { Trasporto } from './casella.js'
 import { normalizzaMessageId } from './parse.js'
+import { segnalaStato } from '../stato/collegamenti.js'
 
 /**
  * Un solo punto di uscita per la posta, due trasporti dietro.
@@ -155,6 +156,11 @@ export function creaTrasporto(config: Config): Transporter {
     // 465 è TLS implicito, 587 è STARTTLS: la distinzione la fa la porta.
     secure: config.MAIL_SMTP_PORT === 465,
     auth: { user: config.MAIL_USER, pass: config.MAIL_PASSWORD },
+    // Stessa ragione del timeout di Graph: un invio non deve restare appeso
+    // per minuti (i valori predefiniti di nodemailer arrivano a 10).
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
   })
   return trasportoSmtp
 }
@@ -212,6 +218,23 @@ export async function componiMime(
 }
 
 export async function spedisci(
+  config: Config,
+  log: Logger,
+  trasporto: Trasporto,
+  sp: Spedizione,
+): Promise<EsitoSpedizione> {
+  const codice = trasporto === 'graph' ? 'invio-microsoft' : 'invio-gmail'
+  try {
+    const esito = await spedisciTrasporto(config, log, trasporto, sp)
+    await segnalaStato(codice)
+    return esito
+  } catch (errore) {
+    await segnalaStato(codice, errore)
+    throw errore
+  }
+}
+
+async function spedisciTrasporto(
   config: Config,
   log: Logger,
   trasporto: Trasporto,

@@ -10,6 +10,7 @@ import { generaBozzeAutomatiche } from '../../core/ai/bozza-auto.js'
 import { inviaAvvisiPratica } from '../pratica/avvisi.js'
 import { caricaAutomazioniSicuro } from '../automazioni/esegui.js'
 import { inviaAvvisiSpedizione } from '../automazioni/spedizione.js'
+import { segnalaStato } from '../stato/collegamenti.js'
 
 /**
  * Il ciclo che tiene la casella sotto controllo.
@@ -52,7 +53,11 @@ export function avviaPolling(db: Db, log: Logger, config: Config): Ciclo | null 
   const giro = async (): Promise<void> => {
     if (fermato) return
     try {
-      const esito = await leggiCasella(db, log, config)
+      const esito = await leggiCasella(db, log, config).catch(async (errore: unknown) => {
+        await segnalaStato('casella-gmail', errore)
+        throw errore
+      })
+      await segnalaStato('casella-gmail')
       // Le conversazioni senza ordine si riprovano a ogni giro: un
       // messaggio può arrivare prima del suo ordine, e quando l'ordine
       // compare devono agganciarsi da sole senza che nessuno lanci nulla.
@@ -66,8 +71,18 @@ export function avviaPolling(db: Db, log: Logger, config: Config): Ciclo | null 
       try {
         const esiti = await sincronizzaMirakl(db, log, config)
         mirakl = esiti.reduce((n, e) => n + e.messaggi_inseriti, 0)
+        const falliti = esiti.filter((e) => e.errore)
+        if (esiti.length > 0) {
+          await segnalaStato(
+            'mirakl',
+            falliti.length > 0
+              ? new Error(falliti.map((e) => `${e.operatore}: ${e.errore}`).join(' · '))
+              : null,
+          )
+        }
       } catch (errore) {
         log.error({ err: messaggioErrore(errore) }, 'sincronizzazione Mirakl fallita')
+        await segnalaStato('mirakl', errore)
       }
 
       // Traduzione dei messaggi dei clienti non in italiano, da qualunque

@@ -7,6 +7,7 @@ import { dimensioniImmagine } from '../../core/immagine.js'
 import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
 import type { FilePronto } from '../../core/attachments/normalize.js'
 import { ClientMirakl, costruisciOperatori } from './client.js'
+import { segnalaStato } from '../stato/collegamenti.js'
 
 /**
  * Risposta a un thread Mirakl — M12, `POST /inbox/threads/{id}/message`.
@@ -150,9 +151,13 @@ export async function inviaMessaggioMirakl(
   for (const a of richiesta.allegati ?? []) {
     form.append('files', new Blob([new Uint8Array(a.contenuto)], { type: a.mime }), a.nome_file)
   }
-  const risposta = await client.postMultipart<{ id?: unknown }>(percorsoInvio, form, {
-    shop_id: operatore.shop_id ?? undefined,
-  })
+  const risposta = await client
+    .postMultipart<{ id?: unknown }>(percorsoInvio, form, { shop_id: operatore.shop_id ?? undefined })
+    .catch(async (errore: unknown) => {
+      await segnalaStato('invio-mirakl', errore, operatore.code)
+      throw errore
+    })
+  await segnalaStato('invio-mirakl', null, operatore.code)
 
   // Se Mirakl restituisce l'id del messaggio lo usiamo come chiave
   // esterna: al prossimo giro di sincronizzazione lo stesso messaggio

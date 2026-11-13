@@ -2,6 +2,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { sincronizzaOrdiniShopify } from './incrementale.js'
+import { segnalaStato } from '../stato/collegamenti.js'
 
 /**
  * Il giro periodico che riallinea gli ordini.
@@ -40,10 +41,12 @@ export function avviaAllineamentoOrdini(
     if (fermato) return
     try {
       const esito = await sincronizzaOrdiniShopify(db, log, config)
+      await segnalaStato('shopify')
       if (esito.ordini > 0) {
         log.info(esito, 'ordini Shopify riallineati')
       }
     } catch (errore) {
+      await segnalaStato('shopify', errore)
       // Un fallimento qui non deve fermare il ciclo: la rete cade,
       // Shopify limita, il token scade. Si riprova al giro dopo.
       log.error(

@@ -4,6 +4,7 @@ import type { Logger } from '../../logger.js'
 import { recuperaRientri, elaboraRientri } from './rientri.js'
 import { elaboraRientriGaranzia } from './rientri-garanzia.js'
 import { recuperaSpedizioni, elaboraSpedizioni } from './spedizioni.js'
+import { segnalaStato } from '../stato/collegamenti.js'
 
 /**
  * Il giro periodico che controlla i rientri in magazzino.
@@ -41,11 +42,13 @@ export function avviaControlloRientri(
     if (fermato) return
     try {
       const rientri = await recuperaRientri(config)
+      await segnalaStato('magazzino')
       const esito = await elaboraRientri(db, log, rientri)
       if (esito.agganciati > 0 || esito.aperti > 0) {
         log.info(esito, 'rientri magazzino controllati')
       }
     } catch (errore) {
+      await segnalaStato('magazzino', errore)
       // Un fallimento qui non deve fermare il ciclo: la rete cade, il
       // tool di magazzino è in manutenzione. Si riprova al giro dopo.
       log.error(

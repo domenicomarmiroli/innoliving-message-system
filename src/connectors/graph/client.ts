@@ -21,6 +21,14 @@ const TENTATIVI = 3
 const ATTESA_BASE_MS = 1000
 /** Margine sul token: si rinnova prima della scadenza vera. */
 const MARGINE_MS = 60_000
+/**
+ * Tempo massimo per una singola chiamata. Senza, durante un disservizio di
+ * Microsoft la fetch resta appesa per minuti e l'operatore che preme Invia
+ * non riceve nessuna risposta (caso reale, ticket 16121, 13/11).
+ */
+const TIMEOUT_MS = 20_000
+/** Un Retry-After di Microsoft non deve tenere ferma una risposta per minuti. */
+const ATTESA_MASSIMA_MS = 10_000
 
 export class ErroreGraph extends Error {
   constructor(
@@ -88,6 +96,9 @@ export class ClientGraph {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: corpo.toString(),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    }).catch((errore: unknown) => {
+      throw new ErroreGraph(`Microsoft non risponde (accesso): ${descriviErroreRete(errore)}`, 0, '')
     })
     const testo = await risposta.text()
 
@@ -162,9 +173,15 @@ export class ClientGraph {
             ...(init.headers ?? {}),
             Authorization: `Bearer ${token}`,
           },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
         })
       } catch (errore) {
         ultimoErrore = errore
+        // Una POST (sendMail) scaduta può essere arrivata lo stesso:
+        // ritentarla rischia di spedire due volte la stessa risposta.
+        if (init.method === 'POST') {
+          throw new ErroreGraph(`Microsoft non risponde: ${descriviErroreRete(errore)}. La risposta potrebbe non essere partita: controlla la posta inviata prima di riprovare.`, 0, '')
+        }
         await attendi(ATTESA_BASE_MS * 2 ** (tentativo - 1))
         continue
       }
@@ -188,18 +205,29 @@ export class ClientGraph {
       }
 
       const attesaHeader = risposta.headers.get('Retry-After')
-      const ms = attesaHeader ? Number(attesaHeader) * 1000 : ATTESA_BASE_MS * 2 ** (tentativo - 1)
+      const ms = Math.min(
+        attesaHeader && Number.isFinite(Number(attesaHeader)) ? Number(attesaHeader) * 1000 : ATTESA_BASE_MS * 2 ** (tentativo - 1),
+        ATTESA_MASSIMA_MS,
+      )
       this.log.warn({ stato: risposta.status, attesa_ms: ms }, 'Graph ha chiesto di rallentare')
       await attendi(ms)
     }
 
     throw new ErroreGraph(
       `Microsoft Graph non risponde dopo ${TENTATIVI} tentativi: ` +
-        `${ultimoErrore instanceof Error ? ultimoErrore.message : String(ultimoErrore)}`,
+        descriviErroreRete(ultimoErrore),
       0,
       '',
     )
   }
+}
+
+/** Un timeout o una connessione rifiutata, detti in modo leggibile. */
+export function descriviErroreRete(errore: unknown): string {
+  if (errore instanceof Error && (errore.name === 'TimeoutError' || errore.name === 'AbortError')) {
+    return `nessuna risposta entro ${TIMEOUT_MS / 1000} secondi`
+  }
+  return errore instanceof Error ? errore.message : String(errore)
 }
 
 /**
