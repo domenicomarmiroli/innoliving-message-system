@@ -56,7 +56,7 @@ export function testoAvviso(stato: StatoBrt, evento: EventoBrt | undefined, nume
   return `${titolo}: «${evento.evento}» — ${quando}${evento.filiale ? `, ${evento.filiale}` : ''} (spedizione ${numero}).`
 }
 
-async function scaricaPagina(numero: string): Promise<string> {
+export async function scaricaPagina(numero: string): Promise<string> {
   const risposta = await fetch(urlPaginaBrt(numero), {
     headers: { Accept: 'text/html' },
     signal: AbortSignal.timeout(20_000),

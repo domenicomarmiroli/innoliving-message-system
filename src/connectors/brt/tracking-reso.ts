@@ -2,7 +2,8 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { configBrtResi } from './reso.js'
-import { statoDaEventi, type EventoBrt, type StatoBrt } from './pagina.js'
+import { leggiPagina, statoDaEventi, type EventoBrt, type StatoBrt } from './pagina.js'
+import { scaricaPagina } from './tracking.js'
 
 /**
  * Stato della spedizione di reso (migrazione 0054).
@@ -29,7 +30,16 @@ export type StatoReso = StatoBrt | 'in_attesa'
 
 export type EsitoLettura =
   | { riconosciuta: true; trovata: false }
-  | { riconosciuta: true; trovata: true; eventi: EventoBrt[]; stato: StatoReso }
+  | {
+      riconosciuta: true
+      trovata: true
+      eventi: EventoBrt[]
+      stato: StatoReso
+      /** Stato ricavato senza lista eventi (solo "dati trasmessi"): da confermare con la pagina pubblica. */
+      da_confermare?: boolean
+      /** Numero di spedizione a 12 cifre (`spedizione_id`), la chiave della pagina pubblica. */
+      numero_spedizione?: string | null
+    }
   | { riconosciuta: false; motivo: string }
 
 const GIORNI_FINESTRA = 60
@@ -99,6 +109,7 @@ export function leggiRisposta(corpo: unknown): EsitoLettura {
     if (testoOppure(spedizione.spedizione_id) && dataSped) {
       return {
         riconosciuta: true, trovata: true, stato: 'spedito',
+        da_confermare: true, numero_spedizione: testoOppure(spedizione.spedizione_id),
         eventi: [{ data: dataSped, ora: null, filiale: null, evento: 'DATI SPEDIZ. TRASMESSI A BRT' }],
       }
     }
@@ -158,10 +169,11 @@ async function chiediTracking(
 
 /** Un pezzo della risposta per le anomalie: parte dalla lista eventi se c'è, perché è lì che il formato conta. */
 function campioneRisposta(corpo: unknown): string | null {
-  const testo = JSON.stringify(corpo)
+  // Senza i campi vuoti (sono la maggior parte) la risposta intera sta in poco spazio.
+  const testo = JSON.stringify(corpo, (_k, v) => (v === '' || v === null ? undefined : v))
   if (!testo) return null
   const i = testo.indexOf('lista_eventi')
-  return testo.slice(i >= 0 ? i : 0, (i >= 0 ? i : 0) + 1500)
+  return testo.slice(i >= 0 ? i : 0, (i >= 0 ? i : 0) + 3500)
 }
 
 export interface EsitoGiroResi {
@@ -273,12 +285,30 @@ export async function giroTrackingResi(
         continue
       }
 
-      const ultimo = lettura.eventi[0]!
-      const consegnato = lettura.stato === 'consegnato'
+      let eventi = lettura.eventi
+      let stato: StatoReso = lettura.stato
+      // 18/11, ticket 16121: il servizio REST dava solo "dati trasmessi" mentre
+      // la pagina pubblica già diceva "CONSEGNATA". Con il numero di spedizione
+      // a 12 cifre della risposta si conferma dalla pagina (parte già collaudata).
+      if (lettura.da_confermare && /^\d{12}$/.test(lettura.numero_spedizione ?? '')) {
+        nonRiconosciuti.push({ id: r.id, motivo: 'solo dati trasmessi: confermo dalla pagina pubblica', http: risposta.stato, risposta: campioneRisposta(risposta.corpo) })
+        try {
+          await pausa(PAUSA_MS)
+          const pagina = leggiPagina(await scaricaPagina(lettura.numero_spedizione!))
+          if (pagina.riconosciuta && pagina.trovata && pagina.eventi.length > 0) {
+            eventi = pagina.eventi
+            stato = statoReso(pagina.eventi)
+          }
+        } catch (errore) {
+          log.warn({ err: errore instanceof Error ? errore.message : String(errore) }, 'conferma dalla pagina BRT fallita')
+        }
+      }
+      const ultimo = eventi[0]!
+      const consegnato = stato === 'consegnato'
       await db`
         update etichetta_reso set
-          spedizione_stato          = ${lettura.stato},
-          spedizione_eventi         = ${db.json(lettura.eventi as unknown as Parameters<typeof db.json>[0])},
+          spedizione_stato          = ${stato},
+          spedizione_eventi         = ${db.json(eventi as unknown as Parameters<typeof db.json>[0])},
           spedizione_ultimo_evento  = ${ultimo.evento},
           spedizione_consegnata_at  = ${consegnato ? `${ultimo.data}T${ultimo.ora ?? '00:00'}:00+01:00` : null}::timestamptz,
           spedizione_aggiornata_at  = now(),
