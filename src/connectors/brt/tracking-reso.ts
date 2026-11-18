@@ -183,7 +183,7 @@ export async function giroTrackingResi(
   }
   const credenziali = { utente: config.BRT_API_USER, password: config.BRT_API_PASSWORD }
 
-  const nonRiconosciuti: { id: string; motivo: string; http: number }[] = []
+  const nonRiconosciuti: { id: string; motivo: string; http: number; risposta: string | null }[] = []
   let erroriDiFila = 0
 
   for (const r of daLeggere) {
@@ -227,7 +227,9 @@ export async function giroTrackingResi(
 
       if (!lettura.riconosciuta) {
         esito.non_riconosciuti += 1
-        nonRiconosciuti.push({ id: r.id, motivo: lettura.motivo, http: risposta.stato })
+        // Un pezzo della risposta (non contiene credenziali né dati del cliente)
+        // per capire in cosa differisce da quella attesa.
+        nonRiconosciuti.push({ id: r.id, motivo: lettura.motivo, http: risposta.stato, risposta: JSON.stringify(risposta.corpo)?.slice(0, 1500) ?? null })
         await db`update etichetta_reso set tracking_errore = ${lettura.motivo.slice(0, 300)}, tracking_letto_at = now(), updated_at = now() where id = ${r.id}`
         continue
       }
