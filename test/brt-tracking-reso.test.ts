@@ -64,6 +64,33 @@ describe('leggiRisposta', () => {
     expect(r.stato).toBe('spedito')
   })
 
+  it('forma vista dal vivo (18/11): dentro ttParcelIdResponse, consegna in dati_consegna', () => {
+    const r = leggiRisposta({
+      ttParcelIdResponse: {
+        esito: 0,
+        bolla: {
+          dati_spedizione: { spedizione_id: '051010453152', spedizione_data: '15.10.2026', filiale_arrivo: 'ANCONA CENTRO' },
+          dati_consegna: { data_consegna_merce: '16.10.2026', ora_consegna_merce: '09.16' },
+        },
+      },
+    })
+    expect(r).toEqual({
+      riconosciuta: true, trovata: true, stato: 'consegnato',
+      eventi: [{ data: '2026-10-16', ora: '09:16', filiale: 'ANCONA CENTRO', evento: 'CONSEGNATA' }],
+    })
+  })
+
+  it('bolla senza eventi né consegna: dati trasmessi, pacco non ancora in viaggio', () => {
+    const r = leggiRisposta({
+      ttParcelIdResponse: {
+        bolla: { dati_spedizione: { spedizione_id: '1', spedizione_data: '15.11.2026' }, dati_consegna: { data_consegna_merce: '' } },
+      },
+    })
+    if (!r.riconosciuta || !r.trovata) throw new Error('non letta')
+    expect(r.stato).toBe('spedito')
+    expect(r.eventi[0]).toMatchObject({ data: '2026-11-15', evento: 'DATI SPEDIZ. TRASMESSI A BRT' })
+  })
+
   it('una risposta che non somiglia a quella attesa non diventa uno stato inventato', () => {
     expect(leggiRisposta({ errore: 'x' })).toMatchObject({ riconosciuta: false })
     expect(leggiRisposta(null)).toMatchObject({ riconosciuta: false })

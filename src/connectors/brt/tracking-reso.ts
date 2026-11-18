@@ -75,14 +75,34 @@ function testoOppure(v: unknown): string | null {
  * Senza eventi, o con un esito negativo, BRT non ha (ancora) il pacco.
  */
 export function leggiRisposta(corpo: unknown): EsitoLettura {
-  const bolla = (corpo as { bolla?: Record<string, unknown> } | null)?.bolla
+  // Visto dal vivo il 18/11: il contenuto sta dentro `ttParcelIdResponse`.
+  const radice = ((corpo as { ttParcelIdResponse?: unknown } | null)?.ttParcelIdResponse ?? corpo) as { bolla?: Record<string, unknown> } | null
+  const bolla = radice?.bolla
   if (!bolla || typeof bolla !== 'object') return { riconosciuta: false, motivo: 'manca "bolla" nella risposta' }
 
   const lista = bolla.lista_eventi
   const esito = typeof bolla.esito === 'number' ? bolla.esito : Number(bolla.esito ?? 0)
   if (lista === undefined || lista === null || (Array.isArray(lista) && lista.length === 0)) {
-    // Un esito negativo senza eventi è "spedizione non trovata"; senza esito
-    // e senza eventi la bolla c'è ma il pacco non è ancora stato scansionato.
+    const spedizione = (bolla.dati_spedizione ?? {}) as Record<string, unknown>
+    const consegna = (bolla.dati_consegna ?? {}) as Record<string, unknown>
+    // Senza lista eventi, la consegna sta in `dati_consegna` (data e ora della consegna).
+    const dataConsegna = dataIso(consegna.data_consegna_merce)
+    if (dataConsegna) {
+      const eventi: EventoBrt[] = [{
+        data: dataConsegna, ora: oraBreve(consegna.ora_consegna_merce),
+        filiale: testoOppure(spedizione.filiale_arrivo), evento: 'CONSEGNATA',
+      }]
+      return { riconosciuta: true, trovata: true, eventi, stato: 'consegnato' }
+    }
+    // La bolla c'è (BRT conosce la spedizione) ma niente consegna né eventi: i dati sono arrivati, il pacco no.
+    const dataSped = dataIso(spedizione.spedizione_data)
+    if (testoOppure(spedizione.spedizione_id) && dataSped) {
+      return {
+        riconosciuta: true, trovata: true, stato: 'spedito',
+        eventi: [{ data: dataSped, ora: null, filiale: null, evento: 'DATI SPEDIZ. TRASMESSI A BRT' }],
+      }
+    }
+    // Esito negativo o bolla vuota: BRT non ha (ancora) la spedizione.
     return { riconosciuta: true, trovata: false }
   }
   if (!Array.isArray(lista)) return { riconosciuta: false, motivo: '"lista_eventi" non è una lista' }
@@ -134,6 +154,14 @@ async function chiediTracking(
     /* corpo non JSON: lo gestisce il chiamante dallo stato HTTP */
   }
   return { stato: risposta.status, corpo }
+}
+
+/** Un pezzo della risposta per le anomalie: parte dalla lista eventi se c'è, perché è lì che il formato conta. */
+function campioneRisposta(corpo: unknown): string | null {
+  const testo = JSON.stringify(corpo)
+  if (!testo) return null
+  const i = testo.indexOf('lista_eventi')
+  return testo.slice(i >= 0 ? i : 0, (i >= 0 ? i : 0) + 1500)
 }
 
 export interface EsitoGiroResi {
@@ -229,7 +257,7 @@ export async function giroTrackingResi(
         esito.non_riconosciuti += 1
         // Un pezzo della risposta (non contiene credenziali né dati del cliente)
         // per capire in cosa differisce da quella attesa.
-        nonRiconosciuti.push({ id: r.id, motivo: lettura.motivo, http: risposta.stato, risposta: JSON.stringify(risposta.corpo)?.slice(0, 1500) ?? null })
+        nonRiconosciuti.push({ id: r.id, motivo: lettura.motivo, http: risposta.stato, risposta: campioneRisposta(risposta.corpo) })
         await db`update etichetta_reso set tracking_errore = ${lettura.motivo.slice(0, 300)}, tracking_letto_at = now(), updated_at = now() where id = ${r.id}`
         continue
       }
