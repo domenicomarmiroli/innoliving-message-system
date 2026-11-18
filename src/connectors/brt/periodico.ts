@@ -2,6 +2,7 @@ import type { Config } from '../../config.js'
 import type { Db } from '../../db/index.js'
 import type { Logger } from '../../logger.js'
 import { giroTrackingBrt } from './tracking.js'
+import { giroTrackingResi } from './tracking-reso.js'
 import { segnalaStato } from '../stato/collegamenti.js'
 
 /**
@@ -30,6 +31,9 @@ export function avviaTrackingBrt(db: Db, log: Logger, config: Config): { ferma()
       const esito = await giroTrackingBrt(db, log, config, () => fermato)
       await segnalaStato('brt')
       if (esito.letti > 0) log.info(esito, 'tracking BRT letto')
+      // Resi: stato delle etichette create dall'Hub, per il riquadro Garanzia.
+      const resi = await giroTrackingResi(db, log, config, () => fermato)
+      if (resi.letti > 0) log.info(resi, 'tracking resi BRT letto')
     } catch (errore) {
       await segnalaStato('brt', errore)
       log.error(

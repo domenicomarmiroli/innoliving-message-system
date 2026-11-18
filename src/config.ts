@@ -61,6 +61,9 @@ const schema = z.object({
   BRT_TRACKING_ORE: z.coerce.number().int().min(0).default(24),
   // Pausa fra una pagina e l'altra: è un sito pubblico, non un'API.
   BRT_TRACKING_PAUSA_MS: z.coerce.number().int().min(500).default(2000),
+  // Stato dei resi (etichette create dall'Hub): ogni quante ore rileggere il
+  // tracking BRT via API. 0 = spento. Si accende solo se BRT_TRACKING_ORE > 0.
+  BRT_TRACKING_RESI_ORE: z.coerce.number().int().min(0).default(6),
 
   // --- Etichetta di reso BRT (routes/etichetta-reso.ts) ----------------
   // Credenziali dell'API REST di BRT. Il resto del contratto (codice
