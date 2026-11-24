@@ -171,7 +171,9 @@ const REGOLE: Partial<Record<string, RegoleCanale>> = {
   amazon: {
     vieta_url: true,
     vieta_contatti: true,
-    vieta_richiesta_recensione: true,
+    // Spento il 2026-11-24 su richiesta di Domenico: chiedere gentilmente
+    // una recensione a un cliente soddisfatto non deve bloccare l'invio.
+    vieta_richiesta_recensione: false,
     vieta_contatto_esterno: true,
     lunghezza_massima: 4000,
   },

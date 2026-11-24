@@ -83,10 +83,10 @@ describe('policy — amazon', () => {
     expect(violazione?.porzione).not.toContain('405-0668977-2033157')
   })
 
-  it('blocca una richiesta di recensione, in più lingue', () => {
-    expect(check('amazon', 'La preghiamo di lasciare una recensione positiva').ok).toBe(false)
-    expect(check('amazon', 'Please leave a review if you are happy').ok).toBe(false)
-    expect(check('amazon', 'Bitte eine positive Bewertung hinterlassen').ok).toBe(false)
+  it('lascia passare una richiesta di recensione (controllo spento il 2026-11-24)', () => {
+    expect(check('amazon', 'La preghiamo di lasciare una recensione positiva').ok).toBe(true)
+    expect(check('amazon', 'Please leave a review if you are happy').ok).toBe(true)
+    expect(check('amazon', "si vous pouviez laisser un avis sur notre service").ok).toBe(true)
   })
 
   it('blocca un invito a contattare fuori piattaforma', () => {
