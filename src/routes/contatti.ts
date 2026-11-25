@@ -6,6 +6,7 @@ import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { classificaEsalvaIntento } from '../core/ai/intento.js'
 import { registraStatoPratica } from '../connectors/pratica/avvisi.js'
+import { schemaIndirizzoPortale, valoreDaGaranzia } from '../core/sostituzione.js'
 import {
   LIMITE_CORPO_RICHIESTA,
   preparaAllegatiCliente,
@@ -68,6 +69,12 @@ export const schemaGaranzia = z.object({
   telefono: testoBreve,
   indirizzo_ritiro: testoBreve,
   problema: z.string().trim().max(5_000).nullable().optional(),
+  // Valore del prodotto letto dallo scontrino (euro, IVA inclusa). Il cliente
+  // non lo vede: serve all'operatore per il codice sconto quando il
+  // sostitutivo non è disponibile (migrazione 0055).
+  valore_prodotto: z.number().min(0).max(100_000).nullable().optional(),
+  // Indirizzo di spedizione chiesto all'apertura: serve se si spedisce il sostitutivo.
+  indirizzo_spedizione: schemaIndirizzoPortale.nullable().optional(),
 })
 
 const corpo = z.object({
@@ -254,6 +261,14 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
           }
         }
 
+        const valore = valoreDaGaranzia(dati.garanzia)
+        if (valore !== null) {
+          await tx`
+            update thread set valore_scontrino = ${valore}, valore_scontrino_fonte = 'portale', updated_at = now()
+            where id = ${threadId}
+          `
+        }
+
         return { thread_id: threadId, message_id: messaggio?.id ?? null, nuovo_thread: nuovoThread }
       })
 
@@ -295,5 +310,40 @@ export async function contattiRoutes(app: FastifyInstance, opts: { db: Db; confi
         errore: errore instanceof Error ? errore.message : String(errore),
       })
     }
+  })
+
+  /**
+   * POST /contatti/:codice/valore-scontrino
+   *   { richiesta_id, valore_prodotto }
+   *
+   * Il portale garanzie legge il valore dallo scontrino anche dopo aver
+   * aperto il ticket (analisi AI dello scontrino): lo manda qui, con lo
+   * stesso richiesta_id usato all'apertura. Ripetere aggiorna il valore.
+   */
+  const corpoValore = z.object({
+    richiesta_id: z.string().trim().min(1).max(200),
+    valore_prodotto: z.number().min(0).max(100_000).nullable(),
+  })
+
+  app.post('/contatti/:codice/valore-scontrino', async (req, reply) => {
+    const { codice } = req.params as { codice: string }
+    const headerAuth = req.headers.authorization
+    const token = headerAuth?.startsWith('Bearer ') ? headerAuth.slice(7) : null
+    if (!token || !confrontoCostante(token, chiave)) return reply.code(401).send({ errore: 'non autorizzato' })
+    const c = corpoValore.safeParse(req.body)
+    if (!c.success) return reply.code(400).send({ errore: c.error.issues.map((i) => i.message).join('; ') })
+    const valore = valoreDaGaranzia({ valore_prodotto: c.data.valore_prodotto })
+    const [t] = await db<{ id: string; numero: string }[]>`
+      update thread t set
+        valore_scontrino = ${valore},
+        valore_scontrino_fonte = ${valore === null ? null : 'portale'},
+        updated_at = now()
+      from channel_account ca
+      where ca.id = t.account_id and ca.code = ${codice} and t.external_thread_id = ${c.data.richiesta_id}
+      returning t.id, t.numero::text as numero
+    `
+    if (!t) return reply.code(404).send({ errore: 'ticket non trovato' })
+    req.log.info({ codice, thread_id: t.id, con_valore: valore !== null }, 'valore scontrino dal portale')
+    return reply.send({ ok: true, thread_id: t.id, numero: t.numero, valore_scontrino: valore })
   })
 }

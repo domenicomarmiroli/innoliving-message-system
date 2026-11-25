@@ -13,6 +13,7 @@ import {
   chiaveValida,
   testoRegistrazione,
 } from '../core/garanzia/collegamento.js'
+import { schemaIndirizzoPortale, valoreDaGaranzia } from '../core/sostituzione.js'
 import { minutiSla } from '../connectors/voce/ticket.js'
 import {
   LIMITE_CORPO_RICHIESTA,
@@ -343,6 +344,9 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
       garanzia_fino_al: z.string().max(40).nullable().optional(),
       numero_ordine: z.string().max(100).nullable().optional(),
       rivenditore: z.string().max(200).nullable().optional(),
+      // Valore letto dallo scontrino: non si mostra al cliente (0055).
+      valore_prodotto: z.number().min(0).max(100_000).nullable().optional(),
+      indirizzo_spedizione: schemaIndirizzoPortale.nullable().optional(),
     }),
     allegati: z.array(schemaAllegato).max(20).optional(),
   })
@@ -413,6 +417,10 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
             ${a.storage_path}, ${a.larghezza}, ${a.altezza}
           )
         `
+      }
+      const valore = valoreDaGaranzia(c.data.garanzia)
+      if (valore !== null) {
+        await tx`update thread set valore_scontrino = ${valore}, valore_scontrino_fonte = 'portale' where id = ${t.id}`
       }
       // Torna APERTO, in coda all'assistenza, con la scadenza da adesso.
       await tx`
