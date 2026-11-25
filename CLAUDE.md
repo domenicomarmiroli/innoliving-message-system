@@ -2047,3 +2047,37 @@ i ticket collegati. `numero_ordine` facoltativo (Shopify o marketplace, stessa
 normalizzazione del form dei siti): se non si trova, 422 e nessun invio.
 `registraAllegatiUscita()` è ora condivisa fra
 `collega.ts` e `nuovo.ts`.
+
+### Sostitutivo in garanzia dal ticket (migrazione 0055, 25/11)
+Il cliente ha rimandato il prodotto difettoso (primo caso: ticket 16300).
+Regola di Domenico: **prodotto disponibile → ordine Shopify a 0 euro**, serve
+solo l'indirizzo; **non disponibile → codice sconto monouso del valore dello
+scontrino**, e quel valore arriva dal portale garanzie (letto dallo
+scontrino), non lo scrive l'operatore. L'indirizzo lo chiede il portale già
+all'apertura della richiesta.
+- Rotte (`routes/sostituzione.ts`, stessa autenticazione dell'etichetta):
+  `GET /threads/:id/sostitutivo[?sku=]` dice cosa fare (`azione`:
+  `spedisci` | `codice_sconto` | `fatta` | `da_verificare`),
+  `POST /threads/sostitutivo/ordine`, `POST /threads/sostitutivo/codice-sconto`.
+- SKU: codice del ticket (dati del portale, riga "Codice:", oggetto) più
+  `app_config.sostituzione.suffisso_sku` ("IS"); si cerca su Shopify lo SKU
+  **esatto** (mai la seconda scelta SR). Non trovato = `da_verificare`, mai
+  codice sconto: l'operatore indica lo SKU. Più varianti = sceglie l'operatore.
+- Ordine: `orderCreate` riga a 0.00, `PAID`, tag `sostituzione-garanzia` e
+  `ticket-<numero>`, giacenza scalata. Se Shopify torna un totale diverso
+  da 0 si registra lo stesso (l'ordine esiste) con anomalia e nota.
+- Codice: `discountCodeBasicCreate`, importo fisso, `usageLimit` 1, scadenza
+  da `giorni_validita_codice`. Solo con `azione = codice_sconto` e valore
+  dello scontrino presente.
+- Un solo sostitutivo per ticket (`sostituzione`, unico per thread). La riga
+  nasce `in_corso`; si riprende se `errore` o ferma da più di 5 minuti, ma
+  prima si cerca su Shopify l'ordine col tag del ticket o il codice già
+  scritto nella riga: un timeout non porta mai a un secondo ordine. Dopo che
+  Shopify ha creato, un errore nostro è solo `ingest_anomaly`.
+- Portale: `garanzia.valore_prodotto` e `garanzia.indirizzo_spedizione` in
+  `/contatti/:codice/ticket` e `/clienti/ticket/:id/garanzia`; se il valore
+  arriva dopo, `POST /contatti/:codice/valore-scontrino` `{ richiesta_id,
+  valore_prodotto }`. Il valore sta in `thread.valore_scontrino` e non entra
+  mai nel testo che vede il cliente.
+- `connectors/shopify/admin.ts` usa la versione API `2026-07` (il campo
+  `context` degli sconti); il giro ordini resta sulla sua.

@@ -157,7 +157,9 @@ export interface StatoSostituzione {
 }
 
 /** Cosa mostrare all'operatore prima del clic: prodotto, disponibilità, azione possibile. */
-export async function statoSostituzione(db: Db, config: Config, log: Logger, threadId: string): Promise<StatoSostituzione> {
+export async function statoSostituzione(
+  db: Db, config: Config, log: Logger, threadId: string, skuOperatore?: string | null,
+): Promise<StatoSostituzione> {
   const conf = await configSostituzione(db)
   const { t, codice } = await leggiTicket(db, threadId)
   const esistente = await rigaEsistente(db, threadId)
@@ -174,13 +176,13 @@ export async function statoSostituzione(db: Db, config: Config, log: Logger, thr
   if (esistente?.stato === 'fatta') {
     return { ...base, sku: esistente.sku, variante: null, esito_ricerca: 'trovata', disponibile: false, azione: 'fatta', avviso: null }
   }
-  if (!codice) {
+  if (!codice && !skuOperatore) {
     return {
       ...base, sku: null, variante: null, esito_ricerca: 'senza_codice', disponibile: false, azione: 'da_verificare',
       avviso: 'Nel ticket non trovo il codice del prodotto: indica lo SKU del negozio.',
     }
   }
-  const sku = skuNegozio(codice, conf.suffisso_sku)
+  const sku = skuOperatore ? skuOperatore.trim().toUpperCase() : skuNegozio(codice!, conf.suffisso_sku)
   let scelta: SceltaVariante
   try {
     scelta = await cercaVariante(config, log, sku)
@@ -196,11 +198,19 @@ export async function statoSostituzione(db: Db, config: Config, log: Logger, thr
       azione: 'da_verificare', avviso: `Sul negozio ci sono più varianti con SKU ${sku}: scegline una.`,
     }
   }
-  if (scelta.esito === 'non_trovata' || !scelta.disponibile) {
-    const variante = scelta.esito === 'trovata' ? scelta.variante : null
-    const motivo = variante ? `${sku} non è disponibile sul negozio` : `${sku} non esiste sul negozio`
+  if (scelta.esito === 'non_trovata') {
+    // Mai un codice sconto solo perché il codice è scritto diversamente:
+    // l'operatore controlla e indica lo SKU giusto.
     return {
-      ...base, sku, variante, esito_ricerca: scelta.esito, disponibile: false, azione: 'codice_sconto',
+      ...base, sku, variante: null, esito_ricerca: 'non_trovata', disponibile: false, azione: 'da_verificare',
+      avviso: `${sku} non esiste sul negozio: controlla il codice e indica lo SKU giusto.`,
+    }
+  }
+  if (!scelta.disponibile) {
+    const variante = scelta.variante
+    const motivo = `${sku} non è disponibile sul negozio`
+    return {
+      ...base, sku, variante, esito_ricerca: 'trovata', disponibile: false, azione: 'codice_sconto',
       avviso: base.valore_scontrino
         ? `${motivo}: puoi emettere un codice sconto di ${base.valore_scontrino.toFixed(2)} euro.`
         : `${motivo}, e il portale garanzie non ha letto il valore dallo scontrino: il codice sconto non si può emettere.`,
@@ -209,8 +219,19 @@ export async function statoSostituzione(db: Db, config: Config, log: Logger, thr
   return { ...base, sku, variante: scelta.variante, esito_ricerca: 'trovata', disponibile: true, azione: 'spedisci', avviso: null }
 }
 
-/** Prende il "posto" del sostitutivo per il ticket; se c'è già, dice cosa c'è. */
-async function prenota(db: Db, threadId: string, tipo: RigaSostituzione['tipo'], dati: { sku: string; variant_gid?: string; agent_id: string | null }): Promise<string> {
+/** Dopo quanto una richiesta rimasta "in corso" (worker caduto a metà) si può riprendere. */
+const MINUTI_IN_CORSO = 5
+
+/**
+ * Prende il "posto" del sostitutivo per il ticket. Si riprende una riga in
+ * errore, o rimasta in corso da più di qualche minuto; prima però si guarda
+ * su Shopify se l'ordine o il codice esistono già.
+ */
+async function prenota(
+  db: Db, threadId: string, tipo: RigaSostituzione['tipo'],
+  dati: { sku: string; variant_gid?: string; agent_id: string | null },
+): Promise<{ id: string; ripresa: RigaSostituzione | null }> {
+  const prima = await rigaEsistente(db, threadId)
   const [r] = await db<{ id: string }[]>`
     insert into sostituzione (thread_id, tipo, stato, sku, variant_gid, agent_id)
     values (${threadId}, ${tipo}, 'in_corso', ${dati.sku}, ${dati.variant_gid ?? null}, ${dati.agent_id})
@@ -218,20 +239,28 @@ async function prenota(db: Db, threadId: string, tipo: RigaSostituzione['tipo'],
       tipo = excluded.tipo, stato = 'in_corso', sku = excluded.sku, variant_gid = excluded.variant_gid,
       agent_id = excluded.agent_id, errore = null, updated_at = now()
     where sostituzione.stato = 'errore'
+       or (sostituzione.stato = 'in_corso' and sostituzione.updated_at < now() - make_interval(mins => ${MINUTI_IN_CORSO}))
     returning id
   `
-  if (r) return r.id
+  if (r) return { id: r.id, ripresa: prima }
   const e = await rigaEsistente(db, threadId)
   if (e?.stato === 'fatta') {
     const cosa = e.tipo === 'ordine' ? `l'ordine ${e.shopify_order_name}` : `il codice sconto ${e.codice_sconto}`
     throw new ErroreSostituzione(409, `Per questo ticket c'è già ${cosa}.`, 'gia_fatta')
   }
-  throw new ErroreSostituzione(409, 'Una richiesta per questo ticket è già in corso: aspetta qualche secondo.', 'in_corso')
+  throw new ErroreSostituzione(409, 'Una richiesta per questo ticket è già in corso: aspetta qualche minuto.', 'in_corso')
 }
 
 async function segnaErrore(db: Db, id: string, threadId: string, tipo: string, errore: string): Promise<void> {
   await db`update sostituzione set stato = 'errore', errore = ${errore}, updated_at = now() where id = ${id}`
   await db`insert into ingest_anomaly (tipo, payload) values ('sostituzione_fallita', ${db.json({ thread_id: threadId, tipo, errore } as never)})`
+}
+
+/** Dopo che Shopify ha creato qualcosa, un errore nostro non deve mai portare a rifarlo. */
+async function anomaliaDopo(db: Db, log: Logger, threadId: string, cosa: string, e: unknown): Promise<void> {
+  const errore = e instanceof Error ? e.message : String(e)
+  log.error({ thread_id: threadId, err: errore }, `${cosa}: creato su Shopify ma non registrato del tutto`)
+  await db`insert into ingest_anomaly (tipo, payload) values ('sostituzione_registrazione', ${db.json({ thread_id: threadId, cosa, errore } as never)})`.catch(() => {})
 }
 
 async function notaInterna(db: Db, threadId: string, chiave: string, testo: string): Promise<void> {
@@ -245,24 +274,41 @@ async function notaInterna(db: Db, threadId: string, chiave: string, testo: stri
 const MUTAZIONE_ORDINE = `
   mutation Ordine($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
     orderCreate(order: $order, options: $options) {
-      order { id name }
+      order { id name totalPriceSet { shopMoney { amount } } }
       userErrors { field message }
     }
   }`
+
+const QUERY_ORDINI_TICKET = `
+  query OrdiniTicket($q: String!) {
+    orders(first: 5, query: $q) { nodes { id name tags cancelledAt totalPriceSet { shopMoney { amount } } } }
+  }`
+
+interface OrdineCreato { id: string; name: string; totalPriceSet: { shopMoney: { amount: string } } }
+
+/** Un ordine sostitutivo già creato per questo ticket (dopo un errore o un timeout). */
+async function ordineGiaCreato(config: Config, log: Logger, numero: string, conf: ConfigSostituzione): Promise<OrdineCreato | null> {
+  const d = await chiamaAdmin<{ orders: { nodes: (OrdineCreato & { tags: string[]; cancelledAt: string | null })[] } }>(
+    config, log, QUERY_ORDINI_TICKET, { q: `tag:'ticket-${numero}'` },
+  )
+  return d.orders.nodes.find((o) => !o.cancelledAt && o.tags.includes(conf.tag_ordine) && o.tags.includes(`ticket-${numero}`)) ?? null
+}
 
 export interface RichiestaOrdine {
   thread_id: string
   /** Se manca, si usa quello dato dal cliente sul portale (se completo). */
   indirizzo?: Indirizzo | null
   email?: string | null
-  /** Solo quando la ricerca per SKU è ambigua: la variante scelta dall'operatore. */
+  /** Quando la ricerca per SKU è ambigua: la variante scelta dall'operatore. */
   variant_gid?: string | null
+  /** Quando il codice del ticket non si trova sul negozio: lo SKU indicato dall'operatore. */
+  sku?: string | null
   agent_id: string | null
 }
 
 export async function creaOrdineSostitutivo(db: Db, config: Config, log: Logger, r: RichiestaOrdine) {
   const conf = await configSostituzione(db)
-  const stato = await statoSostituzione(db, config, log, r.thread_id)
+  const stato = await statoSostituzione(db, config, log, r.thread_id, r.sku)
   if (stato.azione === 'fatta') throw new ErroreSostituzione(409, 'Per questo ticket il sostitutivo è già stato fatto.', 'gia_fatta')
 
   let variante = stato.variante
@@ -273,36 +319,50 @@ export async function creaOrdineSostitutivo(db: Db, config: Config, log: Logger,
   if (!variante || !varianteDisponibile(variante)) {
     throw new ErroreSostituzione(409, stato.avviso ?? 'Il prodotto non è disponibile: emetti il codice sconto.', 'non_disponibile')
   }
-
   const scelto = r.indirizzo ?? indirizzoCompleto(stato.indirizzo_portale)
   if (!scelto) {
     throw new ErroreSostituzione(422, "Manca l'indirizzo di spedizione: chiedilo al cliente.", 'senza_indirizzo')
   }
 
-  const id = await prenota(db, r.thread_id, 'ordine', { sku: variante.sku, variant_gid: variante.variant_gid, agent_id: r.agent_id })
+  const { id, ripresa } = await prenota(db, r.thread_id, 'ordine', { sku: variante.sku, variant_gid: variante.variant_gid, agent_id: r.agent_id })
   const email = r.email ?? stato.cliente.email
   const indirizzo = { ...scelto, telefono: scelto.telefono ?? stato.cliente.telefono }
+
+  let ordine: OrdineCreato | null = null
   try {
-    const input = inputOrdine({ numero_ticket: stato.numero_ticket, variant_gid: variante.variant_gid, email, indirizzo, conf })
-    const d = await chiamaAdmin<{ orderCreate: { order: { id: string; name: string } | null; userErrors: { message: string }[] } }>(
-      config, log, MUTAZIONE_ORDINE, input,
-    )
-    const ordine = d.orderCreate.order
-    if (!ordine) throw new ErroreShopify(d.orderCreate.userErrors.map((e) => e.message).join('; ') || 'ordine non creato')
-    await db`
-      update sostituzione set stato = 'fatta', shopify_order_gid = ${ordine.id}, shopify_order_name = ${ordine.name},
-        indirizzo = ${db.json(indirizzo as never)}, updated_at = now()
-      where id = ${id}
-    `
-    await notaInterna(db, r.thread_id, `sostituzione:${id}`,
-      `Sostitutivo spedito a 0 euro: ordine Shopify ${ordine.name} (${variante.sku}). Il tracking arriva con la spedizione.`)
-    log.info({ thread_id: r.thread_id, ordine: ordine.name, sku: variante.sku }, 'ordine sostitutivo creato')
-    return { tipo: 'ordine' as const, ordine: ordine.name, shopify_order_gid: ordine.id, sku: variante.sku }
+    // Ripresa dopo un errore o un timeout: l'ordine potrebbe esserci già.
+    if (ripresa) ordine = await ordineGiaCreato(config, log, stato.numero_ticket, conf)
+    if (!ordine) {
+      const input = inputOrdine({ numero_ticket: stato.numero_ticket, variant_gid: variante.variant_gid, email, indirizzo, conf })
+      const d = await chiamaAdmin<{ orderCreate: { order: OrdineCreato | null; userErrors: { message: string }[] } }>(
+        config, log, MUTAZIONE_ORDINE, input,
+      )
+      ordine = d.orderCreate.order
+      if (!ordine) throw new ErroreShopify(d.orderCreate.userErrors.map((e) => e.message).join('; ') || 'ordine non creato')
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     await segnaErrore(db, id, r.thread_id, 'ordine', msg)
     throw new ErroreSostituzione(e instanceof ErroreShopify && e.permessoMancante ? 403 : 502, msg, 'shopify')
   }
+
+  // Da qui l'ordine esiste: niente più 'errore', al massimo un'anomalia.
+  const totale = Number(ordine.totalPriceSet.shopMoney.amount)
+  try {
+    await db`
+      update sostituzione set stato = 'fatta', shopify_order_gid = ${ordine.id}, shopify_order_name = ${ordine.name},
+        indirizzo = ${db.json(indirizzo as never)}, errore = ${totale === 0 ? null : `totale ${totale} invece di 0`}, updated_at = now()
+      where id = ${id}
+    `
+    await notaInterna(db, r.thread_id, `sostituzione:${id}`,
+      `Sostitutivo spedito a 0 euro: ordine Shopify ${ordine.name} (${variante.sku}). Il tracking arriva con la spedizione.` +
+        (totale === 0 ? '' : ` ATTENZIONE: su Shopify l'ordine risulta di ${totale.toFixed(2)} euro, va controllato.`))
+    if (totale !== 0) await anomaliaDopo(db, log, r.thread_id, `ordine ${ordine.name} con totale ${totale}`, 'totale diverso da 0')
+  } catch (e) {
+    await anomaliaDopo(db, log, r.thread_id, `ordine ${ordine.name}`, e)
+  }
+  log.info({ thread_id: r.thread_id, ordine: ordine.name, sku: variante.sku, totale }, 'ordine sostitutivo creato')
+  return { tipo: 'ordine' as const, ordine: ordine.name, shopify_order_gid: ordine.id, sku: variante.sku, totale }
 }
 
 const MUTAZIONE_SCONTO = `
@@ -313,43 +373,62 @@ const MUTAZIONE_SCONTO = `
     }
   }`
 
+const QUERY_SCONTO_PER_CODICE = `
+  query ScontoPerCodice($code: String!) { codeDiscountNodeByCode(code: $code) { id } }`
+
 export async function creaCodiceScontoSostitutivo(
-  db: Db, config: Config, log: Logger, r: { thread_id: string; agent_id: string | null },
+  db: Db, config: Config, log: Logger, r: { thread_id: string; sku?: string | null; agent_id: string | null },
 ) {
   const conf = await configSostituzione(db)
-  const stato = await statoSostituzione(db, config, log, r.thread_id)
+  const stato = await statoSostituzione(db, config, log, r.thread_id, r.sku)
   if (stato.azione === 'fatta') throw new ErroreSostituzione(409, 'Per questo ticket il sostitutivo è già stato fatto.', 'gia_fatta')
   if (stato.azione === 'spedisci') {
     throw new ErroreSostituzione(409, `${stato.sku} è disponibile: si spedisce il sostitutivo, niente codice sconto.`, 'disponibile')
   }
-  if (stato.esito_ricerca === 'errore') throw new ErroreSostituzione(502, stato.avviso ?? 'Shopify non risponde', 'shopify')
+  // Solo quando il prodotto è stato trovato sul negozio e risulta esaurito.
+  if (stato.azione !== 'codice_sconto') {
+    throw new ErroreSostituzione(409, stato.avviso ?? 'Prima va verificato il prodotto.', 'da_verificare')
+  }
   const importo = stato.valore_scontrino
   if (!importo) {
     throw new ErroreSostituzione(422, 'Il portale garanzie non ha letto il valore dallo scontrino: il codice sconto non si può emettere.', 'senza_valore')
   }
 
-  const id = await prenota(db, r.thread_id, 'codice_sconto', { sku: stato.sku ?? stato.codice_prodotto ?? '', agent_id: r.agent_id })
-  const codice = codiceSconto(conf.prefisso_codice, stato.numero_ticket)
+  const { id, ripresa } = await prenota(db, r.thread_id, 'codice_sconto', { sku: stato.sku ?? '', agent_id: r.agent_id })
+  // Il codice si scrive PRIMA della chiamata: in una ripresa si cerca lo stesso codice su Shopify.
+  const codice = ripresa?.tipo === 'codice_sconto' && ripresa.codice_sconto
+    ? ripresa.codice_sconto
+    : codiceSconto(conf.prefisso_codice, stato.numero_ticket)
+  const { basicCodeDiscount, scade_il } = inputSconto({ codice, numero_ticket: stato.numero_ticket, importo, inizio: new Date(), conf })
+  await db`update sostituzione set codice_sconto = ${codice}, importo = ${importo}, scade_il = ${scade_il} where id = ${id}`
+
+  let nodoId: string | null = null
   try {
-    const { basicCodeDiscount, scade_il } = inputSconto({ codice, numero_ticket: stato.numero_ticket, importo, inizio: new Date(), conf })
-    const d = await chiamaAdmin<{ discountCodeBasicCreate: { codeDiscountNode: { id: string } | null; userErrors: { message: string }[] } }>(
-      config, log, MUTAZIONE_SCONTO, { basicCodeDiscount },
-    )
-    const nodo = d.discountCodeBasicCreate.codeDiscountNode
-    if (!nodo) throw new ErroreShopify(d.discountCodeBasicCreate.userErrors.map((e) => e.message).join('; ') || 'codice non creato')
-    await db`
-      update sostituzione set stato = 'fatta', codice_sconto = ${codice}, discount_gid = ${nodo.id},
-        importo = ${importo}, scade_il = ${scade_il}, updated_at = now()
-      where id = ${id}
-    `
-    const scadenza = scade_il.toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' })
-    await notaInterna(db, r.thread_id, `sostituzione:${id}`,
-      `Prodotto non disponibile: emesso il codice sconto ${codice} da ${importo.toFixed(2)} euro, una sola volta, valido fino al ${scadenza}.`)
-    log.info({ thread_id: r.thread_id, codice, importo }, 'codice sconto sostitutivo creato')
-    return { tipo: 'codice_sconto' as const, codice, importo, scade_il }
+    if (ripresa) {
+      const g = await chiamaAdmin<{ codeDiscountNodeByCode: { id: string } | null }>(config, log, QUERY_SCONTO_PER_CODICE, { code: codice })
+      nodoId = g.codeDiscountNodeByCode?.id ?? null
+    }
+    if (!nodoId) {
+      const d = await chiamaAdmin<{ discountCodeBasicCreate: { codeDiscountNode: { id: string } | null; userErrors: { message: string }[] } }>(
+        config, log, MUTAZIONE_SCONTO, { basicCodeDiscount },
+      )
+      nodoId = d.discountCodeBasicCreate.codeDiscountNode?.id ?? null
+      if (!nodoId) throw new ErroreShopify(d.discountCodeBasicCreate.userErrors.map((e) => e.message).join('; ') || 'codice non creato')
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     await segnaErrore(db, id, r.thread_id, 'codice_sconto', msg)
     throw new ErroreSostituzione(e instanceof ErroreShopify && e.permessoMancante ? 403 : 502, msg, 'shopify')
   }
+
+  try {
+    await db`update sostituzione set stato = 'fatta', discount_gid = ${nodoId}, updated_at = now() where id = ${id}`
+    const scadenza = scade_il.toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' })
+    await notaInterna(db, r.thread_id, `sostituzione:${id}`,
+      `Prodotto non disponibile: emesso il codice sconto ${codice} da ${importo.toFixed(2)} euro, una sola volta, valido fino al ${scadenza}.`)
+  } catch (e) {
+    await anomaliaDopo(db, log, r.thread_id, `codice sconto ${codice}`, e)
+  }
+  log.info({ thread_id: r.thread_id, codice, importo }, 'codice sconto sostitutivo creato')
+  return { tipo: 'codice_sconto' as const, codice, importo, scade_il }
 }

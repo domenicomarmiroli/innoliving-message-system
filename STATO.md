@@ -6,6 +6,16 @@ Passaggio di consegne da una sessione Cowork a Claude Code.
 
 ---
 
+## Sostitutivo in garanzia (25/11): pronto in locale, mai provato su Shopify
+
+Da fare per metterlo online: migrazione `0055` su Supabase; verificare dai
+log di Render ("token Shopify ottenuto") che il token abbia `read_products`,
+`write_orders`, `write_discounts`; push con il via di Domenico; Lovable (Hub e
+portale). Prima prova sul ticket 16300 con il via di Domenico: controllare
+che l'ordine risulti a 0 euro e cosa ne fanno il motore Zoho e l'import Odoo.
+
+---
+
 ## Fatto e funzionante
 
 - **Shopify**: 5.407 ordini importati. Riconoscimento canale verificato su

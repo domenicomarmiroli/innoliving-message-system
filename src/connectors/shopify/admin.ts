@@ -8,7 +8,8 @@ import { creaFornitoreToken, type FornitoreToken } from './token.js'
  * paginazione; qui serve una chiamata singola con gli errori leggibili.
  */
 
-export const API_VERSION = '2025-07'
+// Versione recente: il campo context degli sconti non esiste nelle versioni vecchie.
+export const API_VERSION = '2026-07'
 
 let fornitore: FornitoreToken | null = null
 
@@ -47,7 +48,7 @@ export async function chiamaAdmin<T>(
       )
       throw new ErroreShopify(
         accesso
-          ? "L'app Shopify dell'Hub non ha il permesso per questa operazione (servono write_orders e write_discounts): va approvato sul negozio."
+          ? "L'app Shopify dell'Hub non ha il permesso per questa operazione (servono read_products, write_orders e write_discounts): va approvato sul negozio."
           : `GraphQL: ${body.errors.map((e) => e.message).join('; ')}`,
         accesso,
       )
