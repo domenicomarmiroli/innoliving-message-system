@@ -7,7 +7,7 @@ import type { Logger } from '../../logger.js'
 import type { FilePronto } from '../../core/attachments/normalize.js'
 import { caricaAllegato, storageConfigurato } from '../../core/storage.js'
 import { dimensioniImmagine } from '../../core/immagine.js'
-import { casellaPerTrasporto, trasportoDaRaw } from './casella.js'
+import { casellaPerTrasporto, type Trasporto } from './casella.js'
 import { adattaAllegatiAlTrasporto, spedisci } from './spedizione.js'
 
 /**
@@ -101,17 +101,13 @@ export async function apriTicketCollegato(
     : []
   const riferimentoOrdine = ordine?.shopify_name ?? ordine?.external_order_id ?? null
 
-  // Da quale casella scrivere a corriere/assistenza: quella a cui il
-  // cliente del ticket padre ha scritto l'ultima volta — la stessa regola
-  // di una risposta. Prima era `where kind='email' limit 1` senza
-  // ordinamento: con due caselle attive, una scelta a caso.
-  const [ultimoPadre] = await db<{ raw: Record<string, unknown> | null }[]>`
-    select m.raw from message m
-    where m.thread_id = ${padre.id} and m.direction = 'in' and m.author_kind = 'customer'
-    order by m.sent_at desc
-    limit 1
-  `
-  const trasporto = trasportoDaRaw(ultimoPadre?.raw)
+  // Da quale casella scrivere a corriere/assistenza: sempre ticket@
+  // (Microsoft 365), qualunque casella abbia usato il cliente. Regola di
+  // Domenico del 2026-11-26: prima si seguiva l'ultima casella del cliente
+  // e i ticket collegati partivano anche dalla Gmail storica.
+  // Le risposte nel ticket collegato seguono da sole: il primo invio
+  // registra `trasporto: 'graph'` nel raw e invia.ts lo rilegge.
+  const trasporto: Trasporto = 'graph'
   const casella = await casellaPerTrasporto(db, trasporto)
 
   const oggetto = costruisciOggetto(tipo, richiesta.oggetto, riferimentoOrdine)
