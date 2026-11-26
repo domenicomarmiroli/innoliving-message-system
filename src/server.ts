@@ -18,6 +18,7 @@ import { richiamaRoutes } from './routes/richiama.js'
 import { praticaRoutes } from './routes/pratica.js'
 import { etichettaResoRoutes } from './routes/etichetta-reso.js'
 import { sostituzioneRoutes } from './routes/sostituzione.js'
+import { assistenzaPartnerRoutes } from './routes/assistenza-partner.js'
 import { avviaRichiamate } from './connectors/voce/richiamate.js'
 import { voceWebhookRoutes } from './routes/voce-webhook.js'
 import { shopifyWebhookRoutes } from './routes/webhooks-shopify.js'
@@ -74,6 +75,7 @@ export async function buildServer(config: Config) {
   await app.register(praticaRoutes, { db, config })
   await app.register(etichettaResoRoutes, { db, config })
   await app.register(sostituzioneRoutes, { db, config })
+  await app.register(assistenzaPartnerRoutes, { db, config })
   // Fine chiamata: firma HMAC di ElevenLabs, fuori dal plugin degli strumenti.
   await app.register(voceWebhookRoutes, { db, config })
 
