@@ -213,7 +213,7 @@ export async function statoSostituzione(
       ...base, sku, variante, esito_ricerca: 'trovata', disponibile: false, azione: 'codice_sconto',
       avviso: base.valore_scontrino
         ? `${motivo}: puoi emettere un codice sconto di ${base.valore_scontrino.toFixed(2)} euro.`
-        : `${motivo}, e il portale garanzie non ha letto il valore dallo scontrino: il codice sconto non si può emettere.`,
+        : `${motivo}, e il portale garanzie non ha letto il valore dallo scontrino: inserisci l'importo guardando lo scontrino.`,
     }
   }
   return { ...base, sku, variante: scelta.variante, esito_ricerca: 'trovata', disponibile: true, azione: 'spedisci', avviso: null }
@@ -377,7 +377,7 @@ const QUERY_SCONTO_PER_CODICE = `
   query ScontoPerCodice($code: String!) { codeDiscountNodeByCode(code: $code) { id } }`
 
 export async function creaCodiceScontoSostitutivo(
-  db: Db, config: Config, log: Logger, r: { thread_id: string; sku?: string | null; agent_id: string | null },
+  db: Db, config: Config, log: Logger, r: { thread_id: string; sku?: string | null; agent_id: string | null; importo?: number | null },
 ) {
   const conf = await configSostituzione(db)
   const stato = await statoSostituzione(db, config, log, r.thread_id, r.sku)
@@ -389,9 +389,19 @@ export async function creaCodiceScontoSostitutivo(
   if (stato.azione !== 'codice_sconto') {
     throw new ErroreSostituzione(409, stato.avviso ?? 'Prima va verificato il prodotto.', 'da_verificare')
   }
-  const importo = stato.valore_scontrino
+  // Il valore letto dal portale vince. Se manca (ticket nati prima del
+  // portale nuovo, scontrino illeggibile) lo inserisce l'operatore guardando
+  // lo scontrino: si salva sul ticket con fonte 'operatore' (2026-11-26, #15861).
+  let importo = stato.valore_scontrino
+  if (!importo && r.importo && r.importo > 0) {
+    importo = Math.round(r.importo * 100) / 100
+    await db`
+      update thread set valore_scontrino = ${importo}, valore_scontrino_fonte = 'operatore', updated_at = now()
+      where id = ${r.thread_id} and valore_scontrino is null
+    `
+  }
   if (!importo) {
-    throw new ErroreSostituzione(422, 'Il portale garanzie non ha letto il valore dallo scontrino: il codice sconto non si può emettere.', 'senza_valore')
+    throw new ErroreSostituzione(422, "Il portale garanzie non ha letto il valore dallo scontrino: inserisci l'importo a mano.", 'senza_valore')
   }
 
   const { id, ripresa } = await prenota(db, r.thread_id, 'codice_sconto', { sku: stato.sku ?? '', agent_id: r.agent_id })

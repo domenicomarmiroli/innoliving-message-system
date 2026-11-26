@@ -84,13 +84,18 @@ export async function sostituzioneRoutes(app: FastifyInstance, opts: { db: Db; c
     }
   })
 
-  const corpoSconto = z.object({ thread_id: z.string().uuid(), sku: z.string().trim().min(2).max(60).nullable().optional() })
+  const corpoSconto = z.object({
+    thread_id: z.string().uuid(),
+    sku: z.string().trim().min(2).max(60).nullable().optional(),
+    // Solo se il portale non ha letto il valore dallo scontrino: lo inserisce l'operatore.
+    importo: z.number().positive().max(5_000).nullable().optional(),
+  })
 
   app.post('/threads/sostitutivo/codice-sconto', async (req, reply) => {
     const agente = await chiChiama(req)
     if (agente === undefined) return reply.code(401).send({ errore: 'non autorizzato' })
     const c = corpoSconto.safeParse(req.body)
-    if (!c.success) return reply.code(400).send({ errore: 'thread_id non valido' })
+    if (!c.success) return reply.code(400).send({ errore: c.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') })
     try {
       return reply.send(await creaCodiceScontoSostitutivo(db, config, req.log, { ...c.data, agent_id: agente }))
     } catch (e) {
