@@ -39,6 +39,8 @@ export interface NuovoStato {
   origine: 'portale' | 'magazzino' | 'operatore'
   dettagli?: { tracking?: string | null; corriere?: string | null; [k: string]: unknown }
   agent_id?: string | null
+  /** false = nessun avviso al cliente (es. etichetta inviata: il cliente ha già la risposta con l'etichetta). */
+  avviso?: boolean
 }
 
 /**
@@ -51,7 +53,7 @@ export async function registraStatoPratica(db: Db, s: NuovoStato): Promise<boole
     select ca.kind from thread t join channel_account ca on ca.id = t.account_id where t.id = ${s.thread_id}
   `
   if (!t) return false
-  const conAvviso = CANALI_CON_AVVISO.includes(t.kind) && !STATI_SENZA_AVVISO.includes(s.stato)
+  const conAvviso = s.avviso !== false && CANALI_CON_AVVISO.includes(t.kind) && !STATI_SENZA_AVVISO.includes(s.stato)
 
   const [e] = await db<{ id: number }[]>`
     insert into pratica_evento (thread_id, stato, origine, dettagli, avviso, agent_id)
@@ -70,7 +72,11 @@ export async function registraStatoPratica(db: Db, s: NuovoStato): Promise<boole
     await db`
       insert into message (thread_id, direction, author_kind, external_id, body_text, interno, sent_at)
       values (${s.thread_id}, 'out', 'agent', ${`pratica:${e.id}`},
-        ${`Stato della pratica: ${ETICHETTA[s.stato]}.${STATI_SENZA_AVVISO.includes(s.stato) ? '' : ' Nessun avviso al cliente: su questo canale lo informa il marketplace.'}`},
+        ${`Stato della pratica: ${ETICHETTA[s.stato]}.${
+          STATI_SENZA_AVVISO.includes(s.stato) || s.avviso === false
+            ? ''
+            : ' Nessun avviso al cliente: su questo canale lo informa il marketplace.'
+        }`},
         true, now())
       on conflict (thread_id, external_id) do nothing
     `

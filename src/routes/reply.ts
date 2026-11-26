@@ -13,6 +13,7 @@ import { inviaRisposta } from '../connectors/mail/invia.js'
 import { inviaMessaggioMirakl } from '../connectors/mirakl/invia.js'
 import { messaggioErrore } from '../connectors/mail/imap.js'
 import { registraInvioFallito } from '../connectors/stato/invio-fallito.js'
+import { registraStatoPratica } from '../connectors/pratica/avvisi.js'
 
 /**
  * Invio di una risposta, chiamato dall'interfaccia.
@@ -184,6 +185,31 @@ export async function replyRoutes(
               testo: analizzato.data.testo,
               allegati: allegatiPronti,
             })
+      // Risposta con l'etichetta di reso del ticket allegata: la pratica passa
+      // da sola a "etichetta inviata" (chiesto da Domenico il 2026-11-26), così
+      // il cliente lo vede nella sua area. Niente avviso: la risposta è già
+      // il messaggio. Solo per le pratiche (garanzia). Mai bloccante.
+      const thread_id = analizzato.data.thread_id
+      if (richiestaAllegati.some((a) => a.storage_path.includes(`etichette-reso/${thread_id}/`))) {
+        try {
+          const [t] = await db<{ pratica: boolean }[]>`
+            select (stato_pratica is not null or 'garanzia' = any(tags)) as pratica from thread where id = ${thread_id}
+          `
+          if (t?.pratica) {
+            await registraStatoPratica(db, {
+              thread_id,
+              stato: 'etichetta_inviata',
+              origine: 'operatore',
+              agent_id: analizzato.data.agent_id ?? null,
+              avviso: false,
+              dettagli: { automatico: true, message_id: esito.message_id },
+            })
+          }
+        } catch (errorePratica) {
+          req.log.warn({ thread_id, err: messaggioErrore(errorePratica) }, 'stato "etichetta inviata" non registrato, invio già avvenuto')
+        }
+      }
+
       // Risposta tradotta: si conserva l'italiano dell'operatore accanto
       // al testo spedito. Come per la bozza qui sotto, un problema qui non
       // deve far fallire un invio già avvenuto: solo un log.

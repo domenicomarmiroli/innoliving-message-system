@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
-import { ETICHETTA_STATO, normalizzaEmail, statoPerCliente, testoPerCliente } from '../core/clienti/area.js'
+import { ETICHETTA_STATO, normalizzaEmail, praticaPerCliente, statoPerCliente, testoPerCliente } from '../core/clienti/area.js'
 import { scaricaAllegato, storageConfigurato } from '../core/storage.js'
 import {
   TAG_ATTESA_REGISTRAZIONE,
@@ -91,8 +91,10 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
       id: string; numero: string; subject: string | null; state: string; canale: string
       brand: string | null; ordine: string | null; aperto_il: Date; ultimo_messaggio_il: Date | null
       in_attesa_garanzia: boolean
+      stato_pratica: string | null; stato_pratica_at: Date | null
     }[]>`
       select t.id, t.numero::text as numero, t.subject, t.state, ca.kind as canale,
+             t.stato_pratica, t.stato_pratica_at,
              ${TAG_ATTESA_REGISTRAZIONE} = any(t.tags) as in_attesa_garanzia,
              ca.display_name as brand,
              coalesce(o.shopify_name, o.external_order_id) as ordine,
@@ -124,6 +126,10 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
           // true = aperto al telefono per un prodotto in garanzia, aspetta che
           // il cliente registri il prodotto sul portale.
           in_attesa_garanzia: r.in_attesa_garanzia,
+          // Fase della pratica di assistenza (garanzia, reso): null se non c'è.
+          stato_pratica: r.stato_pratica,
+          stato_pratica_etichetta: praticaPerCliente(r.stato_pratica),
+          stato_pratica_il: r.stato_pratica_at,
         }
       }),
     })
@@ -138,8 +144,9 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
     }
     const email = normalizzaEmail(q.data.email)
 
-    const [t] = await db<{ id: string; numero: string; subject: string | null; state: string; canale: string; ordine: string | null; aperto_il: Date }[]>`
+    const [t] = await db<{ id: string; numero: string; subject: string | null; state: string; canale: string; ordine: string | null; aperto_il: Date; stato_pratica: string | null; stato_pratica_at: Date | null }[]>`
       select t.id, t.numero::text as numero, t.subject, t.state, ca.kind as canale,
+             t.stato_pratica, t.stato_pratica_at,
              coalesce(o.shopify_name, o.external_order_id) as ordine, t.created_at as aperto_il
       from thread t
       join channel_account ca on ca.id = t.account_id
@@ -166,12 +173,22 @@ export async function clientiRoutes(app: FastifyInstance, opts: { db: Db; config
         `
       : []
     const stato = statoPerCliente(t.state)
+    // Le tappe della pratica, in ordine: il cliente vede a che punto è.
+    const passi = await db<{ stato: string; il: Date }[]>`
+      select stato, created_at as il from pratica_evento where thread_id = ${t.id} order by created_at
+    `
     return reply.send({
       id: t.id,
       numero: t.numero,
       oggetto: t.subject,
       stato,
       stato_etichetta: ETICHETTA_STATO[stato],
+      stato_pratica: t.stato_pratica,
+      stato_pratica_etichetta: praticaPerCliente(t.stato_pratica),
+      stato_pratica_il: t.stato_pratica_at,
+      pratica_passi: passi
+        .map((p) => ({ stato: p.stato, etichetta: praticaPerCliente(p.stato), il: p.il }))
+        .filter((p) => p.etichetta !== null),
       canale: t.canale,
       ordine: t.ordine,
       aperto_il: t.aperto_il,

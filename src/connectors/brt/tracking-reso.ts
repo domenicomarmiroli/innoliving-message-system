@@ -4,6 +4,7 @@ import type { Logger } from '../../logger.js'
 import { configBrtResi } from './reso.js'
 import { leggiPagina, statoDaEventi, type EventoBrt, type StatoBrt } from './pagina.js'
 import { scaricaPagina } from './tracking.js'
+import { riapriResiConsegnati } from '../reso/consegnato.js'
 
 /**
  * Stato della spedizione di reso (migrazione 0054).
@@ -183,6 +184,8 @@ export interface EsitoGiroResi {
   non_riconosciuti: number
   errori: number
   interrotto: boolean
+  /** Ticket riaperti perché il reso è stato consegnato al magazzino. */
+  riaperti: number
 }
 
 interface DaLeggere {
@@ -198,7 +201,25 @@ export async function giroTrackingResi(
   config: Config,
   fermato: () => boolean = () => false,
 ): Promise<EsitoGiroResi> {
-  const esito: EsitoGiroResi = { letti: 0, aggiornati: 0, in_attesa: 0, non_riconosciuti: 0, errori: 0, interrotto: false }
+  const esito = await leggiTrackingResi(db, log, config, fermato)
+  // Reso arrivato al magazzino: il ticket torna aperto (migrazione 0057).
+  // Anche quando non c'era niente da leggere: recupera i consegnati rimasti indietro.
+  if (config.BRT_TRACKING_RESI_ORE !== 0) {
+    esito.riaperti = await riapriResiConsegnati(db, log).catch((errore: unknown) => {
+      log.error({ err: errore instanceof Error ? errore.message : String(errore) }, 'giro riapertura resi consegnati fallito')
+      return 0
+    })
+  }
+  return esito
+}
+
+async function leggiTrackingResi(
+  db: Db,
+  log: Logger,
+  config: Config,
+  fermato: () => boolean,
+): Promise<EsitoGiroResi> {
+  const esito: EsitoGiroResi = { letti: 0, aggiornati: 0, in_attesa: 0, non_riconosciuti: 0, errori: 0, interrotto: false, riaperti: 0 }
   if (config.BRT_TRACKING_RESI_ORE === 0 || !config.BRT_API_USER || !config.BRT_API_PASSWORD) return esito
 
   const daLeggere = await db<DaLeggere[]>`

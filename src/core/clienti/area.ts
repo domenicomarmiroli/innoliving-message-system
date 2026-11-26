@@ -53,3 +53,25 @@ export function testoPerCliente(testo: string, canale: string, autore: string): 
     .join('\n')
     .trim()
 }
+
+/**
+ * Lo stato della pratica come lo legge il cliente nella sua area (chiesto da
+ * Domenico il 2026-11-26). Parole semplici, niente esiti interni: la "non
+ * conformità" del magazzino per il cliente è una verifica in corso.
+ */
+export const ETICHETTA_PRATICA: Record<string, string> = {
+  ricevuta: 'Richiesta ricevuta',
+  etichetta_inviata: 'Etichetta di reso inviata',
+  rientrata: 'Prodotto arrivato al nostro magazzino',
+  rientrata_sostituzione: 'Prodotto arrivato: lo sostituiamo',
+  rientrata_sostituzione_altro_modello: 'Prodotto arrivato: lo sostituiamo con un altro modello',
+  rientrata_riparazione: 'Prodotto arrivato: in riparazione',
+  rientrata_funzionante: 'Prodotto arrivato: verificato funzionante',
+  rientrata_non_conforme: 'Prodotto arrivato: in verifica',
+  spedita: 'Prodotto spedito',
+  chiusa: 'Pratica chiusa',
+}
+
+export function praticaPerCliente(stato: string | null | undefined): string | null {
+  return stato ? (ETICHETTA_PRATICA[stato] ?? null) : null
+}
