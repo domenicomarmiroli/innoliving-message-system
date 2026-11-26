@@ -174,7 +174,15 @@ export async function statoSostituzione(
     varianti_ambigue: [] as VarianteNegozio[],
   }
   if (esistente?.stato === 'fatta') {
-    return { ...base, sku: esistente.sku, variante: null, esito_ricerca: 'trovata', disponibile: false, azione: 'fatta', avviso: null }
+    // Anche a sostituzione fatta il riquadro mostra prodotto e pezzi: senza
+    // la lettura diceva "Non trovato sul negozio" (segnalato il 2026-11-26,
+    // ordine INSH19984). Se la lettura fallisce resta vuoto, non è un errore.
+    let variante: VarianteNegozio | null = null
+    if (esistente.sku) {
+      const s = await cercaVariante(config, log, esistente.sku).catch(() => null)
+      if (s?.esito === 'trovata') variante = s.variante
+    }
+    return { ...base, sku: esistente.sku, variante, esito_ricerca: 'trovata', disponibile: false, azione: 'fatta', avviso: null }
   }
   if (!codice && !skuOperatore) {
     return {
