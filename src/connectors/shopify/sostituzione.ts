@@ -6,6 +6,7 @@ import {
   codiceSconto,
   inputOrdine,
   indirizzoCompleto,
+  indirizzoDaRitiro,
   inputSconto,
   leggiConfigSostituzione,
   scegliVariante,
@@ -61,6 +62,27 @@ interface Ticket {
   nome: string | null
   telefono: string | null
   indirizzo_portale: IndirizzoPortale | null
+  indirizzo_salvato: IndirizzoPortale | null
+  indirizzo_ultimo_ordine: IndirizzoPortale | null
+  intestatario: string | null
+  indirizzo_ritiro: string | null
+}
+
+export type FonteIndirizzo = 'salvato' | 'portale' | 'ritiro' | null
+
+/**
+ * Quale indirizzo proporre nel modulo (2026-11-26, #17204):
+ * quello salvato dall'operatore sul ticket, poi l'ultimo usato per un ordine,
+ * poi quello del portale nuovo, poi quello ricavato dall'indirizzo di ritiro
+ * dei ticket vecchi (da completare a mano).
+ */
+export function sceltaIndirizzo(t: Pick<Ticket, 'indirizzo_salvato' | 'indirizzo_ultimo_ordine' | 'indirizzo_portale' | 'intestatario' | 'indirizzo_ritiro' | 'telefono'>):
+  { indirizzo: IndirizzoPortale | null; fonte: FonteIndirizzo } {
+  if (t.indirizzo_salvato) return { indirizzo: t.indirizzo_salvato, fonte: 'salvato' }
+  if (t.indirizzo_ultimo_ordine) return { indirizzo: t.indirizzo_ultimo_ordine, fonte: 'salvato' }
+  if (t.indirizzo_portale) return { indirizzo: t.indirizzo_portale, fonte: 'portale' }
+  const ritiro = indirizzoDaRitiro(t.intestatario, t.indirizzo_ritiro, t.telefono)
+  return ritiro ? { indirizzo: ritiro, fonte: 'ritiro' } : { indirizzo: null, fonte: null }
 }
 
 async function configSostituzione(db: Db): Promise<ConfigSostituzione> {
@@ -79,7 +101,14 @@ async function leggiTicket(db: Db, threadId: string): Promise<{ t: Ticket; codic
              and m.raw ? 'garanzia' order by m.sent_at limit 1) as telefono,
            (select m.raw->'garanzia'->'indirizzo_spedizione' from message m where m.thread_id = t.id
              and jsonb_typeof(m.raw->'garanzia'->'indirizzo_spedizione') = 'object'
-             order by m.sent_at desc limit 1) as indirizzo_portale
+             order by m.sent_at desc limit 1) as indirizzo_portale,
+           t.indirizzo_spedizione as indirizzo_salvato,
+           (select s.indirizzo from sostituzione s where s.thread_id = t.id
+             and jsonb_typeof(s.indirizzo) = 'object') as indirizzo_ultimo_ordine,
+           (select m.raw->'garanzia'->>'intestatario' from message m where m.thread_id = t.id
+             and m.raw ? 'garanzia' order by m.sent_at limit 1) as intestatario,
+           (select m.raw->'garanzia'->>'indirizzo_ritiro' from message m where m.thread_id = t.id
+             and m.raw ? 'garanzia' order by m.sent_at limit 1) as indirizzo_ritiro
     from thread t where t.id = ${threadId}
   `
   if (!t) throw new ErroreSostituzione(404, 'ticket non trovato')
@@ -147,9 +176,14 @@ export interface StatoSostituzione {
   /** Dal portale garanzie: null se non l'ha letto dallo scontrino. */
   valore_scontrino: number | null
   cliente: { nome: string | null; email: string | null; telefono: string | null }
-  /** Indirizzo dato dal cliente sul portale: per precompilare il modulo. */
+  /**
+   * L'indirizzo da proporre nel modulo (il nome resta per compatibilità con
+   * l'interfaccia): salvato sul ticket, del portale o ricavato dal ritiro.
+   */
   indirizzo_portale: IndirizzoPortale | null
-  /** true se l'indirizzo del portale basta da solo per spedire. */
+  /** Da dove viene: 'salvato' (operatore o ordine), 'portale', 'ritiro' (da completare). */
+  indirizzo_fonte: FonteIndirizzo
+  /** true se l'indirizzo proposto basta da solo per spedire. */
   indirizzo_completo: boolean
   sostituzione: RigaSostituzione | null
   azione: 'spedisci' | 'codice_sconto' | 'fatta' | 'da_verificare'
@@ -163,13 +197,15 @@ export async function statoSostituzione(
   const conf = await configSostituzione(db)
   const { t, codice } = await leggiTicket(db, threadId)
   const esistente = await rigaEsistente(db, threadId)
+  const proposto = sceltaIndirizzo(t)
   const base = {
     numero_ticket: t.numero,
     codice_prodotto: codice,
     valore_scontrino: t.valore_scontrino === null ? null : Number(t.valore_scontrino),
     cliente: { nome: t.nome, email: t.email, telefono: t.telefono },
-    indirizzo_portale: t.indirizzo_portale,
-    indirizzo_completo: indirizzoCompleto(t.indirizzo_portale) !== null,
+    indirizzo_portale: proposto.indirizzo,
+    indirizzo_fonte: proposto.fonte,
+    indirizzo_completo: indirizzoCompleto(proposto.indirizzo) !== null,
     sostituzione: esistente,
     varianti_ambigue: [] as VarianteNegozio[],
   }
@@ -302,6 +338,15 @@ async function ordineGiaCreato(config: Config, log: Logger, numero: string, conf
   return d.orders.nodes.find((o) => !o.cancelledAt && o.tags.includes(conf.tag_ordine) && o.tags.includes(`ticket-${numero}`)) ?? null
 }
 
+/** L'indirizzo scritto dall'operatore resta sul ticket (migrazione 0059). */
+export async function salvaIndirizzo(db: Db, threadId: string, indirizzo: IndirizzoPortale): Promise<boolean> {
+  const righe = await db`
+    update thread set indirizzo_spedizione = ${db.json(indirizzo as never)}, indirizzo_spedizione_at = now()
+    where id = ${threadId} returning id
+  `
+  return righe.length > 0
+}
+
 export interface RichiestaOrdine {
   thread_id: string
   /** Se manca, si usa quello dato dal cliente sul portale (se completo). */
@@ -362,6 +407,7 @@ export async function creaOrdineSostitutivo(db: Db, config: Config, log: Logger,
         indirizzo = ${db.json(indirizzo as never)}, errore = ${totale === 0 ? null : `totale ${totale} invece di 0`}, updated_at = now()
       where id = ${id}
     `
+    await salvaIndirizzo(db, r.thread_id, indirizzo)
     await notaInterna(db, r.thread_id, `sostituzione:${id}`,
       `Sostitutivo spedito a 0 euro: ordine Shopify ${ordine.name} (${variante.sku}). Il tracking arriva con la spedizione.` +
         (totale === 0 ? '' : ` ATTENZIONE: su Shopify l'ordine risulta di ${totale.toFixed(2)} euro, va controllato.`))

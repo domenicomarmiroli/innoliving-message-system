@@ -5,11 +5,12 @@ import { z } from 'zod'
 import type { Config } from '../config.js'
 import type { Db } from '../db/index.js'
 import { verificaAgente } from '../core/agente.js'
-import { schemaIndirizzo } from '../core/sostituzione.js'
+import { schemaIndirizzo, schemaIndirizzoPortale } from '../core/sostituzione.js'
 import {
   creaCodiceScontoSostitutivo,
   creaOrdineSostitutivo,
   ErroreSostituzione,
+  salvaIndirizzo,
   statoSostituzione,
 } from '../connectors/shopify/sostituzione.js'
 
@@ -57,6 +58,24 @@ export async function sostituzioneRoutes(app: FastifyInstance, opts: { db: Db; c
     try {
       const { sku } = req.query as { sku?: string }
       return reply.send(await statoSostituzione(db, config, req.log, id, sku?.slice(0, 60) || null))
+    } catch (e) {
+      return errore(reply, req, e)
+    }
+  })
+
+  // L'indirizzo scritto dall'operatore resta sul ticket anche se esce senza
+  // spedire (2026-11-26, #17204). Tollerante: si può salvare a metà.
+  const corpoIndirizzo = z.object({ thread_id: z.string().uuid(), indirizzo: schemaIndirizzoPortale })
+
+  app.post('/threads/sostitutivo/indirizzo', async (req, reply) => {
+    if ((await chiChiama(req)) === undefined) return reply.code(401).send({ errore: 'non autorizzato' })
+    const c = corpoIndirizzo.safeParse(req.body)
+    if (!c.success) {
+      return reply.code(400).send({ errore: c.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') })
+    }
+    try {
+      const ok = await salvaIndirizzo(db, c.data.thread_id, c.data.indirizzo)
+      return ok ? reply.send({ ok: true }) : reply.code(404).send({ errore: 'ticket non trovato' })
     } catch (e) {
       return errore(reply, req, e)
     }

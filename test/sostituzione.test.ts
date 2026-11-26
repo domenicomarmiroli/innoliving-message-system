@@ -92,3 +92,24 @@ describe('sostitutivo in garanzia', () => {
     expect(scade_il.toISOString()).toBe('2027-02-23T10:00:00.000Z')
   })
 })
+
+describe('indirizzo proposto nel riquadro', async () => {
+  const { indirizzoDaRitiro } = await import('../src/core/sostituzione.js')
+  const { sceltaIndirizzo } = await import('../src/connectors/shopify/sostituzione.js')
+
+  it('ticket vecchio: nome, cognome, CAP e provincia dal testo di ritiro', () => {
+    const a = indirizzoDaRitiro('Mario Luigi Rossi', 'via delle rose 12/f san pietro 40018 (BO)', '333')
+    expect(a).toMatchObject({ nome: 'Mario Luigi', cognome: 'Rossi', cap: '40018', provincia: 'BO', paese: 'IT', telefono: '333' })
+    expect(a?.indirizzo).toBe('via delle rose 12/f san pietro 40018 (BO)')
+    expect(indirizzoDaRitiro('Anna', 'Chiaramonti SS, Via Budroni 12', null)).toMatchObject({ nome: 'Anna', cognome: null, provincia: 'SS', cap: null })
+    expect(indirizzoDaRitiro(null, null, null)).toBeNull()
+  })
+
+  it('vince quello salvato, poi il portale, poi il ritiro', () => {
+    const vuoto = { indirizzo_salvato: null, indirizzo_ultimo_ordine: null, indirizzo_portale: null, intestatario: null, indirizzo_ritiro: null, telefono: null }
+    expect(sceltaIndirizzo(vuoto)).toEqual({ indirizzo: null, fonte: null })
+    expect(sceltaIndirizzo({ ...vuoto, intestatario: 'A B', indirizzo_ritiro: 'Via X 1' }).fonte).toBe('ritiro')
+    expect(sceltaIndirizzo({ ...vuoto, indirizzo_portale: { cap: '1' }, indirizzo_ritiro: 'Via X 1' }).fonte).toBe('portale')
+    expect(sceltaIndirizzo({ ...vuoto, indirizzo_salvato: { cap: '2' }, indirizzo_portale: { cap: '1' } })).toEqual({ indirizzo: { cap: '2' }, fonte: 'salvato' })
+  })
+})

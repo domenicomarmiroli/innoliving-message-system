@@ -140,6 +140,28 @@ export const schemaIndirizzoPortale = z.object({
 })
 export type IndirizzoPortale = z.infer<typeof schemaIndirizzoPortale>
 
+/**
+ * Ticket nati prima del portale nuovo: solo l'intestatario e un "indirizzo di
+ * ritiro" scritto a mano ("via delle rose 12/f san pietro in casale 40018 (BO)").
+ * Si propone quello che si riconosce con sicurezza: nome e cognome, CAP,
+ * provincia; il resto del testo va in "indirizzo" e l'operatore lo sistema.
+ */
+export function indirizzoDaRitiro(
+  intestatario: string | null | undefined,
+  ritiro: string | null | undefined,
+  telefono: string | null | undefined,
+): IndirizzoPortale | null {
+  const nomeIntero = intestatario?.trim().replace(/\s+/g, ' ') ?? ''
+  const testo = ritiro?.trim().replace(/\s+/g, ' ') ?? ''
+  if (!nomeIntero && !testo) return null
+  const parole = nomeIntero ? nomeIntero.split(' ') : []
+  const cognome = parole.length > 1 ? parole.pop()! : null
+  const nome = parole.length ? parole.join(' ') : null
+  const cap = testo.match(/\b(\d{5})\b/)?.[1] ?? null
+  const provincia = (testo.match(/\(([A-Za-z]{2})\)/)?.[1] ?? testo.match(/\s([A-Z]{2})\s*,/)?.[1] ?? testo.match(/\s([A-Z]{2})$/)?.[1] ?? null)?.toUpperCase() ?? null
+  return { nome, cognome, presso: null, indirizzo: testo || null, indirizzo2: null, cap, citta: null, provincia, paese: 'IT', telefono: telefono?.trim() || null }
+}
+
 /** L'indirizzo del portale, se è completo; altrimenti null (lo completa l'operatore). */
 export function indirizzoCompleto(i: IndirizzoPortale | null | undefined): Indirizzo | null {
   if (!i) return null
