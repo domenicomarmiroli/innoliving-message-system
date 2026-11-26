@@ -48,7 +48,8 @@ export async function chiamaAdmin<T>(
       )
       throw new ErroreShopify(
         accesso
-          ? "L'app Shopify dell'Hub non ha il permesso per questa operazione (servono read_products, write_orders e write_discounts): va approvato sul negozio."
+          ? "L'app Shopify dell'Hub non ha il permesso per questa operazione (servono read_products, write_orders e write_discounts): va approvato sul negozio. " +
+            `Shopify dice: ${body.errors.map((e) => e.message).join('; ').slice(0, 400)}`
           : `GraphQL: ${body.errors.map((e) => e.message).join('; ')}`,
         accesso,
       )
