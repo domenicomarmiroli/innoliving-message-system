@@ -192,10 +192,13 @@ export async function replyRoutes(
       const thread_id = analizzato.data.thread_id
       if (richiestaAllegati.some((a) => a.storage_path.includes(`etichette-reso/${thread_id}/`))) {
         try {
-          const [t] = await db<{ pratica: boolean }[]>`
-            select (stato_pratica is not null or 'garanzia' = any(tags)) as pratica from thread where id = ${thread_id}
+          // Solo all'inizio della pratica: rimandare l'etichetta più avanti
+          // (prodotto già rientrato o rispedito) non deve riportarla indietro.
+          const [t] = await db<{ pratica: boolean; stato_pratica: string | null }[]>`
+            select (stato_pratica is not null or 'garanzia' = any(tags)) as pratica, stato_pratica
+            from thread where id = ${thread_id}
           `
-          if (t?.pratica) {
+          if (t?.pratica && (t.stato_pratica === null || t.stato_pratica === 'ricevuta')) {
             await registraStatoPratica(db, {
               thread_id,
               stato: 'etichetta_inviata',
