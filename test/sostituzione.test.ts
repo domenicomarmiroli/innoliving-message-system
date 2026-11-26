@@ -77,6 +77,7 @@ describe('sostitutivo in garanzia', () => {
     expect(riga['requiresShipping']).toBe(true)
     expect((order['shippingLines'] as Record<string, any>[])[0]!['priceSet'].shopMoney.amount).toBe('0.00')
     expect(order['financialStatus']).toBe('PAID')
+    expect(order['taxesIncluded']).toBe(true)
     expect(order['tags']).toEqual(['sostituzione-garanzia', 'ticket-16300'])
     expect(String(order['note'])).toContain('16300')
     expect(options['inventoryBehaviour']).toBe('DECREMENT_OBEYING_POLICY')

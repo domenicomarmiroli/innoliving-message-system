@@ -219,6 +219,9 @@ export function inputOrdine(d: DatiOrdine): { order: Record<string, unknown>; op
     shippingAddress: indirizzo,
     billingAddress: indirizzo,
     financialStatus: 'PAID',
+    // Prezzi IVA inclusa come tutti gli altri ordini del negozio: senza, l'export
+    // verso il gestionale scarta l'ordine (INSH19997, 2026-11-26).
+    taxesIncluded: true,
     tags: [d.conf.tag_ordine, `ticket-${d.numero_ticket}`],
     note: `Sostituzione in garanzia, ticket ${d.numero_ticket}. Prodotto difettoso già rientrato.`,
     customAttributes: [{ key: 'ticket', value: d.numero_ticket }],
