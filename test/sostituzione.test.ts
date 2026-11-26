@@ -74,6 +74,8 @@ describe('sostitutivo in garanzia', () => {
     })
     const riga = (order['lineItems'] as Record<string, any>[])[0]!
     expect(riga['priceSet'].shopMoney.amount).toBe('0.00')
+    expect(riga['requiresShipping']).toBe(true)
+    expect((order['shippingLines'] as Record<string, any>[])[0]!['priceSet'].shopMoney.amount).toBe('0.00')
     expect(order['financialStatus']).toBe('PAID')
     expect(order['tags']).toEqual(['sostituzione-garanzia', 'ticket-16300'])
     expect(String(order['note'])).toContain('16300')

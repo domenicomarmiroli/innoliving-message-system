@@ -181,6 +181,17 @@ export function inputOrdine(d: DatiOrdine): { order: Record<string, unknown>; op
         variantId: d.variant_gid,
         quantity: 1,
         priceSet: { shopMoney: { amount: '0.00', currencyCode: d.conf.valuta } },
+        // Senza questo orderCreate segna la riga "Shipping not required" e il
+        // magazzino non la spedisce mai (ordine INSH19984, 2026-11-26).
+        requiresShipping: true,
+      },
+    ],
+    // Spedizione a 0 euro, così l'ordine ha un metodo di spedizione come quelli del sito.
+    shippingLines: [
+      {
+        title: 'Sostituzione in garanzia',
+        code: d.conf.tag_ordine,
+        priceSet: { shopMoney: { amount: '0.00', currencyCode: d.conf.valuta } },
       },
     ],
     shippingAddress: indirizzo,
